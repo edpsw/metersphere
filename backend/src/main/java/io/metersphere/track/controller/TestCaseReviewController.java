@@ -3,6 +3,7 @@ package io.metersphere.track.controller;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import io.metersphere.base.domain.Project;
+import io.metersphere.base.domain.TestCaseComment;
 import io.metersphere.base.domain.TestCaseReview;
 import io.metersphere.base.domain.User;
 import io.metersphere.commons.constants.NoticeConstants;
@@ -17,7 +18,9 @@ import io.metersphere.service.CheckPermissionService;
 import io.metersphere.track.dto.TestCaseReviewDTO;
 import io.metersphere.track.dto.TestReviewDTOWithMetric;
 import io.metersphere.track.request.testreview.*;
+import io.metersphere.track.service.TestCaseCommentService;
 import io.metersphere.track.service.TestCaseReviewService;
+import io.metersphere.track.service.TestCaseService;
 import io.metersphere.track.service.TestReviewProjectService;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.springframework.web.bind.annotation.*;
@@ -37,8 +40,11 @@ public class TestCaseReviewController {
     TestReviewProjectService testReviewProjectService;
     @Resource
     CheckPermissionService checkPermissionService;
+    @Resource
+    private TestCaseCommentService testCaseCommentService;
 
     @PostMapping("/list/{goPage}/{pageSize}")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_REVIEW_READ)
     public Pager<List<TestCaseReviewDTO>> list(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryCaseReviewRequest request) {
         Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
         return PageUtils.setPageInfo(page, testCaseReviewService.listCaseReview(request));
@@ -54,6 +60,7 @@ public class TestCaseReviewController {
     }
 
     @PostMapping("/project")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_REVIEW_READ)
     public List<Project> getProjectByReviewId(@RequestBody TestCaseReview request) {
         return testCaseReviewService.getProjectByReviewId(request);
     }
@@ -94,6 +101,7 @@ public class TestCaseReviewController {
     }
 
     @PostMapping("/list/all")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_REVIEW_READ)
     public List<TestCaseReview> listAll() {
         return testCaseReviewService.listCaseReviewAll();
     }
@@ -121,6 +129,7 @@ public class TestCaseReviewController {
 
 
     @GetMapping("/get/{reviewId}")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_REVIEW_READ)
     public TestCaseReview getTestReview(@PathVariable String reviewId) {
         checkPermissionService.checkTestReviewOwner(reviewId);
         return testCaseReviewService.getTestReview(reviewId);
@@ -143,4 +152,15 @@ public class TestCaseReviewController {
     public void editTestFollows(@RequestBody SaveTestCaseReviewRequest testCaseReview) {
         testCaseReviewService.editCaseRevieweFollow(testCaseReview);
     }
+
+    @PostMapping("/comment/save")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_REVIEW_READ_COMMENT)
+    @MsAuditLog(module = "track_test_case_review", type = OperLogConstants.CREATE, content = "#msClass.getLogDetails(#request.id)", msClass = TestCaseCommentService.class)
+    @SendNotice(taskType = NoticeConstants.TaskType.REVIEW_TASK, target = "#targetClass.getTestCase(#request.caseId)", targetClass = TestCaseService.class,
+            event = NoticeConstants.Event.COMMENT, mailTemplate = "track/TestCaseComment", subject = "测试评审通知")
+    public TestCaseComment saveComment(@RequestBody SaveCommentRequest request) {
+        request.setId(UUID.randomUUID().toString());
+        return testCaseCommentService.saveComment(request);
+    }
+
 }

@@ -120,7 +120,7 @@
           :label="$t('commons.tag')">
           <template v-slot:default="scope">
             <ms-tag v-for="(itemName,index)  in scope.row.tags" :key="index" type="success" effect="plain"
-                    :show-tooltip="true" :content="itemName"
+                    :show-tooltip="scope.row.tags.length===1&&itemName.length*12<=100" :content="itemName"
                     style="margin-left: 0px; margin-right: 2px"/>
             <span/>
           </template>
@@ -289,7 +289,7 @@ export default {
           permissions: ['PROJECT_API_DEFINITION:READ+EDIT_API']
         },
         {
-          name: this.$t('生成依赖关系'),
+          name: this.$t('test_track.case.generate_dependencies'),
           isXPack: true,
           handleClick: this.generateGraph,
           permissions: ['PROJECT_API_DEFINITION:READ+EDIT_API']
@@ -302,7 +302,8 @@ export default {
           permissions: ['PROJECT_API_DEFINITION:READ+DELETE_API']
         },
         {
-          name: "批量恢复", handleClick: this.handleBatchRestore
+          name: this.$t('commons.batch_restore'),
+          handleClick: this.handleBatchRestore
         },
       ],
       tableOperatorButtons: [],

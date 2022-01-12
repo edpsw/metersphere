@@ -19,10 +19,15 @@ package io.metersphere.api.jmeter;
 
 import com.alibaba.fastjson.JSON;
 import io.metersphere.api.dto.RunningParamKeys;
+import io.metersphere.api.exec.queue.PoolExecBlockingQueueUtil;
 import io.metersphere.api.service.MsResultService;
 import io.metersphere.commons.utils.CommonBeanFactory;
 import io.metersphere.commons.utils.LogUtil;
-import io.metersphere.websocket.c.to.c.MsWebSocketClient;
+import io.metersphere.dto.RequestResult;
+import io.metersphere.jmeter.JMeterBase;
+import io.metersphere.utils.JMeterVars;
+import io.metersphere.utils.LoggerUtil;
+import io.metersphere.websocket.c.to.c.WebSocketUtils;
 import io.metersphere.websocket.c.to.c.util.MsgDto;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -49,10 +54,6 @@ public class MsResultCollector extends AbstractListenerElement implements Sample
     private static final String TEST_IS_LOCAL = "*local*"; // $NON-NLS-1$
 
     public static final String TEST_END = "MS_TEST_END";
-
-    private MsResultService msResultService;
-
-    private MsWebSocketClient client;
 
     @Override
     public Object clone() {
@@ -96,32 +97,21 @@ public class MsResultCollector extends AbstractListenerElement implements Sample
 
     @Override
     public void testEnded(String host) {
-        LogUtil.debug("TestEnded " + this.getName());
-        SampleResult result = new SampleResult();
-        result.setResponseCode(TEST_END);
-        msResultService.setCache(this.getName(), result);
-        try {
-            if (client != null) {
-                client.close();
-            }
-        } catch (Exception e) {
-            LogUtil.error(e);
-        }
+        LoggerUtil.debug("TestEnded " + this.getName());
+        MsgDto dto = new MsgDto();
+        dto.setExecEnd(false);
+        dto.setContent(TEST_END);
+        dto.setReportId("send." + this.getName());
+        dto.setToReport(this.getName());
+        LoggerUtil.debug("send. " + this.getName());
+        WebSocketUtils.sendMessageSingle(dto);
+        WebSocketUtils.onClose(this.getName());
+        PoolExecBlockingQueueUtil.offer(this.getName());
     }
 
     @Override
     public void testStarted(String host) {
         LogUtil.debug("TestStarted " + this.getName());
-        msResultService = CommonBeanFactory.getBean(MsResultService.class);
-        if (msResultService == null) {
-            LogUtil.error("testResultService is required");
-        }
-        try {
-            client = new MsWebSocketClient("ws://127.0.0.1:8081/ws/" + "send." + this.getName());
-            client.connect();
-        } catch (Exception e) {
-            LogUtil.error(e);
-        }
     }
 
     @Override
@@ -141,11 +131,10 @@ public class MsResultCollector extends AbstractListenerElement implements Sample
             dto.setContent(e.getThreadGroup());
             dto.setReportId("send." + this.getName());
             dto.setToReport(this.getName());
-            LogUtil.debug("send. " + this.getName());
-            if (client != null) {
-                client.send(JSON.toJSONString(dto));
-            }
+            LoggerUtil.debug("send. " + this.getName());
+            WebSocketUtils.sendMessageSingle(dto);
         } catch (Exception ex) {
+            LoggerUtil.error("消息推送失败：" + ex.getMessage());
         }
     }
 
@@ -167,7 +156,21 @@ public class MsResultCollector extends AbstractListenerElement implements Sample
             }
         }
         if (isSampleWanted(result.isSuccessful()) && !StringUtils.equals(result.getSampleLabel(), RunningParamKeys.RUNNING_DEBUG_SAMPLER_NAME)) {
-            msResultService.setCache(this.getName(), result);
+            RequestResult requestResult = JMeterBase.getRequestResult(result);
+            if (requestResult != null) {
+                if (StringUtils.isNotEmpty(requestResult.getName()) && requestResult.getName().startsWith("Transaction=") && CollectionUtils.isEmpty(requestResult.getSubRequestResults())) {
+                    LoggerUtil.debug("进入合并事物，暂不处理");
+                } else {
+                    requestResult.getResponseResult().setConsole(CommonBeanFactory.getBean(MsResultService.class).getJmeterLogger(this.getName()));
+                    MsgDto dto = new MsgDto();
+                    dto.setExecEnd(false);
+                    dto.setContent("result_" + JSON.toJSONString(requestResult));
+                    dto.setReportId("send." + this.getName());
+                    dto.setToReport(this.getName());
+                    LoggerUtil.debug("send. " + this.getName());
+                    WebSocketUtils.sendMessageSingle(dto);
+                }
+            }
         }
     }
 

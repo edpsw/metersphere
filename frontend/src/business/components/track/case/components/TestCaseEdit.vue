@@ -18,20 +18,16 @@
           <el-link type="primary" style="margin-right: 20px" @click="openHis" v-if="form.id">
             {{ $t('operating_log.change_history') }}
           </el-link>
-          <ms-table-button v-if="this.path!=='/test/case/add'"
-                           id="inputDelay"
-                           type="primary"
-                           :content="$t('commons.save')"
-                           size="small" @click="saveCase"
-                           icon=""
-                           :disabled="readOnly"
-                           title="ctrl + s"/>
-          <el-dropdown v-else split-button type="primary" class="ms-api-buttion" @click="handleCommand"
+          <el-dropdown split-button type="primary" class="ms-api-buttion" @click="handleCommand"
                        @command="handleCommand" size="small" style="float: right;margin-right: 20px">
             {{ $t('commons.save') }}
             <el-dropdown-menu slot="dropdown">
-              <el-dropdown-item command="ADD_AND_CREATE">{{
+              <el-dropdown-item command="ADD_AND_CREATE" v-if="this.path =='/test/case/add'">{{
                   $t('test_track.case.save_create_continue')
+                }}
+              </el-dropdown-item>
+              <el-dropdown-item command="ADD_AND_PUBLIC" v-if="this.isPublic && this.isXpack">{{
+                  $t('test_track.case.save_add_public')
                 }}
               </el-dropdown-item>
             </el-dropdown-menu>
@@ -40,7 +36,7 @@
         <el-form :model="form" :rules="rules" ref="caseFrom" v-loading="result.loading" class="case-form">
           <ms-form-divider :title="$t('test_track.plan_view.base_info')"/>
           <el-row>
-            <el-col :span="6">
+            <el-col :span="8">
               <el-form-item
                 :placeholder="$t('test_track.case.input_name')"
                 :label="$t('test_track.case.name')"
@@ -50,14 +46,24 @@
               </el-form-item>
             </el-col>
 
-            <el-col :span="6">
-              <el-form-item :label="$t('test_track.case.module')" :label-width="formLabelWidth" prop="module">
+            <el-col :span="8">
+              <el-form-item :label="$t('test_track.case.module')" :label-width="formLabelWidth" prop="module"
+                            v-if="!publicEnable">
                 <ms-select-tree :disabled="readOnly" :data="treeNodes" :defaultKey="form.module" :obj="moduleObj"
                                 @getValue="setModule" clearable checkStrictly size="small"/>
               </el-form-item>
             </el-col>
 
-            <el-col :span="6">
+            <el-col :span="8">
+              <el-form-item :label="$t('test_track.case.project')" :label-width="formLabelWidth" prop="projectId"
+                            v-if="publicEnable">
+                <el-select v-model="form.projectId" filterable clearable>
+                  <el-option v-for="item in projectList" :key="item.id" :label="item.name" :value="item.id"></el-option>
+                </el-select>
+              </el-form-item>
+            </el-col>
+
+            <el-col :span="8">
               <el-form-item :label="$t('commons.tag')" :label-width="formLabelWidth" prop="tag">
                 <ms-input-tag :read-only="readOnly" :currentScenario="form" v-if="showInputTag" ref="tag"
                               class="ms-case-input"/>
@@ -68,15 +74,7 @@
           <!-- 自定义字段 -->
           <el-form v-if="isFormAlive" :model="customFieldForm" :rules="customFieldRules" ref="customFieldForm"
                    class="case-form">
-            <el-row>
-              <el-col :span="7" v-for="(item, index) in testCaseTemplate.customFields" :key="index">
-                <el-form-item :label="item.system ? $t(systemNameMap[item.name]) : item.name" :prop="item.name"
-                              :label-width="formLabelWidth">
-                  <custom-filed-component :disabled="readOnly" @reload="reloadForm" :data="item" :form="customFieldForm"
-                                          prop="defaultValue"/>
-                </el-form-item>
-              </el-col>
-            </el-row>
+            <custom-filed-form-item :form="customFieldForm" :form-label-width="formLabelWidth" :issue-template="testCaseTemplate"/>
           </el-form>
 
           <el-row v-if="isCustomNum">
@@ -119,7 +117,7 @@
               <review-comment-item v-for="(comment,index) in comments"
                                    :key="index"
                                    :comment="comment"
-                                   @refresh="getComments"/>
+                                   @refresh="getComments" api-url="/test/case"/>
               <div v-if="comments.length === 0" style="text-align: center">
                 <i class="el-icon-chat-line-square" style="font-size: 15px;color: #8a8b8d;">
                       <span style="font-size: 15px; color: #8a8b8d;">
@@ -150,7 +148,7 @@ import {
   getCurrentProjectID,
   getCurrentUser,
   getNodePath, getUUID,
-  handleCtrlSEvent, hasPermission,
+  handleCtrlSEvent, hasLicense, hasPermission,
   listenGoBack,
   removeGoBackListener
 } from "@/common/js/utils";
@@ -172,7 +170,6 @@ import {
   getTemplate,
   parseCustomField
 } from "@/common/js/custom_field";
-import {SYSTEM_FIELD_NAME_MAP} from "@/common/js/table-constants";
 import MsFormDivider from "@/business/components/common/components/MsFormDivider";
 import TestCaseEditOtherInfo from "@/business/components/track/case/components/TestCaseEditOtherInfo";
 import FormRichTextItem from "@/business/components/track/case/components/FormRichTextItem";
@@ -180,10 +177,12 @@ import TestCaseStepItem from "@/business/components/track/case/components/TestCa
 import StepChangeItem from "@/business/components/track/case/components/StepChangeItem";
 import MsChangeHistory from "../../../history/ChangeHistory";
 import {getTestTemplate} from "@/network/custom-field-template";
+import CustomFiledFormItem from "@/business/components/common/components/form/CustomFiledFormItem";
 
 export default {
   name: "TestCaseEdit",
   components: {
+    CustomFiledFormItem,
     StepChangeItem,
     TestCaseStepItem,
     FormRichTextItem,
@@ -201,7 +200,10 @@ export default {
     return {
       // sysList: [],//一级选择框的数据
       path: "/test/case/add",
+      isPublic: false,
+      isXpack: false,
       testCaseTemplate: {},
+      projectList: [],
       options: REVIEW_STATUS,
       statuOptions: API_STATUS,
       comments: [],
@@ -260,7 +262,7 @@ export default {
         // remark: [{max: 1000, message: this.$t('test_track.length_less_than') + '1000', trigger: 'blur'}]
       },
       customFieldRules: {},
-      customFieldForm: {},
+      customFieldForm: null,
       formLabelWidth: "100px",
       operationType: '',
       isCreateContinue: false,
@@ -295,6 +297,11 @@ export default {
       type: Object
     },
     type: String,
+    publicEnable: {
+      type: Boolean,
+      default: false,
+    },
+    activeName: String
   },
   computed: {
     projectIds() {
@@ -302,9 +309,6 @@ export default {
     },
     moduleOptions() {
       return this.$store.state.testCaseModuleOptions;
-    },
-    systemNameMap() {
-      return SYSTEM_FIELD_NAME_MAP;
     },
     isCustomNum() {
       return this.$store.state.currentProjectIsCustomNum;
@@ -371,6 +375,11 @@ export default {
     this.$store.state.testCaseMap.set(this.form.id, 0);
   },
   created() {
+    if (!this.projectList || this.projectList.length === 0) {   //没有项目数据的话请求项目数据
+      this.$get("/project/listAll", (response) => {
+        this.projectList = response.data;  //获取当前工作空间所拥有的项目,
+      })
+    }
     this.projectId = this.projectIds;
     let initAddFuc = this.initAddFuc;
     getTestTemplate()
@@ -401,9 +410,21 @@ export default {
           break;
         }
       }
-    })
+    }),
+      this.result = this.$get('/project/get/' + this.projectId, res => {
+        let data = res.data;
+        if (data.casePublic) {
+          this.isPublic = true;
+        }
+      })
+    if (hasLicense()) {
+      this.isXpack = true;
+    } else {
+      this.isXpack = false;
+    }
   },
   methods: {
+    alert:alert,
     currentUser: () => {
       return getCurrentUser();
     },
@@ -433,7 +454,7 @@ export default {
       }
       if (this.type === 'add') {
         //设置自定义熟悉默认值
-        parseCustomField(this.form, this.testCaseTemplate, this.customFieldForm, this.customFieldRules);
+        this.customFieldForm = parseCustomField(this.form, this.testCaseTemplate, this.customFieldRules);
         this.form.name = this.testCaseTemplate.caseName;
         this.form.stepDescription = this.testCaseTemplate.stepDescription;
         this.form.expectedResult = this.testCaseTemplate.expectedResult;
@@ -472,6 +493,9 @@ export default {
             });
           }
         })
+      } else if (e === 'ADD_AND_PUBLIC') {
+        this.form.casePublic = true;
+        this.saveCase();
       } else {
         this.saveCase();
       }
@@ -539,7 +563,7 @@ export default {
           this.setTestCaseExtInfo(testCase);
           this.getSelectOptions();
           //设置自定义熟悉默认值
-          parseCustomField(this.form, this.testCaseTemplate, this.customFieldForm, this.customFieldRules, buildTestCaseOldFields(this.form));
+          this.customFieldForm = parseCustomField(this.form, this.testCaseTemplate, this.customFieldRules, buildTestCaseOldFields(this.form));
           this.reload();
         } else {
           this.initTestCases(testCase);
@@ -559,7 +583,7 @@ export default {
         this.form.maintainer = user.id;
         this.form.tags = [];
         this.getSelectOptions();
-        parseCustomField(this.form, this.testCaseTemplate, this.customFieldForm, this.customFieldRules);
+        this.customFieldForm = parseCustomField(this.form, this.testCaseTemplate, this.customFieldRules);
         this.reload();
       }
     },
@@ -572,15 +596,28 @@ export default {
       this.getTestCase(this.index);
     },
     initTestCases(testCase) {
-      this.result = this.$post('/test/case/list/ids', this.selectCondition, response => {
-        this.testCases = response.data;
-        for (let i = 0; i < this.testCases.length; i++) {
-          if (this.testCases[i].id === testCase.id) {
-            this.index = i;
-            this.getTestCase(i);
+      if (this.publicEnable) {
+        this.result = this.$post('/test/case/list/ids/public', this.selectCondition, response => {
+          this.testCases = response.data;
+          for (let i = 0; i < this.testCases.length; i++) {
+            if (this.testCases[i].id === testCase.id) {
+              this.index = i;
+              this.getTestCase(i);
+            }
           }
-        }
-      });
+        });
+      } else {
+        this.selectCondition.workspaceId = null;
+        this.result = this.$post('/test/case/list/ids', this.selectCondition, response => {
+          this.testCases = response.data;
+          for (let i = 0; i < this.testCases.length; i++) {
+            if (this.testCases[i].id === testCase.id) {
+              this.index = i;
+              this.getTestCase(i);
+            }
+          }
+        });
+      }
     },
     getTestCase(index) {
       let id = "";
@@ -634,7 +671,7 @@ export default {
       }
       this.form.module = testCase.nodeId;
       //设置自定义熟悉默认值
-      parseCustomField(this.form, this.testCaseTemplate, this.customFieldForm, this.customFieldRules, testCase ? buildTestCaseOldFields(this.form) : null);
+      this.customFieldForm = parseCustomField(this.form, this.testCaseTemplate, this.customFieldRules, testCase ? buildTestCaseOldFields(this.form) : null);
       this.setDefaultValue();
       // 重新渲染，显示自定义字段的必填校验
       this.reloadForm();
@@ -702,12 +739,13 @@ export default {
       Object.assign(param, this.form);
       param.steps = JSON.stringify(this.form.steps);
       param.nodeId = this.form.module;
-      param.nodePath = getNodePath(this.form.module, this.moduleOptions);
-      if (this.projectId) {
-        param.projectId = this.projectId;
+      if (!this.publicEnable) {
+        param.nodePath = getNodePath(this.form.module, this.moduleOptions);
+        if (this.projectId) {
+          param.projectId = this.projectId;
+        }
       }
       param.name = param.name.trim();
-
       if (this.form.tags instanceof Array) {
         this.form.tags = JSON.stringify(this.form.tags);
       }
@@ -856,7 +894,7 @@ export default {
 
       } else {
         this.showFollow = true;
-        if(!this.form.follows){
+        if (!this.form.follows) {
           this.form.follows = [];
         }
         this.form.follows.push(this.currentUser().id)

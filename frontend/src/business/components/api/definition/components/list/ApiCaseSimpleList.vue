@@ -132,7 +132,7 @@
 
           <ms-table-column v-if="item.id=='tags'" prop="tags" width="120px" :label="$t('commons.tag')">
             <template v-slot:default="scope">
-              <ms-tag v-for="(itemName,index)  in scope.row.tags" :key="index" type="success" effect="plain"
+              <ms-tag v-for="(itemName,index)  in scope.row.tags" :key="index" type="success" effect="plain" :show-tooltip="scope.row.tags.length===1&&itemName.length*12<=120"
                       :content="itemName" style="margin-left: 0px; margin-right: 2px"/>
               <span/>
             </template>
@@ -553,7 +553,11 @@ export default {
       this.$post('/api/testcase/batch/run', obj, () => {
         this.condition.ids = [];
         this.$refs.batchRun.close();
-        this.$store.state.currentApiCase.case = true;
+        if (this.$store.state.currentApiCase) {
+          this.$store.state.currentApiCase.case = true;
+        } else {
+          this.$store.state.currentApiCase = {case: true};
+        }
         this.search();
       });
     },
@@ -941,7 +945,7 @@ export default {
               apiNames += ";" + item;
             }
           });
-          this.$error("请先恢复[" + apiNames + "]接口");
+          this.$error(this.$t('api_test.definition.case_reduction_error_text') + "[" + apiNames + "]" + this.$t("api_test.home_page.api_details_card.title"));
         } else {
           this.$success(this.$t('commons.save_success'));
         }
@@ -967,7 +971,7 @@ export default {
               apiNames += ";" + item;
             }
           });
-          this.$error("请先恢复[" + apiNames + "]接口");
+          this.$error(this.$t('api_test.definition.case_reduction_error_text') + "[" + apiNames + "]" + this.$t("api_test.home_page.api_details_card.title"));
         } else {
           this.$success(this.$t('commons.save_success'));
         }

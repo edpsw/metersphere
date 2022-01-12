@@ -2,13 +2,13 @@
   <div>
     <ms-drawer class="drawer-content" :visible="true" :size="10" direction="left" :show-full-screen="false" :is-show-close="false">
       <div class="title-item" >
-         <span class="title-name">目录</span>
+         <span class="title-name">{{$t('test_track.report.content')}}</span>
         <el-tabs tab-position="right" v-model="activeName">
           <el-tab-pane v-for="item in data" :key="item.title" :label="item.title" :name="item.link"/>
         </el-tabs>
       </div>
         <div class="hiddenBottom">
-          <span>目录</span>
+          <span :class="navBtnClass">{{$t('test_track.report.content')}}</span>
         </div>
     </ms-drawer>
   </div>
@@ -16,6 +16,8 @@
 
 <script>
 import MsDrawer from "@/business/components/common/components/MsDrawer";
+import {DEFAULT_LANGUAGE, EN_US} from "@/common/js/constants";
+import {getCurrentUser} from "@/common/js/utils";
 export default {
   name: "TestPlanReportNavigationBar",
   components: {MsDrawer},
@@ -34,23 +36,23 @@ export default {
       contents: [
         {
           link: 'overview',
-          title: '概览',
+          title: this.$t('test_track.report.overview'),
         },
         {
           link: 'summary',
-          title: '报告总结',
+          title: this.$t('test_track.report.report_summary'),
         },
         {
           link: 'functional',
-          title: '功能用例统计分析',
+          title: this.$t('test_track.report.analysis_functional'),
         },
         {
           link: 'api',
-          title: '接口用例统计分析',
+          title: this.$t('test_track.report.analysis_api'),
         },
         {
           link: 'load',
-          title: '性能用例统计分析',
+          title: this.$t('test_track.report.analysis_load'),
         }
       ]
     }
@@ -79,6 +81,19 @@ export default {
     loadEnable() {
       this.setData();
     },
+  },
+  computed: {
+    navBtnClass() {
+      let lang = getCurrentUser().language;
+      if (!lang) {
+        lang = localStorage.getItem(DEFAULT_LANGUAGE);
+      }
+      if (lang === EN_US) {
+        return 'en-button-span';
+      } else {
+        return 'zh-button-span';
+      }
+    }
   },
   mounted() {
     this.setData();
@@ -113,7 +128,7 @@ export default {
   padding: 3px;
   /*top: 0;*/
   top: 40%;
-  line-height: 30px;
+  /*line-height: 30px;*/
   border-radius: 0 15px 15px 0;
   /*background-color: #acb7c1;*/
   background-color: #783887;
@@ -125,6 +140,17 @@ export default {
   font-size: 10px;
   font-weight: bold;
   margin-left: 1px;
+}
+
+.en-button-span {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.1em;
+}
+
+.zh-button-span {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.8em;
+  margin-top: 13px;
 }
 
 .hiddenBottom i {

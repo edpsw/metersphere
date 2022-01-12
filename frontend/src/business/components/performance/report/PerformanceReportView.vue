@@ -333,7 +333,7 @@ export default {
 
       this.$nextTick(function () {
         setTimeout(() => {
-          let ids = ['testOverview', 'testDetails', 'requestStatistics', 'errorLog'];
+          let ids = ['testOverview', 'testDetails', 'requestStatistics', 'errorLog', 'monitorCard'];
           let promises = [];
           ids.forEach(id => {
             let promise = html2canvas(document.getElementById(id), {scale: 2});
@@ -443,7 +443,7 @@ export default {
   created() {
     this.isReadOnly = !hasPermission('PROJECT_PERFORMANCE_REPORT:READ+DELETE');
     this.reportId = this.$route.path.split('/')[4];
-    if (!this.reportId && this.perReportId) {
+    if (this.perReportId) {
       this.reportId = this.perReportId;
     }
     this.getReport(this.reportId);
@@ -452,6 +452,9 @@ export default {
     '$route'(to) {
       if (to.name === "perReportView") {
         this.reportId = to.path.split('/')[4];
+        if (this.perReportId) {
+          this.reportId = this.perReportId;
+        }
         this.getReport(this.reportId);
         this.initBreadcrumb((response) => {
           this.initReportTimeInfo();

@@ -71,6 +71,7 @@ public class TestPlanController {
     }
 
     @PostMapping("/list/all")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_PLAN_READ)
     public List<TestPlan> listAll(@RequestBody QueryTestPlanRequest request) {
         return testPlanService.listTestAllPlan(request);
     }
@@ -87,6 +88,7 @@ public class TestPlanController {
     }
 
     @PostMapping("/get/{testPlanId}")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_PLAN_READ)
     public TestPlan getTestPlan(@PathVariable String testPlanId) {
         checkPermissionService.checkTestPlanOwner(testPlanId);
         return testPlanService.getTestPlan(testPlanId);
@@ -133,7 +135,7 @@ public class TestPlanController {
     @PostMapping("/delete/{testPlanId}")
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_PLAN_READ_DELETE)
     @MsAuditLog(module = "track_test_plan", type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#testPlanId)", msClass = TestPlanService.class)
-    @SendNotice(taskType = NoticeConstants.TaskType.TEST_PLAN_TASK, target = "#targetClass.getTestPlan(#testPlanId)", targetClass = TestPlanService.class,
+    @SendNotice(taskType = NoticeConstants.TaskType.TEST_PLAN_TASK, target = "#targetClass.get(#testPlanId)", targetClass = TestPlanService.class,
             event = NoticeConstants.Event.DELETE, mailTemplate = "track/TestPlanDelete", subject = "测试计划通知")
     public int deleteTestPlan(@PathVariable String testPlanId) {
         checkPermissionService.checkTestPlanOwner(testPlanId);
@@ -188,6 +190,7 @@ public class TestPlanController {
     }
 
     @PostMapping("/copy/{id}")
+    @SendNotice(taskType = NoticeConstants.TaskType.TEST_PLAN_TASK, event = NoticeConstants.Event.CREATE, mailTemplate = "track/TestPlanStart", subject = "测试计划通知")
     public TestPlan copy(@PathVariable String id) {
         return testPlanService.copy(id);
     }

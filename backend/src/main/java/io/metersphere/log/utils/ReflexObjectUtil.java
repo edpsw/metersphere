@@ -12,6 +12,7 @@ import io.metersphere.log.vo.DetailColumn;
 import io.metersphere.log.vo.OperatingLogDetails;
 import io.metersphere.log.vo.StatusReference;
 import org.apache.commons.lang3.StringUtils;
+import org.json.JSONObject;
 
 import java.lang.reflect.Field;
 import java.util.*;
@@ -19,6 +20,7 @@ import java.util.stream.Collectors;
 
 public class ReflexObjectUtil {
     static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    static final String DIFF_ADD = "++";
 
     public static List<DetailColumn> getColumns(Object obj, Map<String, String> columns) {
         List<DetailColumn> columnList = new LinkedList<>();
@@ -151,10 +153,26 @@ public class ReflexObjectUtil {
                         column.setNewValue(newColumns.get(i).getOriginalValue());
                         if (StringUtils.isNotEmpty(originalColumns.get(i).getColumnName()) && originalColumns.get(i).getColumnName().equals("tags")) {
                             GsonDiff diff = new GsonDiff();
-                            String oldTags = ApiDefinitionDiffUtil.JSON_START + ((originalColumns.get(i) != null && originalColumns.get(i).getOriginalValue() != null) ? originalColumns.get(i).getOriginalValue().toString() : "\"\"") + ApiDefinitionDiffUtil.JSON_END;
-                            String newTags = ApiDefinitionDiffUtil.JSON_START + ((newColumns.get(i) != null && newColumns.get(i).getOriginalValue() != null) ? newColumns.get(i).getOriginalValue().toString() : "\"\"") + ApiDefinitionDiffUtil.JSON_END;
-                            String diffStr = diff.diff(oldTags, newTags);
-                            String diffValue = diff.apply(newTags, diffStr);
+                            Object originalValue = originalColumns.get(i).getOriginalValue();
+                            Object newValue = newColumns.get(i).getOriginalValue();
+                            String oldTags = null;
+                            if (originalValue != null && !StringUtils.equals("null", originalValue.toString())) {
+                                List<String> originalValueArray = JSON.parseArray(originalValue.toString(), String.class);
+                                Collections.sort(originalValueArray);
+                                Object originalObject = JSON.toJSON(originalValueArray);
+                                oldTags = ApiDefinitionDiffUtil.JSON_START + ((originalColumns.get(i) != null && originalObject != null) ? originalObject.toString() : "\"\"") + ApiDefinitionDiffUtil.JSON_END;
+                            }
+                            List<String> newValueArray = JSON.parseArray(newValue.toString(), String.class);
+                            Collections.sort(newValueArray);
+                            Object newObject = JSON.toJSON(newValueArray);
+                            String newTags = ApiDefinitionDiffUtil.JSON_START + ((newColumns.get(i) != null && newObject != null) ? newObject.toString() : "\"\"") + ApiDefinitionDiffUtil.JSON_END;
+                            String diffValue;
+                            if (oldTags != null) {
+                                String diffStr = diff.diff(oldTags, newTags);
+                                diffValue = diff.apply(newTags, diffStr);
+                            } else {
+                                diffValue = reviverJson(newTags, "root", DIFF_ADD);
+                            }
                             column.setDiffValue(diffValue);
                         }
                         // 深度对比
@@ -187,4 +205,21 @@ public class ReflexObjectUtil {
         }
         return comparedColumns;
     }
+
+    private static String reviverJson(String str,String key,String option){
+        JSONObject obj = new JSONObject(str);
+        org.json.JSONArray arr = obj.getJSONArray(key);
+        for (int i = 0; i < arr.length(); i++) {
+            String s = arr.getString(i);
+            if(option.equals(DIFF_ADD)){
+                s = DIFF_ADD+s;
+            }
+            arr.put(i,s);
+        }
+        return obj.toString();
+    }
+
+
 }
+
+

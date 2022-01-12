@@ -55,7 +55,7 @@
           components: TEST_PLAN_RELEVANCE_API_DEFINITION_CONFIGS
         },
         result: {},
-        screenHeight: 'calc(100vh - 400px)',//屏幕高度,
+        screenHeight: 'calc(100vh - 300px)',//屏幕高度,
         tableData: [],
         environmentId: "",
         total: 0,
@@ -148,7 +148,7 @@
       },
       getConditions() {
         let sampleSelectRows = this.selectRows;
-        let param = buildBatchParam(this);
+        let param = buildBatchParam(this, undefined, this.projectId);
         param.ids = Array.from(sampleSelectRows).map(row => row.id);
         return param;
       },

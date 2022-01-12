@@ -3,7 +3,6 @@ package io.metersphere.performance.engine;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import io.metersphere.Application;
-import io.metersphere.api.dto.RunRequest;
 import io.metersphere.base.domain.FileContent;
 import io.metersphere.base.domain.FileMetadata;
 import io.metersphere.base.domain.LoadTestReportWithBLOBs;
@@ -13,6 +12,7 @@ import io.metersphere.commons.constants.ResourcePoolTypeEnum;
 import io.metersphere.commons.constants.ResourceStatusEnum;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.LogUtil;
+import io.metersphere.dto.JmeterRunRequestDTO;
 import io.metersphere.i18n.Translator;
 import io.metersphere.performance.engine.docker.DockerTestEngine;
 import io.metersphere.performance.parse.EngineSourceParser;
@@ -96,7 +96,7 @@ public class EngineFactory {
         return null;
     }
 
-    public static Engine createApiEngine(RunRequest runRequest) {
+    public static Engine createApiEngine(JmeterRunRequestDTO runRequest) {
         try {
             return (Engine) ConstructorUtils.invokeConstructor(kubernetesTestEngineClass, runRequest);
         } catch (Exception e) {
@@ -300,12 +300,20 @@ public class EngineFactory {
                     rootDocument = docBuilder.parse(inputSource);
                     Element jmeterTestPlan = rootDocument.getDocumentElement();
                     NodeList childNodes = jmeterTestPlan.getChildNodes();
+
+                    outer:
                     for (int i = 0; i < childNodes.getLength(); i++) {
                         Node node = childNodes.item(i);
                         if (node instanceof Element) {
                             // jmeterTestPlan的子元素肯定是<hashTree></hashTree>
-                            hashTree = (Element) node;
-                            break;
+                            NodeList childNodes1 = node.getChildNodes();
+                            for (int j = 0; j < childNodes1.getLength(); j++) {
+                                Node item = childNodes1.item(j);
+                                if (StringUtils.equalsIgnoreCase("hashTree", item.getNodeName())) {
+                                    hashTree = (Element) node;
+                                    break outer;
+                                }
+                            }
                         }
                     }
                 } else {
@@ -320,9 +328,19 @@ public class EngineFactory {
                             NodeList secondChildNodes = secondHashTree.getChildNodes();
                             for (int j = 0; j < secondChildNodes.getLength(); j++) {
                                 Node item = secondChildNodes.item(j);
-                                Node newNode = item.cloneNode(true);
-                                rootDocument.adoptNode(newNode);
-                                hashTree.appendChild(newNode);
+                                if (StringUtils.equalsIgnoreCase("TestPlan", item.getNodeName())) {
+                                    continue;
+                                }
+                                if (StringUtils.equalsIgnoreCase("hashTree", item.getNodeName())) {
+                                    NodeList itemChildNodes = item.getChildNodes();
+                                    for (int k = 0; k < itemChildNodes.getLength(); k++) {
+                                        Node item1 = itemChildNodes.item(k);
+                                        Node newNode = item1.cloneNode(true);
+                                        rootDocument.adoptNode(newNode);
+                                        hashTree.appendChild(newNode);
+                                    }
+                                }
+
                             }
                         }
                     }

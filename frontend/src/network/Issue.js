@@ -2,6 +2,9 @@ import {post, get} from "@/common/js/ajax";
 import {getPageDate} from "@/common/js/tableUtils";
 import {getCurrentProjectID, hasLicense} from "@/common/js/utils";
 import {baseGet, basePost} from "@/network/base-network";
+import {getCurrentProject} from "@/network/project";
+import {JIRA, LOCAL} from "@/common/js/constants";
+import {getIssueTemplate} from "@/network/custom-field-template";
 
 export function buildIssues(page) {
   let data = page.data;
@@ -10,9 +13,6 @@ export function buildIssues(page) {
       if (data[i].customFields) {
         data[i].customFields = JSON.parse(data[i].customFields);
       }
-      // if (data[i].platform !== 'Local') {
-      //   page.result = buildPlatformIssue(data[i]);
-      // }
     }
   }
 }
@@ -35,6 +35,19 @@ export function getIssuesByCaseId(caseId, page) {
 
 export function getIssuesById(id, callback) {
   return id ? baseGet('/issues/get/' + id, callback) : {};
+}
+
+export function getIssuesListById(id,projectId,workspaceId,callback) {
+  let condition ={
+    id:id,
+    projectId : projectId,
+    workspaceId: workspaceId
+  };
+  return post('issues/list/' + 1 + '/' + 10, condition, (response) => {
+    if (callback) {
+      callback(response.data.listObject[0]);
+    }
+  });
 }
 
 export function getIssuesByPlanId(planId, callback) {
@@ -91,4 +104,50 @@ export function syncIssues(success) {
 
 export function deleteIssueRelate(param, callback) {
   return basePost('/issues/delete/relate', param, callback);
+}
+
+export function getIssueThirdPartTemplate() {
+  return new Promise(resolve => {
+    baseGet('/issues/thirdpart/template/' + getCurrentProjectID(), (data) => {
+      let template = data;
+      if (template.customFields) {
+        template.customFields.forEach(item => {
+          if (item.options) {
+            item.options = JSON.parse(item.options);
+          }
+        });
+      }
+      resolve(template);
+    })
+  });
+}
+
+export function getIssuePartTemplateWithProject(callback) {
+  getCurrentProject((project) => {
+    let currentProject = project;
+    if (enableThirdPartTemplate(currentProject)) {
+      getIssueThirdPartTemplate()
+        .then((template) => {
+          if (callback)
+              callback(template, currentProject);
+        });
+    } else {
+      getIssueTemplate()
+        .then((template) => {
+          if (callback)
+            callback(template, currentProject);
+        });
+    }
+  });
+}
+
+export function enableThirdPartTemplate(currentProject) {
+  return currentProject && currentProject.thirdPartTemplate && currentProject.platform === JIRA;
+}
+
+export function isThirdPartEnable(callback) {
+  getCurrentProject((project) => {
+    if (callback)
+      callback(project.platform !== LOCAL);
+  });
 }

@@ -23,7 +23,7 @@ export default {
     return {
       result: {},
       loading: false,
-      runId: "",
+      requestResult: "",
       reqNumber: 0,
       websocket: {}
     }
@@ -46,7 +46,7 @@ export default {
       if (window.location.protocol === 'https:') {
         protocol = "wss://";
       }
-      const uri = protocol + window.location.host + "/api/definition/run/report/" + this.runId + "/debug";
+      const uri = protocol + window.location.host + "/api/definition/run/report/" + this.requestResult.reportId + "/debug";
       this.websocket = new WebSocket(uri);
       this.websocket.onmessage = this.onMessage;
     },
@@ -56,6 +56,27 @@ export default {
         this.websocket.close();
         this.$emit('runRefresh', data);
       }
+    },
+    onDebugMessage(e) {
+      if (e.data && e.data.startsWith("result_")) {
+        try {
+          let data = e.data.substring(7);
+          this.websocket.close();
+          this.$emit('runRefresh', JSON.parse(data));
+        } catch (e) {
+          this.websocket.close();
+          this.$emit('runRefresh', "");
+        }
+      }
+    },
+    debugSocket() {
+      let protocol = "ws://";
+      if (window.location.protocol === 'https:') {
+        protocol = "wss://";
+      }
+      const uri = protocol + window.location.host + "/ws/" + this.reportId;
+      this.websocket = new WebSocket(uri);
+      this.websocket.onmessage = this.onDebugMessage;
     },
     sort(stepArray) {
       if (stepArray) {
@@ -93,8 +114,8 @@ export default {
       let url = "/custom/func/run";
       reqObj.reportId = this.reportId;
       this.$post(url, reqObj, res => {
-        this.runId = res.data;
-        this.initWebSocket();
+        this.requestResult = res.data;
+        this.debugSocket();
       }, () => {
         this.$emit('errorRefresh', {});
       })
