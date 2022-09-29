@@ -34,13 +34,32 @@
             </div>
           </el-tab-pane>
 
-          <el-tab-pane :label="$t('api_test.definition.request.pre_script')" name="script" v-if="request.script_1 || request.script_2">
+          <el-tab-pane :label="$t('api_test.definition.request.pre_script')" name="script"
+                       v-if="request.script_1 || request.script_2">
             <pre v-html="getDiff(request.script_2,request.script_1)"></pre>
           </el-tab-pane>
 
-          <!--          <el-tab-pane :label="$t('api_test.definition.request.other_config')" name="other" class="other-config">-->
-
-          <!--          </el-tab-pane>-->
+          <!--其他设置-->
+          <el-tab-pane :label="$t('api_test.definition.request.other_config')" name="other" class="other-config"
+                       v-if="request.otherConfig">
+            <el-table :data="request.otherConfig">
+              <el-table-column prop="columnTitle" :label="$t('operating_log.change_field')"/>
+              <el-table-column prop="originalValue" :label="$t('operating_log.before_change')">
+                <template v-slot:default="scope">
+                  <el-tooltip :content="scope.row.originalValue">
+                    <div class="current-value ms-tag-del">{{ scope.row.originalValue }}</div>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
+              <el-table-column prop="newValue" :label="$t('operating_log.after_change')">
+                <template v-slot:default="scope">
+                  <el-tooltip :content="scope.row.newValue">
+                    <div class="current-value ms-tag-add">{{ scope.row.newValue }}</div>
+                  </el-tooltip>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-tab-pane>
         </el-tabs>
       </el-form>
     </div>
@@ -100,6 +119,8 @@ export default {
       this.activeName = "parameters";
     } else if (this.request.script_1 || this.request.script_2) {
       this.activeName = "script";
+    } else if (this.request.otherConfig) {
+      this.activeName = "other";
     }
   },
   watch: {
@@ -119,6 +140,8 @@ export default {
         this.activeName = "parameters";
       } else if (this.request.script_1 || this.request.script_2) {
         this.activeName = "script";
+      } else if (this.request.otherConfig) {
+        this.activeName = "other";
       }
     }
   },
@@ -173,7 +196,7 @@ export default {
 }
 
 .request-tabs {
-  margin: 20px;
+  margin: 10px;
   min-height: 200px;
 }
 

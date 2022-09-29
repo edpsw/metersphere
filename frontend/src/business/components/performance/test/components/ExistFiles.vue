@@ -25,7 +25,7 @@
         <el-upload
           v-else
           style="margin-bottom: 10px"
-          accept=".jar,.csv,.json,.pdf,.jpg,.png,.jpeg,.doc,.docx,.xlsx,.txt"
+          accept=".jar,.csv,.json,.pdf,.jpg,.png,.jpeg,.doc,.docx,.xlsx,.txt,.der,.cer,.pem,.crt,.pfx,.p12,.jks"
           action=""
           :limit="fileNumLimit"
           multiple
@@ -66,7 +66,7 @@
         <template v-slot:default="scope">
           <el-upload
             style="width: 38px; float: left;"
-            accept=".jmx,.jar,.csv,.json,.pdf,.jpg,.png,.jpeg,.doc,.docx,.xlsx,.txt"
+            accept=".jmx,.jar,.csv,.json,.pdf,.jpg,.png,.jpeg,.doc,.docx,.xlsx,.txt,.der,.cer,.pem,.crt,.pfx,.p12,.jks"
             action=""
             :limit="fileNumLimit"
             :show-file-list="false"
@@ -102,7 +102,7 @@
 <script>
 import MsDialogFooter from "@/business/components/common/components/MsDialogFooter";
 import MsTablePagination from "@/business/components/common/pagination/TablePagination";
-import {getCurrentProjectID} from "@/common/js/utils";
+import {getCurrentProjectID, operationConfirm} from "@/common/js/utils";
 import {findThreadGroup} from "@/business/components/performance/test/model/ThreadGroup";
 import MsTableButton from "@/business/components/common/components/MsTableButton";
 import axios from "axios";
@@ -204,11 +204,8 @@ export default {
           type: row.type.toUpperCase(),
           updateTime: row.lastModified,
         });
-      }
-      //
-      rows.forEach(row => {
         this.fileList.push(row);
-      });
+      }
 
       if (this.loadType === 'resource') {
         this.$success(this.$t('test_track.case.import.success'));
@@ -333,17 +330,11 @@ export default {
       this.currentRow = row;
     },
     handleDelete(row) {
-      this.$confirm(this.$t('project.file_delete_tip', [row.name]), '', {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
+      operationConfirm(this.$t('project.file_delete_tip', [row.name]), () => {
         this.$get('/project/delete/file/' + row.id, response => {
           Message.success(this.$t('commons.delete_success'));
           this.getProjectFiles();
         });
-      }).catch(() => {
-
       });
     },
     handleExceed() {

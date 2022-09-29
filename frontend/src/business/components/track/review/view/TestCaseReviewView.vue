@@ -17,7 +17,8 @@
       </template>
     </ms-test-plan-header-bar>
     <test-review-function v-if="activeIndex === 'functional'" :redirectCharType="redirectCharType"
-                          :clickType="clickType" :review-id="reviewId"></test-review-function>
+                          :clickType="clickType" :review-id="reviewId" :version-enable="versionEnable"
+                          ref="testReviewFunction"/>
   </div>
 
 </template>
@@ -33,14 +34,12 @@ import SelectMenu from "../../common/SelectMenu";
 import TestReviewRelevance from "./components/TestReviewRelevance";
 import MsTestPlanHeaderBar from "@/business/components/track/plan/view/comonents/head/TestPlanHeaderBar";
 import TestReviewFunction from "@/business/components/track/review/view/components/TestReviewFunction";
-import TestReviewApi from "@/business/components/track/review/view/components/TestReviewApi";
-import TestReviewLoad from "@/business/components/track/review/view/components/TestReviewLoad";
+import {getCurrentProjectID, hasLicense} from "@/common/js/utils";
+import {PROJECT_ID} from "@/common/js/constants";
 
 export default {
   name: "TestCaseReviewView",
   components: {
-    TestReviewLoad,
-    TestReviewApi,
     TestReviewFunction,
     MsTestPlanHeaderBar,
     MsMainContainer,
@@ -65,6 +64,8 @@ export default {
       redirectCharType: '',
       //报表跳转过来的参数-通过哪种数据跳转的
       clickType: '',
+      projectId: null,
+      versionEnable: false,
     }
   },
   computed: {
@@ -76,6 +77,10 @@ export default {
     }
   },
   created() {
+    let projectId = this.$route.query.projectId;
+    if (projectId) {
+      sessionStorage.setItem(PROJECT_ID, projectId);
+    }
     this.$EventBus.$on('projectChange', () => {
       if (this.$route.name === 'testCaseReviewView') {
         this.$router.push('/track/review/all');
@@ -85,6 +90,14 @@ export default {
   mounted() {
     this.initData();
     this.openTestCaseEdit(this.$route.path);
+    this.checkVersionEnable();
+  },
+  beforeRouteLeave(to, from, next) {
+    if (!this.$refs.testReviewFunction) {
+      next();
+    } else if (this.$refs.testReviewFunction.handleBeforeRouteLeave(to)) {
+      next();
+    }
   },
   watch: {
     '$route'(to, from) {
@@ -115,6 +128,7 @@ export default {
       }
     },
     initData() {
+      this.projectId = getCurrentProjectID();
       this.getTestReviews();
       this.getNodeTreeByReviewId();
     },
@@ -163,7 +177,17 @@ export default {
       this.$nextTick(() => {
         this.isMenuShow = true;
       });
-    }
+    },
+    checkVersionEnable() {
+      if (!this.projectId) {
+        return;
+      }
+      if (hasLicense()) {
+        this.$get('/project/version/enable/' + this.projectId, response => {
+          this.versionEnable = response.data;
+        });
+      }
+    },
   }
 }
 </script>
@@ -175,7 +199,7 @@ export default {
 }
 
 /deep/ .ms-aside-container {
-  height: calc(100vh - 80px - 53px);
+  height: calc(100vh - 80px - 53px) !important;
   margin-top: 1px;
 }
 

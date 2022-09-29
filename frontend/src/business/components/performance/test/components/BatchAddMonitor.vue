@@ -1,11 +1,12 @@
 <template>
   <el-dialog
     :close-on-click-modal="false"
-    title="添加监控"
+    :title="$t('load_test.add_monitor')"
     :visible.sync="dialogVisible"
     width="70%"
     @closed="closeFunc"
     :destroy-on-close="true"
+    :append-to-body="true"
     v-loading="result.loading"
   >
     <div v-html="$t('report.batch_add_monitor_tips')"></div>

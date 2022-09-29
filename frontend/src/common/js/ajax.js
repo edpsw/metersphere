@@ -2,7 +2,7 @@ import {Message, MessageBox} from 'element-ui';
 import axios from "axios";
 import i18n from '../../i18n/i18n';
 import {TokenKey} from "@/common/js/constants";
-import {getCurrentProjectID, getCurrentWorkspaceId} from "@/common/js/utils";
+import {getCurrentProjectID, getCurrentWorkspaceId, getUUID} from "@/common/js/utils";
 
 export function registerRequestHeaders() {
   axios.interceptors.request.use(config => {
@@ -11,8 +11,8 @@ export function registerRequestHeaders() {
       config.headers['CSRF-TOKEN'] = user.csrfToken;
     }
     // 包含 工作空间 项目的标识
-    config.headers['WORKSPACE_ID'] = getCurrentWorkspaceId();
-    config.headers['PROJECT_ID'] = getCurrentProjectID();
+    config.headers['WORKSPACE'] = getCurrentWorkspaceId();
+    config.headers['PROJECT'] = getCurrentProjectID();
     return config;
   });
 }
@@ -31,8 +31,15 @@ export function getUploadConfig(url, formData) {
 
 // 登入请求不重定向
 let unRedirectUrls = new Set(['signin', 'ldap/signin', '/signin', '/ldap/signin']);
+// session 是否掉线
+let isSessionTimeout = false;
 
 export function login() {
+  if (isSessionTimeout) {
+    // 已经弹出session掉线框
+    return;
+  }
+  isSessionTimeout = true;
   MessageBox.alert(i18n.t('commons.tips'), i18n.t('commons.prompt'), {
     callback: () => {
       axios.get("/signout");
@@ -43,9 +50,14 @@ export function login() {
 }
 
 function then(success, response, result) {
+  // 已经掉线不再弹出错误信息，避免满屏都是错误
+  if (response && response.headers && response.headers["authentication-status"] === "invalid") {
+    login();
+    return;
+  }
   if (!response.data) {
     success(response);
-  } else if (response.data.success) {
+  } else if (response.data.success !== false) {
     success(response.data);
   } else {
     window.console.warn(response.data);
@@ -124,16 +136,7 @@ export function request(axiosRequestConfig, success, failure) {
   }
 }
 
-export function fileDownload(url) {
-  axios.get(url, {responseType: 'blob'})
-    .then(response => {
-      let fileName = window.decodeURI(response.headers['content-disposition'].split('=')[1]);
-      let link = document.createElement("a");
-      link.href = window.URL.createObjectURL(new Blob([response.data], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=utf-8"}));
-      link.download = fileName;
-      link.click();
-    });
-}
+
 
 export function fileUpload(url, file, files, param, success, failure) {
   let formData = new FormData();
@@ -153,25 +156,64 @@ export function fileUpload(url, file, files, param, success, failure) {
 export function download(config, fileName, success) {
   let result = {loading: true};
   this.$request(config).then(response => {
-    const content = response.data;
-    const blob = new Blob([content], {type: "application/octet-stream"});
-    if ("download" in document.createElement("a")) {
-      // 非IE下载
-      //  chrome/firefox
-      let aTag = document.createElement('a');
-      aTag.download = fileName;
-      aTag.href = URL.createObjectURL(blob);
-      aTag.click();
-      URL.revokeObjectURL(aTag.href);
-      then(success, response, result);
-    } else {
-      // IE10+下载
-      navigator.msSaveBlob(blob, this.filename);
-    }
+    doDownload(response.data, fileName);
+    then(success, response, result);
   }).catch(error => {
     exception(error, result, "");
   });
   return result;
+}
+
+export function doDownload(content, fileName) {
+  const blob = new Blob([content], {type: "application/octet-stream"});
+  if ("download" in document.createElement("a")) {
+    // 非IE下载
+    //  chrome/firefox
+    let aTag = document.createElement('a');
+    aTag.download = fileName;
+    aTag.href = URL.createObjectURL(blob);
+    aTag.click();
+    URL.revokeObjectURL(aTag.href);
+  } else {
+    // IE10+下载
+    navigator.msSaveBlob(blob, fileName);
+  }
+}
+
+import jsFileDownload from 'js-file-download'
+import store from "@/store";
+import {error} from "@/common/js/message";
+export function downloadFile(method, url, data, fileName) {
+  let downProgress = {};
+  let id = getUUID();
+  let config = {
+    url: url,
+    method: method,
+    data: data,
+    responseType: 'blob',
+    headers: {"Content-Type": "application/json; charset=utf-8"},
+    onDownloadProgress(progress) {
+      // 计算出下载进度
+      downProgress = Math.round(100 * progress.loaded / progress.total);
+      // 下载进度存入 vuex
+      store.commit('setDownloadFile', {id, 'progress': downProgress});
+    }
+  };
+  axios.request(config)
+    .then((res) => {
+      fileName = fileName ? fileName : window.decodeURI(res.headers['content-disposition'].split('=')[1]);
+      jsFileDownload(res.data, fileName);
+  }).catch((e) => {
+    error(e.message);
+  })
+}
+
+export function fileDownload(url, fileName) {
+  downloadFile('get', url, null, fileName);
+}
+
+export function fileDownloadPost(url, data, fileName) {
+  downloadFile('post', url, data, fileName);
 }
 
 export function all(array, callback) {
@@ -214,6 +256,8 @@ export default {
     Vue.prototype.$all = all;
 
     Vue.prototype.$fileDownload = fileDownload;
+
+    Vue.prototype.$fileDownloadPost = fileDownloadPost;
 
     Vue.prototype.$fileUpload = fileUpload;
 

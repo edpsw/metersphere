@@ -1,9 +1,11 @@
 <template>
   <div>
     <ms-container v-if="renderComponent">
-      <ms-aside-container>
+      <ms-aside-container v-show="isAsideHidden">
         <ms-api-module
           :show-operator="true"
+          :default-protocol="defaultProtocol"
+          :select-default-protocol="isSelectDefaultProtocol"
           @nodeSelectEvent="nodeChange"
           @protocolChange="handleProtocolChange"
           @refreshTable="refresh"
@@ -16,7 +18,9 @@
           @schedule="handleTabsEdit($t('api_test.api_import.timing_synchronization'), 'SCHEDULE')"
           :type="'edit'"
           page-source="definition"
+          :is-trash-data="trashEnable"
           :total='total'
+          :current-version="currentVersion"
           ref="nodeTree"/>
       </ms-aside-container>
 
@@ -29,9 +33,10 @@
           class="ms-api-button"
           ref="environmentSelect"/>
         <!-- 主框架列表 -->
-        <el-tabs v-model="apiDefaultTab" @edit="closeConfirm" @tab-click="addTab">
+        <el-tabs v-model="apiDefaultTab" @edit="closeConfirm" @tab-click="addTab" @tab-remove="removeTab"
+                 ref="mainTabs">
           <el-tab-pane
-            name="trash"
+            name="trash" :closable="true"
             :label="$t('commons.trash')" v-if="trashEnable">
             <ms-tab-button
               v-if="this.trashTabInfo.type === 'list'"
@@ -42,6 +47,10 @@
               left-content="API"
               right-content="CASE"
             >
+              <template v-slot:version>
+                <version-select v-xpack :project-id="projectId" :version-id="trashVersion"
+                                @changeVersion="changeVersion"/>
+              </template>
               <!-- 列表集合 -->
               <ms-api-list
                 v-if="trashActiveDom==='left'"
@@ -51,11 +60,11 @@
                 :module-tree="nodeTree"
                 :module-options="moduleOptions"
                 :current-protocol="currentProtocol"
+                :current-version="currentVersion"
                 :visible="visible"
                 :currentRow="currentRow"
                 :select-node-ids="selectNodeIds"
                 :trash-enable="true"
-                :queryDataType="queryDataType"
                 :selectDataRange="selectDataRange"
                 :is-read-only="isReadOnly"
                 @changeSelectDataRangeAll="changeSelectDataRangeAll"
@@ -70,11 +79,11 @@
               <api-case-simple-list
                 v-if="trashActiveDom==='right'"
                 :current-protocol="currentProtocol"
+                :current-version="currentVersion"
                 :visible="visible"
                 :currentRow="currentRow"
                 :select-node-ids="selectNodeIds"
                 :trash-enable="true"
-                :queryDataType="queryDataType"
                 :is-read-only="isReadOnly"
                 @changeSelectDataRangeAll="changeSelectDataRangeAll"
                 @handleCase="handleCase"
@@ -84,11 +93,15 @@
             </ms-tab-button>
           </el-tab-pane>
 
-          <el-tab-pane v-for="(item) in apiTabs"
+          <el-tab-pane v-for="(item, index) in apiTabs"
                        :key="item.name"
                        :label="item.title"
                        :closable="item.closable"
                        :name="item.name">
+            <el-tooltip v-if="index > 0" slot="label" effect="dark" :content="item.title" placement="bottom-start"
+                        class="ms-tab-name-width">
+              <span>{{ item.title }}</span>
+            </el-tooltip>
             <ms-tab-button
               v-if="item.type === 'list'"
               :active-dom.sync="activeDom"
@@ -100,25 +113,29 @@
               :right-content="$t('api_test.definition.doc_title')"
               :right-button-enable="currentProtocol === 'HTTP' "
             >
+              <template v-slot:version>
+                <version-select v-xpack :project-id="projectId" @changeVersion="changeVersion"/>
+              </template>
               <!-- 列表集合 -->
               <ms-api-list
-                v-if="activeDom==='left'"
+                v-if="activeDom==='left' && !trashEnable"
                 @getTrashApi="getTrashApi"
                 :module-tree="nodeTree"
                 :module-options="moduleOptions"
                 :current-protocol="currentProtocol"
+                :current-version="currentVersion"
                 :visible="visible"
                 :currentRow="currentRow"
                 :select-node-ids="selectNodeIds"
                 :trash-enable="false"
-                :queryDataType="queryDataType"
                 :selectDataRange="selectDataRange"
                 :is-read-only="isReadOnly"
                 @runTest="runTest"
                 @handleTestCase="handleTestCase"
                 @refreshTree="refreshTree"
                 @changeSelectDataRangeAll="changeSelectDataRangeAll"
-                @editApi="editApi"
+                @editApiModule="editApiModule"
+                @copyApi="copyApi"
                 @handleCase="handleCase"
                 @showExecResult="showExecResult"
                 @refreshTable="refresh"
@@ -129,11 +146,11 @@
               <api-case-simple-list
                 v-if="activeDom==='middle'"
                 :current-protocol="currentProtocol"
+                :current-version="currentVersion"
                 :visible="visible"
                 :currentRow="currentRow"
                 :select-node-ids="selectNodeIds"
                 :trash-enable="false"
-                :queryDataType="queryDataType"
                 :is-read-only="isReadOnly"
                 @changeSelectDataRangeAll="changeSelectDataRangeAll"
                 @handleCase="handleCase"
@@ -145,7 +162,9 @@
                 v-if="activeDom==='right' && currentProtocol==='HTTP'"
                 :project-id="projectId"
                 :trash-enable="trashEnable"
-                :module-ids="selectNodeIds"/>
+                :version-id="currentVersion"
+                :module-ids="selectNodeIds"
+                ref="documentsPage"/>
             </ms-tab-button>
             <!-- 添加/编辑测试窗口-->
             <div v-if="item.type=== 'ADD' ||item.type === 'TEST'" class="ms-api-div">
@@ -164,7 +183,6 @@
                 @changeSelectDataRangeAll="changeSelectDataRangeAll"
                 @handleCase="handleCase"
                 @showExecResult="showExecResult"
-
                 ref="apiConfig"
               />
             </div>
@@ -185,6 +203,7 @@
               <ms-debug-tcp-page
                 :currentProtocol="currentProtocol"
                 :testCase="item.api"
+                :scenario="false"
                 @saveAs="editApi"
                 @refreshModule="refreshModule"
                 v-if="currentProtocol==='TCP'"/>
@@ -232,7 +251,6 @@ import MsApiList from './components/list/ApiList';
 import MsContainer from "../../common/components/MsContainer";
 import MsMainContainer from "../../common/components/MsMainContainer";
 import MsAsideContainer from "../../common/components/MsAsideContainer";
-import MsApiConfig from "./components/ApiConfig";
 import MsDebugHttpPage from "./components/debug/DebugHttpPage";
 import MsDebugJdbcPage from "./components/debug/DebugJdbcPage";
 import MsDebugTcpPage from "./components/debug/DebugTcpPage";
@@ -254,25 +272,52 @@ import MockConfig from "@/business/components/api/definition/components/mock/Moc
 import ApiSchedule from "@/business/components/api/definition/components/import/ApiSchedule";
 import MsEditCompleteContainer from "./components/EditCompleteContainer";
 import MsEnvironmentSelect from "./components/case/MsEnvironmentSelect";
+import {PROJECT_ID, WORKSPACE_ID} from "@/common/js/constants";
+import {buildTree} from "@/business/components/api/definition/model/NodeTree";
 
+const requireComponent = require.context('@/business/components/xpack/', true, /\.vue$/);
+const VersionSelect = requireComponent.keys().length > 0 ? requireComponent("./version/VersionSelect.vue") : {};
 
 export default {
   name: "ApiDefinition",
   computed: {
-    queryDataType: function () {
-      let routeParam = this.$route.params.dataType;
-      let redirectIDParam = this.$route.params.redirectID;
-      this.changeRedirectParam(redirectIDParam);
-      return routeParam;
-    },
     isReadOnly() {
       return false;
     },
     projectId() {
       return getCurrentProjectID();
     },
+    isSelectDefaultProtocol() {
+      let selectDefaultProtocol = true;
+      let routeParamObj = this.$route.params;
+      if (routeParamObj) {
+        let dataRange = routeParamObj.dataSelectRange;
+        let dataType = routeParamObj.dataType;
+        if (dataRange && typeof dataRange === 'string') {
+          let selectParamArr = dataRange.split("edit:");
+          if (selectParamArr.length === 2) {
+            if (dataType === 'api') {
+              selectDefaultProtocol = false;
+            }
+          }
+        }
+      } else {
+        let dataRange = this.$route.params.dataSelectRange;
+        let dataType = this.$route.params.dataType;
+        if (dataRange && typeof dataRange === 'string') {
+          let selectParamArr = dataRange.split("edit:");
+          if (selectParamArr.length === 2) {
+            if (dataType === 'api') {
+              selectDefaultProtocol = false;
+            }
+          }
+        }
+      }
+      return selectDefaultProtocol;
+    },
   },
   components: {
+    'VersionSelect': VersionSelect.default,
     ApiSchedule,
     MsTabButton,
     MsTableButton,
@@ -282,7 +327,6 @@ export default {
     MsMainContainer,
     MsContainer,
     MsAsideContainer,
-    MsApiConfig,
     MsDebugHttpPage,
     MsRunTestHttpPage,
     MsDebugJdbcPage,
@@ -318,6 +362,7 @@ export default {
       selectNodeIds: [],
       currentApi: {},
       moduleOptions: [],
+      defaultProtocol: null,
       trashEnable: false,
       apiTabs: [{
         title: this.$t('api_test.definition.api_title'),
@@ -340,36 +385,55 @@ export default {
       initApiTableOpretion: 'init',
       param: {},
       useEnvironment: String,
-      activeTab: "api"
+      activeTab: "api",
+      currentVersion: null,
+      trashVersion: null,
+      isAsideHidden: true,
     };
   },
   activated() {
-    let dataRange = this.$route.params.dataSelectRange;
-    if (dataRange && dataRange.length > 0) {
-      this.activeDom = 'middle';
-    }
-    let dataType = this.$route.params.dataType;
-    if (dataType) {
-      if (dataType === "api") {
-        this.activeDom = 'left';
+    this.$nextTick(() => {
+      let routeParamObj = this.$route.params;
+      if (routeParamObj) {
+        let dataRange = routeParamObj.dataSelectRange;
+        if (dataRange && dataRange.length > 0) {
+          this.activeDom = 'middle';
+        }
+        let dataType = routeParamObj.dataType;
+        if (dataType) {
+          if (dataType === "api") {
+            this.activeDom = 'left';
+          } else {
+            this.activeDom = 'middle';
+          }
+        }
+        this.selectNodeIds = [];
       } else {
-        this.activeDom = 'middle';
-      }
-    }
-
-    if (this.$route.params.dataSelectRange) {
-      let item = JSON.parse(JSON.stringify(this.$route.params.dataSelectRange)).param;
-      if (item !== undefined) {
-        let type = item.taskGroup.toString();
-        if (type === "SWAGGER_IMPORT") {
-          this.handleTabsEdit(this.$t('api_test.api_import.timing_synchronization'), 'SCHEDULE');
-          this.param = item;
+        let dataType = this.$route.params.dataType;
+        if (dataType) {
+          if (dataType === "api") {
+            this.activeDom = 'left';
+          } else {
+            this.activeDom = 'middle';
+          }
+        }
+        if (this.$route.params.dataSelectRange) {
+          let item = JSON.parse(JSON.stringify(this.$route.params.dataSelectRange)).param;
+          if (item !== undefined) {
+            let type = item.taskGroup.toString();
+            if (type === "SWAGGER_IMPORT") {
+              this.openSwaggerScheduleTab();
+              this.param = item;
+            }
+          }
         }
       }
-
-    }
+    });
   },
   watch: {
+    trashEnable() {
+      this.selectNodeIds = [];
+    },
     currentProtocol() {
       if (this.activeDom === 'right') {
         this.activeDom = 'left';
@@ -377,7 +441,10 @@ export default {
       this.handleCommand("CLOSE_ALL");
     },
     selectNodeIds() {
-      this.apiDefaultTab = "default";
+      if (!this.trashEnable) {
+        this.apiDefaultTab = "default";
+      }
+
     },
     redirectID() {
       this.renderComponent = false;
@@ -385,9 +452,9 @@ export default {
         // 在 DOM 中添加 my-component 组件
         this.renderComponent = true;
       });
+
     },
     '$route'(to, from) {  //  路由改变时，把接口定义界面中的 ctrl s 保存快捷键监听移除
-      window.location.reload();
       if (to.path.indexOf('/api/definition') === -1) {
         if (this.$refs && this.$refs.apiConfig) {
           this.$refs.apiConfig.forEach(item => {
@@ -396,21 +463,68 @@ export default {
         }
       }
     },
+    apiDefaultTab() {
+      this.isAsideHidden = (this.apiDefaultTab === 'default' || this.apiDefaultTab === 'trash');
+    }
   },
   created() {
-    this.getEnv();
-    // 通知过来的数据跳转到编辑
-    if (this.$route.query.caseId) {
-      this.activeDom = 'middle';
-      // this.$get('/api/testcase/findById/' + this.$route.query.caseId, (response) => {
-      //   this.edit(response.data);
-      // });
+    let routeParamObj = this.$route.params;
+    if (routeParamObj) {
+      let workspaceId = routeParamObj.workspaceId;
+      if (workspaceId) {
+        sessionStorage.setItem(WORKSPACE_ID, workspaceId);
+      } else {
+        if (this.$route.query.workspaceId) {
+          workspaceId = this.$route.query.workspaceId;
+          sessionStorage.setItem(WORKSPACE_ID, workspaceId);
+        }
+      }
+      let projectId = routeParamObj.projectId;
+      if (projectId) {
+        sessionStorage.setItem(PROJECT_ID, projectId);
+      } else {
+        if (this.$route.query.projectId) {
+          projectId = this.$route.query.projectId;
+          sessionStorage.setItem(PROJECT_ID, projectId);
+        }
+      }
+      // 通知过来的数据跳转到编辑
+      if (routeParamObj.caseId) {
+        this.activeDom = 'middle';
+      }
     }
+    this.getEnv();
   },
   mounted() {
     this.init();
+    // 通知过来的数据跳转到编辑
+    if (this.$route.query.caseId) {
+      this.activeDom = 'middle';
+    }
   },
   methods: {
+    removeTab(name) {
+      if (name === 'trash') {
+        this.selectNodeIds = [];
+        this.trashEnable = false;
+      }
+    },
+    openSwaggerScheduleTab() {
+      //检查是否有开启的定时任务配置页，如果有的话直接跳转，不用再开启
+      let scheduleTabName = "";
+      if (this.apiTabs) {
+        this.apiTabs.forEach(tab => {
+          if (tab.type === 'SCHEDULE') {
+            scheduleTabName = tab.name;
+          }
+        });
+      }
+      if (scheduleTabName === "") {
+        this.handleTabsEdit(this.$t('api_test.api_import.timing_synchronization'), 'SCHEDULE');
+      } else {
+        this.apiDefaultTab = scheduleTabName;
+      }
+    },
     setEnvironment(data) {
       if (data) {
         this.useEnvironment = data.id;
@@ -428,11 +542,14 @@ export default {
       });
     },
     getEnv() {
-      this.$get("/api/definition/env/get/" + getCurrentUserId(), response => {
+      this.$get("/api/definition/env/get/" + getCurrentUserId() + "/" + getCurrentProjectID(), response => {
         let env = response.data;
         if (env) {
           this.$store.state.useEnvironment = env.envId;
           this.useEnvironment = env.envId;
+        } else {
+          this.$store.state.useEnvironment = "";
+          this.useEnvironment = "";
         }
       });
     },
@@ -456,8 +573,16 @@ export default {
       this.redirectID = redirectIDParam;
     },
     addTab(tab) {
+      this.trashEnable = tab.name === 'trash';
       if (tab.name === 'add') {
-        this.handleTabsEdit(this.$t('api_test.definition.request.fast_debug'), "debug");
+        this.result = this.$get('/project_application/get/config/' + this.projectId + "/API_QUICK_MENU", res => {
+          let projectData = res.data;
+          if (projectData && projectData.apiQuickMenu === 'api') {
+            this.handleTabAdd("ADD");
+          } else {
+            this.handleTabsEdit(this.$t('api_test.definition.request.fast_debug'), "debug");
+          }
+        })
       } else if (tab.name === 'trash') {
         if (this.$refs.trashApiList) {
           this.$refs.trashApiList.initTable();
@@ -501,6 +626,7 @@ export default {
         return;
       }
       let api = {
+        name: '',
         status: "Underway",
         method: "GET",
         userId: getCurrentUser().id,
@@ -529,21 +655,26 @@ export default {
       let tabs = this.apiTabs[0];
       let message = "";
       let tab = this.apiTabs;
-      delete tab[0];
       tab.forEach(t => {
-        if (t.api && this.$store.state.apiMap.has(t.api.id) && (this.$store.state.apiMap.get(t.api.id).get("responseChange") === true || this.$store.state.apiMap.get(t.api.id).get("requestChange") === true ||
+        if (t.type === 'ADD' && t.api && this.$store.state.apiMap.has(t.api.id) && (this.$store.state.apiMap.get(t.api.id).get("responseChange") === true || this.$store.state.apiMap.get(t.api.id).get("requestChange") === true ||
           this.$store.state.apiMap.get(t.api.id).get("fromChange") === true)) {
           message += t.api.name + "，";
+        } else if (t.type === 'ADD' && t.title === this.$t('api_test.definition.request.title')) {
+          message += this.$t('api_test.definition.request.title') + "，";
         }
-      })
+        if (t.type === 'ADD' && t.isCopy) {
+          message += t.api.name + "，";
+        }
+      });
       if (message !== "") {
-        this.$alert("接口[ " + message.substr(0, message.length - 1) + " ]未保存，是否确认关闭全部？", '', {
+        this.$alert(this.$t('commons.api') + " [ " + message.substr(0, message.length - 1) + " ] " + this.$t('commons.confirm_info'), '', {
           confirmButtonText: this.$t('commons.confirm'),
           cancelButtonText: this.$t('commons.cancel'),
           callback: (action) => {
             if (action === 'confirm') {
               this.$store.state.apiMap.clear();
               this.apiTabs = [];
+              this.trashEnable = false;
               this.apiDefaultTab = tabs.name;
               this.apiTabs.push(tabs);
             }
@@ -551,34 +682,51 @@ export default {
         });
       } else {
         this.apiTabs = [];
+        this.trashEnable = false;
         this.apiDefaultTab = tabs.name;
         this.apiTabs.push(tabs);
       }
     },
     closeConfirm(targetName) {
-      let tabs = this.apiTabs;
-      if(!tabs[1].api) {
-        this.handleTabRemove(targetName);
-      }
-       if (tabs[1].api && this.$store.state.apiMap.size > 0) {
-        if (this.$store.state.apiMap.get(tabs[1].api.id).get("responseChange") === true || this.$store.state.apiMap.get(tabs[1].api.id).get("requestChange") === true ||
-          this.$store.state.apiMap.get(tabs[1].api.id).get("fromChange") === true) {
-          this.$alert("接口[ " + tabs[1].api.name + " ]未保存，是否确认关闭？", '', {
-            confirmButtonText: this.$t('commons.confirm'),
-            cancelButtonText: this.$t('commons.cancel'),
-            callback: (action) => {
-              if (action === 'confirm') {
-                this.$store.state.apiMap.delete(tabs[1].api.id);
-                this.handleTabRemove(targetName);
-              }
+      let message = "";
+      let tab = this.apiTabs;
+      let id;
+      tab.forEach(t => {
+        if (t.name === targetName) {
+          if (t.api && this.$store.state.apiMap.size > 0 && this.$store.state.apiMap.has(t.api.id)) {
+            id = t.api.id;
+            if (this.$store.state.apiMap.get(t.api.id).get("responseChange") === true || this.$store.state.apiMap.get(t.api.id).get("requestChange") === true ||
+              this.$store.state.apiMap.get(t.api.id).get("fromChange") === true) {
+              message += t.api.name;
+              id = t.api.id;
             }
-          });
+          } else if (t.type === 'ADD' && t.title === this.$t('api_test.definition.request.title')) {
+            message += this.$t('api_test.definition.request.title');
+            id = t.api.id;
+          }
+          if (t.type === 'ADD' && t.isCopy) {
+            message += t.api.name;
+            id = t.api.id;
+          }
         }
-      } else{
-        this.$store.state.apiMap.delete(tabs[1].api.id);
+      });
+      if (message !== "") {
+        this.$alert(this.$t('commons.api') + " [ " + message + " ] " + this.$t('commons.confirm_info'), '', {
+          confirmButtonText: this.$t('commons.confirm'),
+          cancelButtonText: this.$t('commons.cancel'),
+          callback: (action) => {
+            if (action === 'confirm') {
+              this.$store.state.apiMap.delete(id);
+              this.handleTabRemove(targetName);
+            }
+          }
+        });
+      } else {
+        if (id) {
+          this.$store.state.apiMap.delete(id);
+        }
         this.handleTabRemove(targetName);
       }
-
     },
     handleTabRemove(targetName) {
       let tabs = this.apiTabs;
@@ -588,14 +736,15 @@ export default {
           if (tab.name === targetName) {
             let nextTab = tabs[index + 1] || tabs[index - 1];
             if (nextTab) {
+              tab.api = undefined;
               activeName = nextTab.name;
             }
           }
         });
       }
-      this.apiDefaultTab = activeName;
+      this.apiDefaultTab = activeName
       this.apiTabs = tabs.filter(tab => tab.name !== targetName);
-      this.refresh();
+      this.$refs.mainTabs.$children = [];
     },
     //创建左侧树的根目录模块
     createRootModel() {
@@ -634,6 +783,7 @@ export default {
         closable: true,
         type: action,
         api: api,
+        isCopy: api ? api.isCopy : false
       });
       if (action === "ADD") {
         this.activeTab = "api";
@@ -644,9 +794,36 @@ export default {
       this.handleTabsEdit(this.$t('api_test.definition.request.fast_debug'), "debug", id);
     },
     init() {
-      let routeTestCase = this.$route.params.apiDefinition;
-      if (routeTestCase) {
-        this.editApi(routeTestCase)
+      let dataRange = this.$route.params.dataSelectRange;
+      let dataType = this.$route.params.dataType;
+      if (dataRange && typeof dataRange === 'string') {
+        let selectParamArr = dataRange.split("edit:");
+        if (selectParamArr.length === 2) {
+          let scenarioId = selectParamArr[1];
+          if (dataType === 'api') {
+            this.$get('/api/definition/get/' + scenarioId, (response) => {
+              this.defaultProtocol = response.data.protocol;
+              this.editApi(response.data);
+            });
+          }
+        }
+      }
+    },
+    editApiModule(row) {
+      if (this.moduleOptions && this.moduleOptions.length === 0) {
+        let url = "/api/module/list/" + (row.projectId ? row.projectId : this.projectId) + "/" + row.protocol;
+        this.$get(url, response => {
+          if (response.data) {
+            response.data.forEach(node => {
+              node.name = node.name === '未规划接口' ? this.$t('api_test.definition.unplanned_api') : node.name
+              buildTree(node, {path: ''});
+            });
+            this.moduleOptions = response.data;
+          }
+          this.editApi(row);
+        });
+      } else {
+        this.editApi(row);
       }
     },
     editApi(row) {
@@ -654,8 +831,8 @@ export default {
       if (!index) {
         let name = "";
         if (row.isCopy) {
-          name = "copy" + "-" + row.name;
-          row.name = "copy" + "-" + row.name;
+          name = "copy" + "_" + row.name;
+          row.name = "copy" + "_" + row.name;
         } else {
           if (row.name) {
             name = this.$t('api_test.definition.request.edit_api') + "-" + row.name;
@@ -674,6 +851,21 @@ export default {
       } else {
         this.apiDefaultTab = index.name;
       }
+    },
+    copyApi(row) {
+      let name = "";
+      if (row.isCopy) {
+        name = "copy" + "_" + row.name;
+        row.name = "copy" + "_" + row.name;
+      }
+      this.activeTab = "api";
+      if (row != null && row.tags != 'null' && row.tags != '' && row.tags != undefined) {
+        if (Object.prototype.toString.call(row.tags).match(/\[object (\w+)\]/)[1].toLowerCase() !== 'object'
+          && Object.prototype.toString.call(row.tags).match(/\[object (\w+)\]/)[1].toLowerCase() !== 'array') {
+          row.tags = JSON.parse(row.tags);
+        }
+      }
+      this.handleTabsEdit(name, "ADD", row);
     },
     handleCase(api) {
       this.currentApi = api;
@@ -702,10 +894,15 @@ export default {
       if (this.$refs.trashCaseList) {
         this.$refs.trashCaseList.initTable();
       }
+      if (this.$refs.nodeTree) {
+        this.$refs.nodeTree.list();
+      }
       if (this.$refs.apiDefList && this.$refs.apiDefList[0]) {
         this.$refs.apiDefList[0].initTable();
       }
-
+      if (this.$refs.documentsPage && this.$refs.documentsPage[0]) {
+        this.$refs.documentsPage[0].initApiDocSimpleList();
+      }
       //this.$refs.nodeTree.list();
     },
     refreshTree() {
@@ -748,6 +945,11 @@ export default {
     saveApi(data) {
       this.setTabTitle(data);
       this.refresh(data);
+      this.apiTabs.forEach(t => {
+        if (t.api && t.api.id === data.id) {
+          t.isCopy = false;
+        }
+      })
     },
 
     showExecResult(row) {
@@ -768,19 +970,26 @@ export default {
       this.nodeTree = data;
     },
     changeSelectDataRangeAll(tableType) {
-      this.$route.params.dataSelectRange = 'all';
+      if (this.$route.params) {
+        this.$route.params.dataSelectRange = 'all';
+      }
     },
     enableTrash(data) {
       this.initApiTableOpretion = "trashEnable";
       this.trashEnable = data;
+      this.trashVersion = this.currentVersion
       if (data) {
         this.apiDefaultTab = "trash";
       } else {
-        this.apiDefaultTab = "default"
+        this.apiDefaultTab = "default";
       }
     },
     updateInitApiTableOpretion(param) {
       this.initApiTableOpretion = param;
+    },
+    changeVersion(currentVersion) {
+      this.trashVersion = null;
+      this.currentVersion = currentVersion || null;
     }
   }
 };
@@ -789,16 +998,19 @@ export default {
 <style scoped>
 
 .ms-api-div {
-  overflow-y: auto;
-  height: calc(100vh - 155px)
+  overflow-y: hidden;
+  height: calc(100vh - 100px)
 }
 
 /deep/ .el-main {
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 /deep/ .el-tabs__header {
   margin: 0 0 0px;
+}
+
+/deep/ .el-tabs__nav-scroll {
   width: calc(100% - 200px);
 }
 
@@ -814,7 +1026,6 @@ export default {
 
 .ms-api-button {
   position: absolute;
-  top: 92px;
   right: 10px;
   padding: 0;
   background: 0 0;
@@ -823,5 +1034,26 @@ export default {
   cursor: pointer;
   margin-right: 10px;
   font-size: 16px;
+  z-index: 1;
+}
+
+/deep/ .el-table__empty-block {
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
+  padding-right: 100%;
+}
+
+.version-select {
+  padding-left: 10px;
+}
+
+.ms-tab-name-width {
+  display: inline-block;
+  overflow-x: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+  max-width: 200px;
 }
 </style>

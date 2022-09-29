@@ -1,4 +1,4 @@
-const requireContext = require.context('@/business/components/xpack/', true, /router\.js$/);
+const requireContext = require.context('@/business/components/xpack/', false, /router\.js$/);
 
 export default {
   path: "/setting",
@@ -29,21 +29,6 @@ export default {
       meta: {system: true, title: 'group.group_permission', permissions: ['SYSTEM_GROUP:READ', 'ORGANIZATION_GROUP:READ']}
     },
     {
-      path: 'workspace/template/field',
-      component: () => import('@/business/components/settings/workspace/template/CustomFieldList'),
-      meta: {workspaceTemplate: true, title: 'custom_field.name', permissions: ['WORKSPACE_TEMPLATE:READ+CUSTOM']},
-    },
-    {
-      path: 'workspace/template/case',
-      component: () => import('@/business/components/settings/workspace/template/TestCaseTemplateList'),
-      meta: {workspaceTemplate: true, title: 'workspace.case_template_manage', permissions: ['WORKSPACE_TEMPLATE:READ+CASE_TEMPLATE']},
-    },
-    {
-      path: 'workspace/template/issues',
-      component: () => import('@/business/components/settings/workspace/template/IssuesTemplateList'),
-      meta: {workspaceTemplate: true, title: 'workspace.issue_template_manage', permissions: ['WORKSPACE_TEMPLATE:READ+ISSUE_TEMPLATE']},
-    },
-    {
       path: 'testresourcepool',
       component: () => import('@/business/components/settings/system/TestResourcePool'),
       meta: {system: true, title: 'commons.test_resource_pool', permissions: ['SYSTEM_TEST_POOL:READ']}
@@ -66,11 +51,6 @@ export default {
       meta: {workspace: true, title: 'organization.service_integration', permissions: ['WORKSPACE_SERVICE:READ']}
     },
     {
-      path: 'messagesettings',
-      component: () => import('@/business/components/settings/workspace/MessageSettings'),
-      meta: {workspace: true, title: 'organization.message_settings', permissions: ['WORKSPACE_MESSAGE:READ']}
-    },
-    {
       path: 'personsetting',
       name: 'PersonSetting',
       component: () => import('@/business/components/settings/personal/PersonSetting'),
@@ -90,10 +70,11 @@ export default {
       component: () => import('@/business/components/settings/workspace/MsProject'),
       meta: {workspace: true, title: 'project.manager', permissions: ['WORKSPACE_PROJECT_MANAGER:READ']}
     },
+    ...requireContext.keys().map(key => requireContext(key).quota),
     {
       path: 'wsenvlist',
-      component: () => import('@/business/components/settings/workspace/WsEnvironmentList'),
-      meta: {workspace: true, title: 'api_test.environment.environment_config', permissions: ['WORKSPACE_PROJECT_ENVIRONMENT:READ']}
+      component: () => import('@/business/components/settings/workspace/environment/EnvironmentManage'),
+      meta: {workspace: true, title: 'api_test.environment.environment_manage', permissions: ['WORKSPACE_PROJECT_ENVIRONMENT:READ']}
     },
     {
       path: 'operatingLog/system',
@@ -110,7 +91,7 @@ export default {
     {
       path: 'plugin',
       component: () => import('@/business/components/settings/plugin/PluginConfig'),
-      meta: {system: true, title: 'plugin.title', permissions: ['SYSTEM_USER:READ']}
+      meta: {system: true, title: 'plugin.title', permissions: ['SYSTEM_PLUGIN:READ']}
     },
   ]
 };

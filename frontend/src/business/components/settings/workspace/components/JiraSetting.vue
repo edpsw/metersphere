@@ -6,28 +6,12 @@
         <el-form-item :label="$t('organization.integration.account')" prop="account">
           <el-input v-model="form.account" :placeholder="$t('organization.integration.input_api_account')"/>
         </el-form-item>
-        <el-form-item :label="$t('organization.integration.password')" prop="password">
+        <el-form-item label="Token" prop="password">
           <el-input v-model="form.password" auto-complete="new-password" v-if="showInput"
                     :placeholder="$t('organization.integration.input_api_password')" show-password/>
         </el-form-item>
         <el-form-item :label="$t('organization.integration.jira_url')" prop="url">
           <el-input v-model="form.url" :placeholder="$t('organization.integration.input_jira_url')"/>
-        </el-form-item>
-        <el-form-item :label="$t('organization.integration.jira_issuetype')" prop="issuetype">
-          <el-input v-model="form.issuetype" :placeholder="$t('organization.integration.input_jira_issuetype')"/>
-          <ms-instructions-icon effect="light">
-            <template>
-              <img class="jira-image" src="@/assets/jira-type.png"/>
-            </template>
-          </ms-instructions-icon>
-        </el-form-item>
-        <el-form-item :label="$t('organization.integration.jira_storytype')" prop="storytype">
-          <el-input v-model="form.storytype" :placeholder="$t('organization.integration.input_jira_storytype')"/>
-          <ms-instructions-icon effect="light">
-            <template>
-              <img class="jira-image" src="@/assets/jira-type.png"/>
-            </template>
-          </ms-instructions-icon>
         </el-form-item>
       </el-form>
     </div>
@@ -55,9 +39,13 @@
       </div>
       <div>
         3. {{ $t('organization.integration.use_tip_three') }}
-        <router-link :to="{name: 'PersonSetting', params: { open: true }}" style="margin-left: 5px">
+        <span  style="margin-left: 5px;color: #551A8B; text-decoration: underline; cursor: pointer" @click="resVisible = true">
           {{ $t('organization.integration.link_the_info_now') }}
-        </router-link>
+        </span>
+        <el-dialog :close-on-click-modal="false" width="80%"
+                   :visible.sync="resVisible" destroy-on-close @close="closeDialog">
+          <ms-person-router @closeDialog = "closeDialog"/>
+        </el-dialog>
       </div>
     </div>
   </div>
@@ -68,10 +56,11 @@ import BugManageBtn from "@/business/components/settings/workspace/components/Bu
 import {getCurrentUser, getCurrentWorkspaceId} from "@/common/js/utils";
 import {JIRA} from "@/common/js/constants";
 import MsInstructionsIcon from "@/business/components/common/components/MsInstructionsIcon";
+import MsPersonRouter from "@/business/components/settings/components/PersonRouter";
 
 export default {
   name: "JiraSetting",
-  components: {MsInstructionsIcon, BugManageBtn},
+  components: {MsInstructionsIcon, BugManageBtn,MsPersonRouter},
   created() {
     this.init();
   },
@@ -79,6 +68,7 @@ export default {
     return {
       show: true,
       showInput: true,
+      resVisible:false,
       form: {},
       rules: {
         account: {
@@ -210,6 +200,9 @@ export default {
       this.$nextTick(function () {
         this.showInput = true;
       });
+    },
+    closeDialog(){
+      this.resVisible = false;
     }
   }
 };

@@ -1,30 +1,55 @@
 <template>
-  <ms-module-minder
-    v-loading="result.loading"
-    :tree-nodes="treeNodes"
-    :data-map="dataMap"
-    :tags="tags"
-    :tag-enable="true"
-    minder-key="testPlan"
-    :select-node="selectNode"
-    :distinct-tags="[...tags, this.$t('test_track.plan.plan_status_prepare')]"
-    :ignore-num="true"
-    @afterMount="handleAfterMount"
-    @save="save"
-    ref="minder"
-  />
+  <div>
+    <ms-module-minder
+      v-loading="result.loading"
+      minder-key="PLAN_CASE"
+      :tree-nodes="treeNodes"
+      :data-map="dataMap"
+      :tags="tags"
+      :tag-enable="true"
+      :disabled="disableMinder"
+      :select-node="selectNode"
+      :distinct-tags="[...tags, this.$t('test_track.plan.plan_status_prepare')]"
+      :ignore-num="true"
+      @afterMount="handleAfterMount"
+      @save="save"
+      ref="minder"
+    />
+
+    <IssueRelateList
+      :plan-case-id="getCurId()"
+      :case-id="getCurCaseId()"
+      @refresh="refreshRelateIssue"
+      ref="issueRelate"/>
+
+    <test-plan-issue-edit
+      :is-minder="true"
+      :plan-id="planId"
+      :plan-case-id="getCurId()"
+      :case-id="getCurCaseId()"
+      @refresh="refreshIssue"
+      ref="issueEdit"/>
+
+  </div>
 </template>
 
 <script>
+import {setPriorityView} from "vue-minder-editor-plus/src/script/tool/utils";
+
+const {getCurrentWorkspaceId} = require("@/common/js/utils");
+const {getIssuesListById} = require("@/network/Issue");
 import MsModuleMinder from "@/business/components/common/components/MsModuleMinder";
 import {
   handleExpandToLevel, listenBeforeExecCommand, listenNodeSelected, loadSelectNodes,
-  tagBatch,
+  tagBatch, getSelectedNodeData, handleIssueAdd, handleIssueBatch, listenDblclick, handleMinderIssueDelete
 } from "@/business/components/track/common/minder/minderUtils";
 import {getPlanCasesForMinder} from "@/network/testCase";
+import IssueRelateList from "@/business/components/track/case/components/IssueRelateList";
+import TestPlanIssueEdit from "@/business/components/track/case/components/TestPlanIssueEdit";
+import {addIssueHotBox} from "./minderUtils";
 export default {
 name: "TestPlanMinder",
-  components: {MsModuleMinder},
+  components: {MsModuleMinder, TestPlanIssueEdit, IssueRelateList},
   data() {
     return{
       dataMap: new Map(),
@@ -45,15 +70,29 @@ name: "TestPlanMinder",
     planId: {
       type: String
     },
+    planStatus: {
+      type: String
+    },
     projectId: String,
     condition: Object
   },
   computed: {
     selectNode() {
       return this.$store.state.testPlanViewSelectNode;
+    },
+    workspaceId(){
+      return getCurrentWorkspaceId();
+    },
+    disableMinder(){
+      if (this.planStatus === 'Archived') {
+       return  true
+      } else {
+        return false
+      }
     }
   },
   mounted() {
+    this.setIsChange(false);
     if (this.selectNode && this.selectNode.data) {
       if (this.$refs.minder) {
         let importJson = this.$refs.minder.getImportJsonBySelectNode(this.selectNode.data);
@@ -66,21 +105,48 @@ name: "TestPlanMinder",
       if (this.$refs.minder) {
         this.$refs.minder.handleNodeSelect(this.selectNode);
       }
+    },
+    treeNodes() {
+      this.$refs.minder.initData();
     }
   },
   methods: {
-    handleAfterMount() {
+    handleAfterMount: function () {
       listenNodeSelected(() => {
-        loadSelectNodes(this.getParam(),  getPlanCasesForMinder, this.setParamCallback);
+        loadSelectNodes(this.getParam(), getPlanCasesForMinder, this.setParamCallback);
       });
       listenBeforeExecCommand((even) => {
         if (even.commandName === 'expandtolevel') {
           let level = Number.parseInt(even.commandArgs);
           handleExpandToLevel(level, even.minder.getRoot(), this.getParam(), getPlanCasesForMinder, this.setParamCallback);
         }
+
+        if (handleMinderIssueDelete(even.commandName, true))  return; // 删除缺陷不算有编辑脑图信息
+
+        if (even.commandName.toLocaleLowerCase() === 'resource') {
+          // 设置完标签后，优先级显示有问题，重新设置下
+          setTimeout(() => setPriorityView(true, 'P'), 100);
+          this.setIsChange(true);
+        }
       });
 
-      tagBatch([...this.tags, this.$t('test_track.plan.plan_status_prepare')]);
+      listenDblclick(() => {
+        let data = getSelectedNodeData();
+        if (data.type === 'issue') {
+          getIssuesListById(data.id, this.projectId,this.workspaceId,(data) => {
+            data.customFields = JSON.parse(data.customFields);
+            this.$refs.issueEdit.open(data);
+          });
+        }
+      });
+
+      tagBatch([...this.tags, this.$t('test_track.plan.plan_status_prepare')], {
+        param: this.getParam(),
+        getCaseFuc: getPlanCasesForMinder,
+        setParamCallback: this.setParamCallback
+      });
+
+      addIssueHotBox(this);
     },
     getParam() {
       return {
@@ -110,6 +176,7 @@ name: "TestPlanMinder",
       this.buildSaveCase(data.root, saveCases);
       this.result = this.$post('/test/plan/case/minder/edit', saveCases, () => {
         this.$success(this.$t('commons.save_success'));
+        this.setIsChange(false);
       });
     },
     buildSaveCase(root, saveCases) {
@@ -144,7 +211,23 @@ name: "TestPlanMinder",
         }
       }
       saveCases.push(testCase);
-    }
+    },
+    getCurCaseId() {
+      return getSelectedNodeData().caseId;
+    },
+    getCurId() {
+      return getSelectedNodeData().id;
+    },
+    refreshIssue(issue) {
+      handleIssueAdd(issue);
+    },
+    refreshRelateIssue(issues) {
+      handleIssueBatch(issues);
+      this.$success('关联成功');
+    },
+    setIsChange(isChanged) {
+      this.$store.commit('setIsTestCaseMinderChanged', isChanged);
+    },
   }
 }
 </script>

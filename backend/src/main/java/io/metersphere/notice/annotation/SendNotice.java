@@ -30,11 +30,6 @@ public @interface SendNotice {
     Class<?> targetClass() default Object.class;
 
     /**
-     * 保存资源的 json
-     */
-    String source() default "";
-
-    /**
      * 消息内容
      */
     String context() default "";
@@ -42,14 +37,4 @@ public @interface SendNotice {
     String successContext() default "";
 
     String failedContext() default "";
-
-    /**
-     * html 消息模版
-     */
-    String mailTemplate() default "";
-
-    String failedMailTemplate() default "";
-
-    String successMailTemplate() default "";
-
 }

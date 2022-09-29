@@ -4,23 +4,37 @@
     <template>
       <div>
         <el-tabs v-model="activeName">
+          <el-tab-pane :label="$t('schedule.task_config')" name="first">
+            <div class="el-step__icon is-text" style="margin-right: 10px;">
+              <div class="el-step__icon-inner">1</div>
+            </div>
+            <span>{{ $t('schedule.edit_timer_task') }}</span>
+            <el-form :model="form" :rules="rules" ref="from" style="padding-top: 10px;margin-left: 20px;" class="ms-el-form-item__error">
+              <el-form-item :label="$t('commons.schedule_cron_title')"
+                            prop="cronValue" style="height: 50px">
+                <el-row :gutter="20">
+                  <el-col :span="16">
+                    <el-input :disabled="isReadOnly" v-model="form.cronValue" class="inp"
+                              :placeholder="$t('schedule.please_input_cron_expression')" size="mini">
+                      <a :disabled="isReadOnly" type="primary" @click="showCronDialog" slot="suffix" class="head">
+                        {{ $t('schedule.generate_expression') }}
+                      </a>
+                    </el-input>
 
-          <el-tab-pane :label="$t('schedule.edit_timer_task')" name="first">
-            <el-form :model="form" :rules="rules" ref="from">
-              <el-form-item
-                prop="cronValue">
-                <el-input :disabled="isReadOnly" v-model="form.cronValue" class="inp"
-                          :placeholder="$t('schedule.please_input_cron_expression')"/>
-                <!--          <el-button type="primary" @click="showCronDialog">{{$t('schedule.generate_expression')}}</el-button>-->
-                <el-button :disabled="isReadOnly" type="primary" @click="saveCron">{{
-                    $t('commons.save')
-                  }}
-                </el-button>
-              </el-form-item>
-              <el-form-item>
-                <el-link :disabled="isReadOnly" type="primary" @click="showCronDialog">
-                  {{ $t('schedule.generate_expression') }}
-                </el-link>
+                    <span>{{ this.$t('commons.schedule_switch') }}</span>
+                    <el-tooltip effect="dark" placement="bottom"
+                                :content="schedule.enable ? $t('commons.close_schedule') : $t('commons.open_schedule')">
+                      <el-switch v-model="schedule.enable" style="margin-left: 20px"></el-switch>
+                    </el-tooltip>
+                  </el-col>
+                  <el-col :span="2">
+                    <el-button :disabled="isReadOnly" type="primary" @click="saveCron" size="mini">{{
+                        $t('commons.save')
+                      }}
+                    </el-button>
+                  </el-col>
+                </el-row>
+
               </el-form-item>
               <crontab-result :ex="form.cronValue" ref="crontabResult"/>
             </el-form>
@@ -42,6 +56,7 @@
 
 <script>
 import {
+  getCurrentProjectID,
   getCurrentUser,
   getCurrentWorkspaceId,
   listenGoBack,
@@ -50,7 +65,7 @@ import {
 import Crontab from "../cron/Crontab";
 import CrontabResult from "../cron/CrontabResult";
 import {cronValidate} from "@/common/js/cron";
-import ScheduleTaskNotification from "../../settings/workspace/components/ScheduleTaskNotification";
+import ScheduleTaskNotification from "../../project/notification/ScheduleTaskNotification";
 
 function defaultCustomValidate() {
   return {pass: true};
@@ -86,10 +101,9 @@ export default {
         callback(new Error(this.$t('commons.input_content')));
       } else if (!cronValidate(cronValue)) {
         callback(new Error(this.$t('schedule.cron_expression_format_error')));
+      }else if(!this.intervalValidate()){
+        callback(new Error(this.$t('schedule.cron_expression_interval_error')));
       }
-        // else if(!this.intervalShortValidate()) {
-        //   callback(new Error(this.$t('schedule.cron_expression_interval_short_error')));
-      // }
       else if (!customValidate.pass) {
         callback(new Error(customValidate.info));
       } else {
@@ -117,18 +131,17 @@ export default {
     initUserList() {
 
 
-      this.result = this.$get('user/ws/member/list/' + getCurrentWorkspaceId(), response => {
+      this.result = this.$get('/user/project/member/list', response => {
         this.scheduleReceiverOptions = response.data;
       });
 
     },
-    /* handleClick() {
-       if (this.activeName === "second") {
-           this.result = this.$get('/notice/search/message/'+this.testId, response => {
-             this.scheduleTask = response.data;
-           })
-       }
-     },*/
+    intervalValidate() {
+      if (this.getIntervalTime() < 1 * 60 * 1000) {
+        return false;
+      }
+      return true;
+    },
     buildParam() {
       let param = {};
       param.notices = this.tableData;
@@ -218,4 +231,15 @@ export default {
   margin-bottom: 10px;
 }
 
+.head {
+  border-bottom: 1px solid #7C3985;
+  color: #7C3985;
+  font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", Arial, sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ms-el-form-item__error >>> .el-form-item__error{
+  left: 100px;
+  padding-top: 0px;
+}
 </style>

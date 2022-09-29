@@ -8,7 +8,7 @@
           <el-input v-model="request.server" maxlength="300" show-word-limit size="small"/>
         </el-form-item>
         <el-form-item :label="$t('api_test.request.tcp.port')" prop="port" label-width="60px">
-          <el-input-number v-model="request.port" controls-position="right" :min="0" :max="65535" size="small"/>
+          <el-input v-model="request.port" size="small"/>
         </el-form-item>
         <el-form-item>
           <el-button size="small" type="primary" @click="stop" v-if="isStop">
@@ -35,15 +35,17 @@
         <ms-tcp-format-parameters :request="request" @callback="runDebug" ref="requestForm"/>
         <!-- TCP 请求返回数据 -->
         <p class="tip">{{ $t('api_test.definition.request.res_param') }} </p>
-        <ms-request-result-tail v-if="!loading"  :response="responseData" :currentProtocol="currentProtocol" ref="debugResult"/>
+        <ms-request-result-tail v-if="!loading" :response="responseData" :currentProtocol="currentProtocol"
+                                ref="debugResult"/>
       </div>
-      <ms-jmx-step :request="request" :response="responseData"/>
-
       <!-- 执行组件 -->
-      <ms-run :debug="true" :reportId="reportId" :isStop="isStop" :run-data="runData" @runRefresh="runRefresh" ref="runTest"/>
+      <ms-run :debug="true" :reportId="reportId" :isStop="isStop" :run-data="runData" @runRefresh="runRefresh"
+              ref="runTest"/>
     </el-card>
     <div v-if="scenario">
-      <el-button style="float: right;margin: 20px" type="primary" @click="handleCommand('save_as_api')"> {{ $t('commons.save') }}</el-button>
+      <el-button style="float: right;margin: 20px" type="primary" @click="handleCommand('save_as_api')">
+        {{ $t('commons.save') }}
+      </el-button>
     </div>
     <!-- 加载用例 -->
     <ms-api-case-list @refreshModule="refreshModule" :loaded="false" ref="caseList"/>
@@ -63,14 +65,13 @@ import {createComponent} from "../jmeter/components";
 import {REQ_METHOD} from "../../model/JsonData";
 import MsRequestResultTail from "../response/RequestResultTail";
 import MsTcpFormatParameters from "@/business/components/api/definition/components/request/tcp/TcpFormatParameters";
-import MsJmxStep from "../step/JmxStep";
 import MsApiCaseList from "../case/ApiCaseList";
 import {TYPE_TO_C} from "@/business/components/api/automation/scenario/Setting";
+import {mergeRequestDocumentData} from "@/business/components/api/definition/api-definition";
 
 export default {
   name: "ApiConfig",
   components: {
-    MsJmxStep,
     MsTcpFormatParameters,
     MsRequestResultTail, MsResponseResult, MsApiRequestForm, MsRequestMetric, MsResponseText, MsRun, MsApiCaseList
   },
@@ -130,6 +131,7 @@ export default {
   },
   methods: {
     handleCommand(e) {
+      mergeRequestDocumentData(this.request);
       if (e === "save_as") {
         this.saveAs();
       } else if (e === 'save_as_api') {
@@ -162,7 +164,9 @@ export default {
       this.responseData = data;
       this.loading = false;
       this.isStop = false;
-      this.$refs.debugResult.reload();
+      if (this.$refs.debugResult) {
+        this.$refs.debugResult.reload();
+      }
     },
     saveAsApi() {
       let obj = {request: this.request};

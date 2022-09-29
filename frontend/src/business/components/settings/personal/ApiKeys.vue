@@ -31,8 +31,8 @@
         </el-table-column>
         <el-table-column prop="secretKey" label="Secret Key">
           <template v-slot:default="scope">
-            <el-link type="primary" @click="showSecretKey(scope.row)" v-if="!apiKeysVisible">{{ $t('commons.show') }}</el-link>
-            <div v-if="apiKeysVisible" class="variable-combine">
+            <el-link type="primary" @click="showSecretKey(scope)" v-if="!scope.row.apiKeysVisible">{{ $t('commons.show') }}</el-link>
+            <div v-if="scope.row.apiKeysVisible" class="variable-combine">
               <div class="variable">{{scope.row.secretKey}}</div>
                 <el-tooltip :content="$t('api_test.copied')" manual v-model="scope.row.visible2" placement="top"
                             :visible-arrow="false">
@@ -66,21 +66,12 @@
         </el-table-column>
       </el-table>
     </el-card>
-<!--    <el-dialog title="Secret Key" :visible.sync="apiKeysVisible">
-      <div class="variable">
-        {{ currentRow.secretKey }}
-        <el-tooltip :content="$t('api_test.copied')" manual v-model="currentRow.visible2" placement="top"
-                    :visible-arrow="false">
-          <i class="el-icon-copy-document copy" @click="copy(currentRow, 'secretKey', 'visible2')"/>
-        </el-tooltip>
-      </div>
-    </el-dialog>-->
   </div>
 </template>
 
 <script>
 import MsDialogFooter from "../../common/components/MsDialogFooter";
-import {getCurrentUser} from "../../../../common/js/utils";
+import {getCurrentUser, operationConfirm} from "@/common/js/utils";
 import MsTableOperatorButton from "../../common/components/MsTableOperatorButton";
 import MsTableHeader from "../../common/components/MsTableHeader";
 
@@ -109,25 +100,21 @@ export default {
     },
     search() {
       this.result = this.$get("/user/key/info", response => {
+          response.data.forEach((d) => {
+            d.show = false;
+            d.apiKeysVisible = false;
+          })
           this.tableData = response.data;
-          this.tableData.forEach(d => d.show = false);
         }
       )
     },
     deleteApiKey(row) {
-      this.$confirm(this.$t('user.apikey_delete_confirm'), '', {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
+      operationConfirm(this.$t('user.apikey_delete_confirm'), () => {
         this.result = this.$get("/user/key/delete/" + row.id, response => {
           this.$success(this.$t('commons.delete_success'));
           this.search();
         })
-      }).catch(() => {
-        this.$info(this.$t('commons.delete_cancel'));
       });
-
     },
 
     createApiKey() {
@@ -149,10 +136,11 @@ export default {
         });
       }
     },
-    showSecretKey(row) {
-      this.apiKeysVisible = true;
+    showSecretKey(scope) {
+      scope.row.apiKeysVisible = true
       setTimeout(() => {
-        this.apiKeysVisible = false;
+        //this.$set(this.tableData[row.$index], "apiKeysVisible", false);
+        scope.row.apiKeysVisible = false
       }, 5000);
     },
     copy(row, key, visible) {

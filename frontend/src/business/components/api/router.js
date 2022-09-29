@@ -1,5 +1,3 @@
-
-
 export default {
   path: "/api",
   name: "api",
@@ -13,19 +11,9 @@ export default {
       name: 'fucHome',
       component: () => import('@/business/components/api/homepage/ApiTestHomePage'),
     },
-    // {
-    //   path: "project/:type",
-    //   name: "fucProject",
-    //   component: MsProject,
-    // },
-    {
-      path: "report/list/:testId",
-      name: "ApiReportList",
-      component: () => import('@/business/components/api/report/ApiReportList'),
-    },
     {
       path: "report/view/:reportId",
-      name: "ApiReportView",
+      name: "ApiReportViews",
       component: () => import('@/business/components/api/report/ApiReportView'),
     },
     {
@@ -40,12 +28,22 @@ export default {
 
     },
     {
-      path: "definition/:redirectID?/:dataType?/:dataSelectRange?",
+      path: "definition",
       name: "ApiDefinition",
       component: () => import('@/business/components/api/definition/ApiDefinition'),
     },
     {
-      path: "automation/:redirectID?/:dataType?/:dataSelectRange?",
+      path: "definition/:redirectID?/:dataType?/:dataSelectRange?/:projectId?/:type?/:workspaceId?",
+      name: "ApiDefinitionWithQuery",
+      component: () => import('@/business/components/api/definition/ApiDefinition'),
+    },
+    {
+      path: "automation/:redirectID?/:dataType?/:dataSelectRange?/:projectId?/:workspaceId?",
+      name: "ApiAutomationWithQuery",
+      component: () => import('@/business/components/api/automation/ApiAutomation'),
+    },
+    {
+      path: "automation",
       name: "ApiAutomation",
       component: () => import('@/business/components/api/automation/ApiAutomation'),
     },
@@ -58,6 +56,11 @@ export default {
       path: 'definition/edit/:definitionId',
       name: 'editCompleteContainer',
       component: () => import('@/business/components/api/definition/ApiDefinition'),
+    },
+    {
+      path: 'messagesettings',
+      name: 'MessageSettings',
+      component: () => import('@/business/components/project/notification/MessageSettings'),
     },
   ]
 };

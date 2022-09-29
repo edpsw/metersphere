@@ -4,17 +4,17 @@ import io.metersphere.api.dto.share.ApiDocumentInfoDTO;
 import io.metersphere.api.dto.share.ApiDocumentRequest;
 import io.metersphere.api.dto.share.ApiDocumentShareRequest;
 import io.metersphere.api.dto.share.ShareInfoDTO;
-import io.metersphere.api.service.ApiDefinitionService;
 import io.metersphere.api.service.ShareInfoService;
-import io.metersphere.base.domain.ApiDefinitionWithBLOBs;
+import io.metersphere.base.domain.ReportStatisticsWithBLOBs;
 import io.metersphere.base.domain.ShareInfo;
+import io.metersphere.commons.utils.Pager;
+import io.metersphere.commons.utils.SessionUtils;
+import io.metersphere.reportstatistics.dto.ReportStatisticsSaveRequest;
+import io.metersphere.reportstatistics.service.ReportStatisticsService;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * @author song.tianyang
@@ -27,12 +27,11 @@ public class ShareInfoController {
     @Resource
     ShareInfoService shareInfoService;
     @Resource
-    ApiDefinitionService apiDefinitionService;
+    ReportStatisticsService reportStatisticsService;
 
-    @PostMapping("/selectApiSimpleInfo")
-    public List<ApiDocumentInfoDTO> list(@RequestBody ApiDocumentRequest request) {
-        List<ApiDocumentInfoDTO> returnList = shareInfoService.findApiDocumentSimpleInfoByRequest(request);
-        return returnList;
+    @PostMapping("/selectApiInfoByParam/{goPage}/{pageSize}")
+    public Pager<List<ApiDocumentInfoDTO>> list(@RequestBody ApiDocumentRequest apiDocumentRequest, @PathVariable int goPage, @PathVariable int pageSize) {
+        return shareInfoService.selectApiInfoByParam(apiDocumentRequest, goPage, pageSize);
     }
 
     @GetMapping("/get/{id}")
@@ -40,42 +39,9 @@ public class ShareInfoController {
         return shareInfoService.get(id);
     }
 
-    @PostMapping("/selectApiInfoByParam")
-    public List<ApiDocumentInfoDTO> selectApiInfoByParam(@RequestBody ApiDocumentRequest request) {
-        List<ApiDocumentInfoDTO> returnList = new ArrayList<>();
-        if(request.getApiIdList() != null){
-            //要根据ids的顺序进行返回排序
-            List<ApiDefinitionWithBLOBs> apiModels = apiDefinitionService.getBLOBs(request.getApiIdList());
-            Map<String,ApiDefinitionWithBLOBs> apiModelMaps = apiModels.stream().collect(Collectors.toMap(ApiDefinitionWithBLOBs :: getId,a->a,(k1,k2)->k1));
-            for(String id : request.getApiIdList()){
-                ApiDefinitionWithBLOBs model = apiModelMaps.get(id);
-                if(model == null){
-                    model = new ApiDefinitionWithBLOBs();
-                    model.setId(id);
-                    model.setName(id);
-                }
-                ApiDocumentInfoDTO returnDTO = shareInfoService.conversionModelToDTO(model);
-                returnList.add(returnDTO);
-            }
-        }
-        return returnList;
-    }
-
-    @GetMapping("/selectApiInfoById/{id}")
-    public ApiDocumentInfoDTO selectApiInfoById(@PathVariable String id) {
-        ApiDefinitionWithBLOBs apiModel = apiDefinitionService.getBLOBs(id);
-        ApiDocumentInfoDTO returnDTO = new ApiDocumentInfoDTO();
-        try{
-            returnDTO = shareInfoService.conversionModelToDTO(apiModel);
-        }catch (Exception e){
-            e.printStackTrace();
-        }
-        returnDTO.setSelectedFlag(true);
-        return returnDTO;
-    }
-
     @PostMapping("/generateApiDocumentShareInfo")
     public ShareInfoDTO generateApiDocumentShareInfo(@RequestBody ApiDocumentShareRequest request) {
+        request.setCreateUserId(SessionUtils.getUserId());
         ShareInfo apiShare = shareInfoService.generateApiDocumentShareInfo(request);
         ShareInfoDTO returnDTO = shareInfoService.conversionShareInfoToDTO(apiShare);
         return returnDTO;
@@ -83,8 +49,14 @@ public class ShareInfoController {
 
     @PostMapping("/generateShareInfoWithExpired")
     public ShareInfoDTO generateShareInfo(@RequestBody ShareInfo request) {
+        request.setCreateUserId(SessionUtils.getUserId());
         ShareInfo apiShare = shareInfoService.createShareInfo(request);
         ShareInfoDTO returnDTO = shareInfoService.conversionShareInfoToDTO(apiShare);
         return returnDTO;
+    }
+
+    @PostMapping("/selectHistoryReportById")
+    public ReportStatisticsWithBLOBs selectById(@RequestBody ReportStatisticsSaveRequest request) {
+        return reportStatisticsService.selectById(request.getId());
     }
 }

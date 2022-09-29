@@ -19,11 +19,11 @@ export default {
       visible: false,
       options:  {
         title: {
-          text: '场景用例数',
+          text: this.$t('test_track.plan.test_plan_api_scenario_count'),
           subtext: '55',
           textAlign:'center',
           y: 'center',
-          padding: 40,
+          padding: 100,
           itemGap: 5,
           textStyle: {
             lineHeight: 30,
@@ -46,7 +46,7 @@ export default {
           data: [],
         },
         grid: {
-          left: 100
+          left: 200
         },
         xAxis: {
           type: 'value',

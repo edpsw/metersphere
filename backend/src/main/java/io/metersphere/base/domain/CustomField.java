@@ -1,8 +1,7 @@
 package io.metersphere.base.domain;
 
-import lombok.Data;
-
 import java.io.Serializable;
+import lombok.Data;
 
 @Data
 public class CustomField implements Serializable {
@@ -20,13 +19,15 @@ public class CustomField implements Serializable {
 
     private Boolean global;
 
-    private String workspaceId;
-
     private Long createTime;
 
     private Long updateTime;
 
     private String createUser;
+
+    private String projectId;
+
+    private Boolean thirdPart;
 
     private String options;
 

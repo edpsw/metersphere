@@ -3,9 +3,9 @@
     <el-row type="flex">
       <project-change :project-name="currentProject"/>
       <el-col :span="14">
-        <el-menu class="header-menu" :unique-opened="true" mode="horizontal" router :default-active='$route.path'>
+        <el-menu class="header-menu" :unique-opened="true" mode="horizontal" router :default-active='currentPath'>
 
-          <el-menu-item :index="'/api/home'">
+          <el-menu-item :index="'/api/home'" v-permission="['PROJECT_API_HOME:READ']">
             {{ $t("i18n.home") }}
           </el-menu-item>
           <el-menu-item :index="'/api/definition'" v-permission="['PROJECT_API_DEFINITION:READ']">
@@ -21,6 +21,10 @@
           </el-menu-item>
         </el-menu>
       </el-col>
+
+      <el-col :span="10">
+        <ms-header-right-menus/>
+      </el-col>
     </el-row>
   </div>
 
@@ -31,38 +35,31 @@
 import MsRecentList from "../../common/head/RecentList";
 import MsShowAll from "../../common/head/ShowAll";
 import MsCreateButton from "../../common/head/CreateButton";
-import SearchList from "@/business/components/common/head/SearchList";
 import ProjectChange from "@/business/components/common/head/ProjectSwitch";
-import {mapGetters} from "vuex";
+import MsHeaderRightMenus from "@/business/components/layout/HeaderRightMenus";
 
 export default {
   name: "MsApiHeaderMenus",
-  components: {SearchList, MsCreateButton, MsShowAll, MsRecentList, ProjectChange},
+  components: {MsCreateButton, MsShowAll, MsRecentList, ProjectChange, MsHeaderRightMenus},
   data() {
     return {
-      testRecent: {
-        title: this.$t('load_test.recent'),
-        url: "/api/recent/5",
-        index: function (item) {
-          return '/api/test/edit/' + item.id;
-        },
-        router: function (item) {
-          return {path: '/api/test/edit', query: {id: item.id}};
-        }
-      },
-      reportRecent: {
-        title: this.$t('report.recent'),
-        showTime: true,
-        url: "/api/report/recent/5",
-        index: function (item) {
-          return '/api/report/view/' + item.id;
-        }
-      },
-      isProjectActivation: true,
+      currentPath: '',
       isRouterAlive: true,
       apiTestProjectPath: '',
       currentProject: ''
     };
+  },
+  watch: {
+    '$route': {
+      immediate: true,
+      handler(to) {
+        let path = to.path.split("/", 4);
+        this.currentPath = '/' + path[1] + '/' + path[2];
+        if (path[3] === "report") {
+          this.currentPath = this.currentPath + '/' + path[3];
+        }
+      }
+    }
   },
   methods: {
     reload() {
@@ -98,5 +95,13 @@ export default {
 
 .deactivation >>> .el-submenu__title {
   border-bottom: white !important;
+}
+
+.el-menu-item {
+  padding: 0 10px;
+}
+
+.align-right {
+  float: right;
 }
 </style>

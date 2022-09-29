@@ -5,33 +5,43 @@
       <node-tree class="node-tree"
                  v-loading="result.loading"
                  @nodeSelectEvent="nodeChange"
+                 local-suffix="test_case"
+                 default-label="未规划用例"
                  :tree-nodes="treeNodes"
                  ref="nodeTree"/>
     </template>
     <template v-slot:main>
       <ms-tab-button
-        :active-dom.sync="activeDom"
+        :active-dom="activeDom"
+        @update:activeDom="updateActiveDom"
         :left-tip="$t('test_track.case.list')"
         :left-content="$t('test_track.case.list')"
         :right-tip="$t('test_track.case.minder')"
         :right-content="$t('test_track.case.minder')"
         :middle-button-enable="false">
+
         <functional-test-case-list
           class="table-list"
           v-if="activeDom === 'left'"
-          @openTestCaseRelevanceDialog="openTestCaseRelevanceDialog"
-          @refresh="refresh"
-          @setCondition="setCondition"
           :plan-id="planId"
+          :plan-status="planStatus "
           :clickType="clickType"
           :select-node-ids="selectNodeIds"
+          :version-enable="versionEnable"
+          @refresh="refresh"
+          @refreshTree="refreshTree"
+          @setCondition="setCondition"
+          @search="refreshTreeByCaseFilter"
+          @openTestCaseRelevanceDialog="openTestCaseRelevanceDialog"
           ref="testPlanTestCaseList"/>
         <test-plan-minder
           :tree-nodes="treeNodes"
           :project-id="projectId"
           :condition="condition"
           :plan-id="planId"
+          :plan-status="planStatus "
           v-if="activeDom === 'right'"
+          ref="minder"
         />
       </ms-tab-button>
     </template>
@@ -39,7 +49,12 @@
     <test-plan-functional-relevance
       @refresh="refresh"
       :plan-id="planId"
+      :version-enable="versionEnable"
       ref="testCaseRelevance"/>
+
+    <is-change-confirm
+      @confirm="changeConfirm"
+      ref="isChangeConfirm"/>
   </ms-test-plan-common-component>
 
 </template>
@@ -53,10 +68,15 @@ import TestPlanMinder from "@/business/components/track/common/minder/TestPlanMi
 import {getCurrentProjectID} from "@/common/js/utils";
 import TestPlanFunctionalRelevance
   from "@/business/components/track/plan/view/comonents/functional/TestPlanFunctionalRelevance";
+import IsChangeConfirm from "@/business/components/common/components/IsChangeConfirm";
+import {openMinderConfirm, saveMinderConfirm} from "@/business/components/track/common/minder/minderUtils";
+import {getTestPlanCaseNodesByCaseFilter} from "@/network/testCase";
+const requireComponent = require.context('@/business/components/xpack/', true, /\.vue$/);
 
 export default {
   name: "TestPlanFunctional",
   components: {
+    IsChangeConfirm,
     TestPlanFunctionalRelevance,
     TestPlanMinder,
     MsTabButton,
@@ -71,13 +91,18 @@ export default {
       treeNodes: [],
       activeDom: 'left',
       selectNode: {},
-      condition: {}
+      condition: {},
+      tmpActiveDom: null,
+      tmpPath: null,
+      currentNode: null
     };
   },
   props: [
     'planId',
     'redirectCharType',
-    'clickType'
+    'clickType',
+    'versionEnable',
+    'planStatus'
   ],
   mounted() {
     this.initData();
@@ -88,6 +113,7 @@ export default {
     },
   },
   activated() {
+    this.clearSelectNode();
     this.initData();
     this.openTestCaseEdit(this.$route.path);
   },
@@ -96,15 +122,22 @@ export default {
       this.openTestCaseEdit(to.path);
     },
     planId() {
+      this.clearSelectNode();
       this.initData();
     }
   },
   methods: {
     refresh() {
-      this.selectNodeIds = [];
-      this.$store.commit('setTestPlanViewSelectNode', {});
+      this.clearSelectNode();
       this.$refs.testCaseRelevance.search();
       this.getNodeTreeByPlanId();
+    },
+    refreshTree() {
+      this.getNodeTreeByPlanId();
+    },
+    clearSelectNode() {
+      this.selectNodeIds = [];
+      this.$store.commit('setTestPlanViewSelectNode', {});
     },
     initData() {
       this.getNodeTreeByPlanId();
@@ -112,24 +145,37 @@ export default {
     openTestCaseRelevanceDialog() {
       this.$refs.testCaseRelevance.open();
     },
+    refreshTreeByCaseFilter() {
+      this.getNodeTreeByPlanId(this.condition);
+    },
     nodeChange(node, nodeIds, pNodes) {
       this.selectNodeIds = nodeIds;
       this.$store.commit('setTestPlanViewSelectNode', node);
+      this.currentNode = node;
       // 切换node后，重置分页数
       if (this.$refs.testPlanTestCaseList) {
         this.$refs.testPlanTestCaseList.currentPage = 1;
         this.$refs.testPlanTestCaseList.pageSize = 10;
       }
     },
-    getNodeTreeByPlanId() {
+    getNodeTreeByPlanId(condition) {
       if (this.planId) {
-        let url = "/case/node/list/plan/" + this.planId;
         if (this.clickType) {
-          url = url + "/" + this.clickType;
+          this.result = this.$get('/' + this.clickType, response => {
+            this.treeNodes = response.data;
+            this.setCurrentKey();
+          });
+        } else {
+          this.result = getTestPlanCaseNodesByCaseFilter(this.planId, condition, (data) => {
+            this.treeNodes = data;
+            this.setCurrentKey();
+          });
         }
-        this.result = this.$get(url, response => {
-          this.treeNodes = response.data;
-        });
+      }
+    },
+    setCurrentKey() {
+      if (this.$refs.nodeTree) {
+        this.$refs.nodeTree.setCurrentKey(this.currentNode);
       }
     },
     setCondition(data) {
@@ -147,13 +193,29 @@ export default {
         });
       }
     },
+    updateActiveDom(activeDom) {
+      openMinderConfirm(this, activeDom);
+    },
+    changeConfirm(isSave) {
+      saveMinderConfirm(this, isSave);
+    },
+    handleBeforeRouteLeave(to) {
+      if (this.$store.state.isTestCaseMinderChanged) {
+        if (this.planStatus !== 'Archived') {
+          this.$refs.isChangeConfirm.open();
+          this.tmpPath = to.path;
+          return false;
+        } else {
+          return true;
+        }
+      } else {
+        return true;
+      }
+    }
   }
 };
 
 </script>
 
 <style scoped>
-/deep/ .el-button-group > .el-button:first-child {
-  padding: 4px 1px !important;
-}
 </style>

@@ -3,11 +3,13 @@
   <test-case-relevance-base
     @setProject="setProject"
     @save="saveCaseRelevance"
-    width="60%"
     ref="baseRelevance">
 
     <test-case-relate-load-list
       :project-id="projectId"
+      :not-in-ids="notInIds"
+      :versionEnable="versionEnable"
+      @selectCountChange="setSelectCounts"
       ref="apiCaseList"/>
 
   </test-case-relevance-base>
@@ -42,6 +44,14 @@ export default {
   props: {
     caseId: {
       type: String
+    },
+    versionEnable: {
+      type: Boolean,
+      default: false
+    },
+    notInIds: {
+      type: Array,
+      default: null
     }
   },
   methods: {
@@ -71,6 +81,9 @@ export default {
         this.$refs.baseRelevance.close();
       });
     },
+    setSelectCounts(data) {
+      this.$refs.baseRelevance.selectCounts = data;
+    }
   }
 }
 </script>

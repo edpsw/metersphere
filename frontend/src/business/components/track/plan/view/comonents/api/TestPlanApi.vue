@@ -9,6 +9,7 @@
         @refreshTable="refreshTable"
         @setModuleOptions="setModuleOptions"
         :plan-id="planId"
+        :plan-status="planStatus"
         :is-read-only="true"
         :redirectCharType="redirectCharType"
         ref="apiNodeTree">
@@ -27,6 +28,7 @@
         @setModuleOptions="setModuleOptions"
         :is-read-only="true"
         :plan-id="planId"
+        :plan-status="planStatus"
         ref="scenarioNodeTree">
         <template v-slot:header>
           <div class="model-change-radio">
@@ -47,8 +49,10 @@
         :select-node-ids="selectNodeIds"
         :trash-enable="trashEnable"
         :is-case-relevance="true"
+        :version-enable="versionEnable"
         :model="'plan'"
         :plan-id="planId"
+        :plan-status="planStatus"
         :clickType="clickType"
         @refresh="refreshTree"
         @relevanceCase="openTestCaseRelevanceDialog"
@@ -58,7 +62,9 @@
         v-if="model === 'scenario'"
         :select-node-ids="selectNodeIds"
         :trash-enable="trashEnable"
+        :version-enable="versionEnable"
         :plan-id="planId"
+        :plan-status="planStatus"
         :clickType="clickType"
         @refresh="refreshTree"
         @relevanceCase="openTestCaseRelevanceDialog"
@@ -70,12 +76,14 @@
       @refresh="refresh"
       :plan-id="planId"
       :model="model"
+      :version-enable="versionEnable"
       ref="apiCaseRelevance"/>
 
     <test-case-scenario-relevance
       @refresh="refresh"
       :plan-id="planId"
       :model="model"
+      :version-enable="versionEnable"
       ref="scenarioCaseRelevance"/>
 
   </ms-test-plan-common-component>
@@ -122,7 +130,9 @@
       props: [
         'planId',
         'redirectCharType',
-        'clickType'
+        'clickType',
+        'versionEnable',
+        'planStatus'
       ],
       mounted() {
         this.checkRedirectCharType();

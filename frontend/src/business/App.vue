@@ -1,43 +1,61 @@
 <template>
-  <el-col v-if="auth">
-    <el-row v-if="licenseHeader != null">
-      <el-col>
-        <component :is="licenseHeader"></component>
-      </el-col>
-    </el-row>
-    <el-row id="header-top" type="flex" justify="space-between" align="middle" v-if="isMenuShow">
-      <el-col :span="12">
-        <img :src="'/display/file/logo'" class="logo" alt="">
-        <ms-top-menus :color="color"/>
-      </el-col>
+  <el-container v-if="auth">
+    <el-header :height="headerHeight" class="ms-header-w">
+      <el-row v-if="licenseHeader != null">
+        <el-col>
+          <component :is="licenseHeader"></component>
+        </el-col>
+      </el-row>
+      <el-row v-if="changePassword">
+        <el-col>
+          <div class="change-password-tip">
+            {{ $t('commons.change_password_tips') }}
+          </div>
+        </el-col>
+      </el-row>
+    </el-header>
 
-      <el-col :span="12" class="align-right">
-        <!-- float right -->
-        <ms-user ref="headerUser"/>
-        <ms-language-switch :color="color"/>
-        <ms-header-org-ws :color="color"/>
-        <ms-task-center :color="color"/>
-        <ms-notification :color="color"/>
-      </el-col>
-    </el-row>
-
-    <ms-view v-if="isShow"/>
-
-    <theme/>
-  </el-col>
+    <el-container>
+      <el-aside
+        :class="isCollapse ? 'ms-aside': 'ms-aside-collapse-open'"
+        class="ms-left-aside"
+        :style="isFixed ? 'opacity:100%; position: relative;z-index: 666;': 'opacity: 95%;position: fixed'"
+        @mouseenter.native="collapseOpen"
+        @mouseleave.native="collapseClose">
+        <ms-aside-header :sideTheme="sideTheme" :isCollapse="isCollapse"/>
+        <ms-aside-menus :sideTheme="sideTheme" :color="color" :isCollapse="isCollapse"/>
+        <div class="ms-header-fixed" v-show="!isCollapse">
+          <svg-icon iconClass="pushpin" class-name="ms-menu-pin" v-if="isFixed" @click.native="fixedChange(false)"/>
+          <svg-icon iconClass="unpin" class-name="ms-menu-pin" v-else @click.native="fixedChange(true)"/>
+        </div>
+      </el-aside>
+      <el-main class="container">
+        <div :class="isFixed ? 'ms-left-fixed': 'ms-aside-left'"/>
+        <div :class="isFixed ? 'ms-right-fixed': 'ms-main-view ms-aside-right'">
+          <ms-view v-if="isShow"/>
+        </div>
+      </el-main>
+      <theme/>
+    </el-container>
+  </el-container>
 </template>
 
 <script>
-import MsTopMenus from "./components/common/head/HeaderTopMenus";
+import MsAsideMenus from "./components/layout/AsideMenus";
+import MsAsideHeader from "./components/layout/AsideHeader";
+import MsAsideFooter from "./components/layout/AsideFooter";
 import MsView from "./components/common/router/View";
-import MsUser from "./components/common/head/HeaderUser";
-import MsHeaderOrgWs from "./components/common/head/HeaderOrgWs";
-import MsLanguageSwitch from "./components/common/head/LanguageSwitch";
-import {hasLicense, saveLocalStorage, setColor, setDefaultTheme} from "@/common/js/utils";
+import {
+  hasLicense,
+  saveLocalStorage,
+  setAsideColor,
+  setColor,
+  setCustomizeColor,
+  setDefaultTheme,
+  setLightColor
+} from "@/common/js/utils";
 import {registerRequestHeaders} from "@/common/js/ajax";
 import {ORIGIN_COLOR} from "@/common/js/constants";
-import MsTaskCenter from "@/business/components/task/TaskCenter";
-import MsNotification from "@/business/components/notice/Notification";
 
 const requireComponent = require.context('@/business/components/xpack/', true, /\.vue$/);
 const header = requireComponent.keys().length > 0 ? requireComponent("./license/LicenseMessage.vue") : {};
@@ -58,31 +76,41 @@ export default {
       sessionTimer: null,
       isShow: true,
       isMenuShow: true,
+      isCollapse: true,
+      headerHeight: "0px",
+      isFixed: false,
+      sideTheme: "",
     };
   },
+  computed: {
+    changePassword() {
+      return JSON.parse(sessionStorage.getItem("changePassword"));
+    },
+  },
   created() {
+    if (this.licenseHeader != null || this.changePassword) {
+      this.headerHeight = "30px";
+    }
     this.initSessionTimer();
     if (!hasLicense()) {
       setDefaultTheme();
+      setCustomizeColor();
       this.color = ORIGIN_COLOR;
     } else {
-      //
       this.$get('/system/theme', res => {
         this.color = res.data ? res.data : ORIGIN_COLOR;
         setColor(this.color, this.color, this.color, this.color, this.color);
         this.$store.commit('setTheme', res.data);
       });
+      this.getDisplayInfo();
     }
-    // OIDC redirect 之后不跳转
-    if (window.location.href.endsWith('#/refresh')) {
-      window.location.replace("/#/setting/personsetting");
-      setTimeout(() => {
-        window.location.reload();
-      }, 200);
-    }
+
     window.addEventListener("beforeunload", () => {
       localStorage.setItem("store", JSON.stringify(this.$store.state));
     });
+    this.isFixed = localStorage.getItem('app-fixed') === 'true' || false;
+    this.isCollapse = !this.isFixed;
+    this.$store.commit('setAppFixed', this.isFixed);
   },
   beforeCreate() {
     this.$get("/isLogin").then(response => {
@@ -100,7 +128,10 @@ export default {
           display.default.showHome(this);
         }
 
-        //
+        if (window.location.href.endsWith('/#/login')) {
+          window.location.replace("/#/setting/personsetting");
+        }
+
         if (localStorage.getItem("store")) {
           this.$store.replaceState(Object.assign({}, this.$store.state, JSON.parse(localStorage.getItem("store"))));
           this.$get("/project/listAll", response => {
@@ -125,20 +156,54 @@ export default {
     };
   },
   methods: {
+    getDisplayInfo() {
+      this.result = this.$get("/display/info", response => {
+        let theme = "";
+        if (response.data && response.data[5] && response.data[5].paramValue) {
+          theme = response.data[5].paramValue;
+        }
+        if (response.data && response.data[7] && response.data[7].paramValue) {
+          this.sideTheme = response.data[7].paramValue;
+        }
+        this.setAsideTheme(theme);
+      });
+    },
+    setAsideTheme(theme) {
+      switch (this.sideTheme) {
+        case "theme-light":
+          setLightColor();
+          break;
+        case "theme-default":
+          setAsideColor();
+          break;
+        default:
+          setCustomizeColor(theme);
+          break;
+      }
+    },
+    fixedChange(isFixed) {
+      this.isFixed = isFixed;
+      if (this.isFixed) {
+        this.isCollapse = false;
+      }
+      localStorage.removeItem('app-fixed');
+      localStorage.setItem('app-fixed', this.isFixed);
+      this.$store.commit('setAppFixed', this.isFixed);
+    },
+    collapseOpen() {
+      this.isCollapse = false;
+    },
+    collapseClose() {
+      if (!this.isFixed) {
+        this.isCollapse = true;
+      }
+    },
     initSessionTimer() {
-      this.$get('/system/timeout')
-        .then(response => {
-          let timeout = response.data.data;
-          this.initTimer(timeout);
-          window.addEventListener('click', () => {
-            this.currentTime(timeout);
-          });
-        })
-        .catch(() => {
-        });
+      let timeout = 1800;
+      this.initTimer(timeout);
     },
     initTimer(timeout) {
-      setTimeout(() => {
+      setInterval(() => {
         this.$get("/isLogin")
           .then(response => {
             if (!response.data.success) {
@@ -148,16 +213,7 @@ export default {
           .catch(() => {
             window.location.href = "/login";
           });
-      }, 1000 * (timeout + 10));
-    },
-    currentTime(timeout) { // 超时退出
-      if (timer) {
-        window.clearTimeout(timer);
-        timer = null;
-      }
-      timer = window.setTimeout(() => {
-        this.$refs.headerUser.logout();
-      }, 1000 * timeout);
+      }, timeout * 1000);
     },
     reload() {
       // 先隐藏
@@ -193,13 +249,10 @@ export default {
     }
   },
   components: {
-    MsNotification,
-    MsTaskCenter,
-    MsLanguageSwitch,
-    MsUser,
     MsView,
-    MsTopMenus,
-    MsHeaderOrgWs,
+    MsAsideMenus,
+    MsAsideHeader,
+    MsAsideFooter,
     "LicenseMessage": header.default,
     "Theme": theme.default
   }
@@ -208,58 +261,107 @@ export default {
 
 
 <style scoped>
-#header-top {
-  width: 100%;
-  padding: 0 10px;
-  background-color: var(--color);
-  color: rgb(245, 245, 245);
-  font-size: 14px;
-  height: 40px;
+.ms-aside {
+  z-index: 666;
+  width: var(--asideWidth) !important;
+  background-color: var(--aside_color);
+  color: var(--font_color);
+  opacity: 100%;
+  height: calc(100vh);
 }
 
-.logo {
-  width: 156px;
-  margin-bottom: 0;
-  border: 0;
-  margin-right: 20px;
-  display: inline-block;
-  line-height: 37px;
-  background-size: 156px 30px;
-  box-sizing: border-box;
-  height: 37px;
-  background-repeat: no-repeat;
-  background-position: 50% center;
+.ms-aside-collapse-open {
+  width: var(--asideOpenWidth) !important;
+  background-color: var(--aside_color);
+  color: var(--font_color);
+  opacity: 95%;
+  z-index: 9999;
+  border-right: 1px #DCDFE6 solid;
+  border-radius: 2px;
 }
 
-.menus > * {
-  color: inherit;
-  padding: 0;
-  max-width: 180px;
-  white-space: pre;
-  cursor: pointer;
-  line-height: 40px;
-}
-
-.header-top-menus {
-  display: inline-block;
-  border: 0;
-  position: absolute;
-}
-
-.menus > a {
-  padding-right: 15px;
-  text-decoration: none;
-}
-
-.align-right {
-  float: right;
-}
-
-.license-head {
+.change-password-tip {
   height: 30px;
-  background: #BA331B;
+  background: #e6a23c;
   text-align: center;
   line-height: 30px;
   color: white;
+}
+
+.ms-left-aside {
+  position: fixed;
+  left: 0;
+  height: calc(100vh);
+  background-color: var(--aside_color);
+  padding-left: 0px;
+  overflow: hidden;
+}
+
+.ms-main-view {
+  margin-left: var(--asideWidth);
+}
+
+.container {
+  padding: 0px !important;
+  height: calc(100vh);
+}
+
+.ms-aside-left {
+  float: left;
+  width: var(--asideWidth);
+  height: calc(100vh);
+  background-color: var(--aside_color);
+}
+
+.ms-left-fixed {
+  width: 0px;
+  border-right: 0px;
+}
+
+.ms-aside-right {
+  flex: 1;
+  height: calc(100vh);
+}
+
+.ms-right-fixed {
+  flex: 0;
+  margin-left: 0px;
+}
+
+.ms-header-w {
+  width: 100%;
+  padding: 0px;
+}
+
+.ms-header-fixed {
+  margin-left: var(--asideOpenMargin);
+  position: absolute;
+  bottom: 20px;
+}
+
+.checkBox-input >>> .el-checkbox__inner {
+  border-color: #fff;
+}
+
+.checkBox-input >>> .el-checkbox__inner::after {
+  top: 4px;
+  left: 4px;
+  width: 3px;
+  height: 3px;
+  border-radius: 100%;
+  background-color: #fff !important;
+  content: "";
+  position: absolute;
+  border-color: #fff !important;
+}
+
+.ms-menu-pin {
+  color: var(--font_color);
+  fill: currentColor;
+  font-size: 20px;
+}
+
+.ms-menu-pin:hover {
+  cursor: pointer;
 }
 </style>

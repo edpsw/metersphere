@@ -13,9 +13,9 @@ import io.metersphere.api.dto.scenario.KeyValue;
 import io.metersphere.api.dto.scenario.request.RequestType;
 import io.metersphere.api.service.EsbApiParamService;
 import io.metersphere.base.domain.ApiDefinitionWithBLOBs;
-import io.metersphere.base.domain.ApiModule;
 import io.metersphere.base.domain.EsbApiParamsWithBLOBs;
 import io.metersphere.commons.utils.CommonBeanFactory;
+import io.metersphere.commons.utils.LogUtil;
 import io.metersphere.commons.utils.SessionUtils;
 import io.swagger.models.Model;
 import org.apache.commons.lang3.StringUtils;
@@ -63,7 +63,7 @@ public class ESBParser extends EsbAbstractParser {
             wb.write(out);
             wb.close();
         } catch (IOException e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         } finally {
             if (out != null) {
                 try {
@@ -107,13 +107,13 @@ public class ESBParser extends EsbAbstractParser {
 
             String name = "";
             if (colorIndex == IndexedColors.LIGHT_GREEN.getIndex()) {
-                style.setFillForegroundColor(new XSSFColor(new java.awt.Color(204, 255, 204)));
+                style.setFillForegroundColor(new XSSFColor(new java.awt.Color(204, 255, 204), null));
                 name = "green";
             } else if (colorIndex == IndexedColors.ORCHID.getIndex()) {
-                style.setFillForegroundColor(new XSSFColor(new java.awt.Color(151, 50, 101)));
+                style.setFillForegroundColor(new XSSFColor(new java.awt.Color(151, 50, 101), null));
                 name = "pop";
             } else if (colorIndex == IndexedColors.YELLOW.getIndex()) {
-                style.setFillForegroundColor(new XSSFColor(new java.awt.Color(255, 255, 153)));
+                style.setFillForegroundColor(new XSSFColor(new java.awt.Color(255, 255, 153), null));
                 name = "yellow";
             } else {
                 name = "default";
@@ -501,34 +501,27 @@ public class ESBParser extends EsbAbstractParser {
 
     private String getCellValue(Cell cell) {
         String returnCellValue = "";
-        int cellType = cell.getCellType();
-        switch (cellType) {
-            case Cell.CELL_TYPE_BLANK:
-                returnCellValue = "";
-                break;
-            case Cell.CELL_TYPE_BOOLEAN:
-                returnCellValue = String.valueOf(cell.getBooleanCellValue());
-                break;
-            case Cell.CELL_TYPE_ERROR:
-                returnCellValue = "";
-                break;
-            case Cell.CELL_TYPE_NUMERIC:
+        if (cell.getCellType() == CellType.BLANK) {
+            returnCellValue = "";
+        } else if (cell.getCellType() == CellType.BOOLEAN) {
+            returnCellValue = String.valueOf(cell.getBooleanCellValue());
+        } else if (cell.getCellType() == CellType.ERROR) {
+            returnCellValue = "";
+        } else if (cell.getCellType() == CellType.NUMERIC) {
+            returnCellValue = getValueOfNumericCell(cell);
+        } else if (cell.getCellType() == CellType.FORMULA) {
+            try {
                 returnCellValue = getValueOfNumericCell(cell);
-                break;
-            case Cell.CELL_TYPE_FORMULA:
+            } catch (IllegalStateException e) {
                 try {
-                    returnCellValue = getValueOfNumericCell(cell);
-                } catch (IllegalStateException e) {
-                    try {
-                        returnCellValue = cell.getRichStringCellValue().toString();
-                    } catch (IllegalStateException e2) {
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
+                    returnCellValue = cell.getRichStringCellValue().toString();
+                } catch (IllegalStateException e2) {
                 }
-                break;
-            default:
-                returnCellValue = cell.getRichStringCellValue().getString();
+            } catch (Exception e) {
+                LogUtil.error(e);
+            }
+        } else {
+            returnCellValue = cell.getRichStringCellValue().getString();
         }
         if (returnCellValue == null) {
             returnCellValue = "";
@@ -579,7 +572,9 @@ public class ESBParser extends EsbAbstractParser {
         ApiDefinitionImport resultModel = new ApiDefinitionImport();
         List<ApiDefinitionWithBLOBs> apiDataList = new ArrayList<>();
 
+/*
         ApiModule parentNode = ApiDefinitionImportUtil.getSelectModule(importRequest.getModuleId());
+*/
         EsbSheetDataStruct headSheetData = esbExcelDataStruct.getHeadData();
         List<EsbSheetDataStruct> interfaceDataList = esbExcelDataStruct.getInterfaceList();
         List<String> savedNames = new ArrayList<>();
@@ -602,8 +597,8 @@ public class ESBParser extends EsbAbstractParser {
             apiDefinition.setMethod("ESB");
             apiDefinition.setId(apiId);
             apiDefinition.setProjectId(this.projectId);
-            apiDefinition.setModuleId(importRequest.getModuleId());
-            apiDefinition.setModulePath(importRequest.getModulePath());
+           /* apiDefinition.setModuleId(importRequest.getModuleId());
+            apiDefinition.setModulePath(importRequest.getModulePath());*/
             apiDefinition.setRequest(genTCPSampler(esbSendRequest, reqDataStructStr));
             if (StringUtils.equalsIgnoreCase("schedule", importRequest.getType())) {
                 apiDefinition.setUserId(importRequest.getUserId());
@@ -611,7 +606,7 @@ public class ESBParser extends EsbAbstractParser {
                 apiDefinition.setUserId(SessionUtils.getUserId());
             }
             apiDefinition.setProtocol(RequestType.TCP);
-            buildModule(parentNode, apiDefinition, null);
+            /*  buildModule(parentNode, apiDefinition, null);*/
             apiDataList.add(apiDefinition);
 
             EsbApiParamsWithBLOBs apiParams = new EsbApiParamsWithBLOBs();

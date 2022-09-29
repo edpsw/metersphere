@@ -66,7 +66,7 @@
 
 <script>
 import MsTag from "@/business/components/common/components/MsTag";
-import {getCurrentProjectID} from "@/common/js/utils";
+import {getCurrentProjectID, operationConfirm} from "@/common/js/utils";
 import MsTable from "@/business/components/common/components/table/MsTable";
 import MsTableColumn from "@/business/components/common/components/table/MsTableColumn";
 export default {
@@ -110,9 +110,7 @@ export default {
         {text: this.$t('api_test.home_page.running_task_list.swagger_schedule'), value: 'SWAGGER_IMPORT'},
       ];
     } else {
-      this.typeFilters = [
-        {text: this.$t('api_test.home_page.running_task_list.test_plan_schedule'), value: 'TEST_PLAN_TEST'}
-      ];
+      this.typeFilters = null;
     }
   },
   methods: {
@@ -134,13 +132,8 @@ export default {
     closeTaskConfirm(row){
       let flag = row.taskStatus;
       row.taskStatus = !flag; //保持switch点击前的状态
-      this.$confirm(this.$t('api_test.home_page.running_task_list.confirm.close_title'), this.$t('commons.prompt'), {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
+      operationConfirm(this.$t('api_test.home_page.running_task_list.confirm.close_title'), () => {
         this.updateTask(row);
-      }).catch(() => {
       });
     },
 
@@ -167,9 +160,6 @@ export default {
   activated() {
     this.search();
   },
-  handleStatus(scope) {
-    // console.log(scope.row.userId)
-  }
   }
 </script>
 

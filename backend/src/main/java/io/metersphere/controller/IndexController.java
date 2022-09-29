@@ -32,8 +32,28 @@ public class IndexController {
         return "document.html";
     }
 
+    @GetMapping(value = "/echartPic")
+    public String echartPic() {
+        return "share-enterprise-report.html";
+    }
+
     @GetMapping(value = "/sharePlanReport")
     public String shareRedirect() {
-        return  "share-plan-report.html";
+        return "share-plan-report.html";
+    }
+
+    @GetMapping(value = "/sharePerformanceReport")
+    public String sharePerformanceRedirect() {
+        return "share-performance-report.html";
+    }
+
+    @GetMapping(value = "/shareApiReport")
+    public String shareApiRedirect() {
+        return "share-api-report.html";
+    }
+
+    @GetMapping(value = "/shareUiReport")
+    public String shareUiRedirect() {
+        return "share-ui-report.html";
     }
 }

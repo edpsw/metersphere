@@ -1,5 +1,7 @@
 package io.metersphere.api.controller;
 
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import io.metersphere.api.dto.ApiTestEnvironmentDTO;
@@ -8,11 +10,14 @@ import io.metersphere.api.service.ApiTestEnvironmentService;
 import io.metersphere.api.service.CommandService;
 import io.metersphere.base.domain.ApiTestEnvironmentWithBLOBs;
 import io.metersphere.commons.constants.OperLogConstants;
+import io.metersphere.commons.constants.OperLogModule;
+import io.metersphere.commons.exception.MSException;
+import io.metersphere.commons.utils.LogUtil;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
 import io.metersphere.controller.request.EnvironmentRequest;
+import io.metersphere.i18n.Translator;
 import io.metersphere.log.annotation.MsAuditLog;
-import io.metersphere.service.CheckPermissionService;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,13 +31,10 @@ public class ApiTestEnvironmentController {
     @Resource
     ApiTestEnvironmentService apiTestEnvironmentService;
     @Resource
-    private CheckPermissionService checkPermissionService;
-    @Resource
     private CommandService commandService;
 
     @GetMapping("/list/{projectId}")
     public List<ApiTestEnvironmentWithBLOBs> list(@PathVariable String projectId) {
-//        checkPermissionService.checkProjectOwner(projectId);
         return apiTestEnvironmentService.list(projectId);
     }
 
@@ -46,10 +48,6 @@ public class ApiTestEnvironmentController {
      */
     @PostMapping("/list/{goPage}/{pageSize}")
     public Pager<List<ApiTestEnvironmentWithBLOBs>> listByCondition(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody EnvironmentRequest environmentRequest) {
-//        List<String> projectIds = environmentRequest.getProjectIds();
-//        for (String projectId : projectIds) {
-//            checkPermissionService.checkProjectOwner(projectId);
-//        }
         Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
         return PageUtils.setPageInfo(page, apiTestEnvironmentService.listByConditions(environmentRequest));
     }
@@ -66,19 +64,50 @@ public class ApiTestEnvironmentController {
     }
 
     @PostMapping("/add")
-    @MsAuditLog(module = "project_environment_setting", type = OperLogConstants.CREATE, content = "#msClass.getLogDetails(#apiTestEnvironmentWithBLOBs.id)", msClass = ApiTestEnvironmentService.class)
-    public String create(@RequestPart("request") ApiTestEnvironmentDTO apiTestEnvironmentWithBLOBs, @RequestPart(value = "files", required = false) List<MultipartFile> sslFiles) {
-        return apiTestEnvironmentService.add(apiTestEnvironmentWithBLOBs, sslFiles);
+    @MsAuditLog(module = OperLogModule.PROJECT_ENVIRONMENT_SETTING, type = OperLogConstants.CREATE, content = "#msClass.getLogDetails(#apiTestEnvironmentWithBLOBs.id)", msClass = ApiTestEnvironmentService.class)
+    public String create(@RequestPart("request") ApiTestEnvironmentDTO apiTestEnvironmentWithBLOBs, @RequestPart(value = "files", required = false) List<MultipartFile> sslFiles,
+                         @RequestPart(value = "variablesFiles", required = false) List<MultipartFile> variableFile) {
+        checkParams(apiTestEnvironmentWithBLOBs);
+        return apiTestEnvironmentService.add(apiTestEnvironmentWithBLOBs, sslFiles, variableFile);
     }
 
     @PostMapping(value = "/update")
-    @MsAuditLog(module = "project_environment_setting", type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#apiTestEnvironment.id)", content = "#msClass.getLogDetails(#apiTestEnvironment.id)", msClass = ApiTestEnvironmentService.class)
-    public void update(@RequestPart("request") ApiTestEnvironmentDTO apiTestEnvironment, @RequestPart(value = "files", required = false) List<MultipartFile> sslFiles) {
-        apiTestEnvironmentService.update(apiTestEnvironment, sslFiles);
+    @MsAuditLog(module = OperLogModule.PROJECT_ENVIRONMENT_SETTING, type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#apiTestEnvironment.id)", content = "#msClass.getLogDetails(#apiTestEnvironment.id)", msClass = ApiTestEnvironmentService.class)
+    public void update(@RequestPart("request") ApiTestEnvironmentDTO apiTestEnvironment, @RequestPart(value = "files", required = false) List<MultipartFile> sslFiles,
+                       @RequestPart(value = "variablesFiles", required = false) List<MultipartFile> variableFile) {
+        checkParams(apiTestEnvironment);
+        apiTestEnvironmentService.update(apiTestEnvironment, sslFiles, variableFile);
+    }
+
+    private void checkParams(ApiTestEnvironmentDTO apiTestEnvironment) {
+        try {
+            JSONObject json = JSONObject.parseObject(apiTestEnvironment.getConfig());
+            JSONObject commonConfig = json.getJSONObject("commonConfig");
+            JSONArray databaseConfigs = json.getJSONArray("databaseConfigs");
+
+            Object requestTimeout = commonConfig.get("requestTimeout");
+            Object responseTimeout = commonConfig.get("responseTimeout");
+            if (commonConfig != null && (requestTimeout != null || responseTimeout != null) && ((int) requestTimeout < 1 ||
+                    (int) responseTimeout < 1)) {
+                MSException.throwException(Translator.get("invalid_parameter"));
+            }
+            if (databaseConfigs.size() > 0) {
+                for (Object databaseConfig : databaseConfigs) {
+                    JSONObject database = (JSONObject) databaseConfig;
+                    Object poolMax = database.get("poolMax");
+                    Object timeout = database.get("timeout");
+                    if (database != null && (poolMax != null || timeout != null) && (int) database.get("poolMax") < 1 || (int) database.get("timeout") < 1) {
+                        MSException.throwException(Translator.get("invalid_parameter"));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            LogUtil.error(e);
+        }
     }
 
     @GetMapping("/delete/{id}")
-    @MsAuditLog(module = "project_environment_setting", type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#id)", msClass = ApiTestEnvironmentService.class)
+    @MsAuditLog(module = OperLogModule.PROJECT_ENVIRONMENT_SETTING, type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#id)", msClass = ApiTestEnvironmentService.class)
     public void delete(@PathVariable String id) {
         apiTestEnvironmentService.delete(id);
     }

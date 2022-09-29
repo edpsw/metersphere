@@ -20,7 +20,7 @@
         </el-select>
       </el-col>
       <el-col>
-        <el-input :disabled="isReadOnly" v-model="value" maxlength="200" size="small" show-word-limit
+        <el-input :disabled="isReadOnly" v-model="value" maxlength="500" size="small" show-word-limit
                   :placeholder="$t('api_test.request.assertions.value')"/>
       </el-col>
       <el-col class="assertion-checkbox">
@@ -29,7 +29,7 @@
         </el-checkbox>
       </el-col>
       <el-col class="assertion-btn">
-        <el-button :disabled="isReadOnly" type="primary" size="small" @click="add">
+        <el-button :disabled="isReadOnly" type="primary" size="mini" @click="add">
           {{ $t('api_test.request.assertions.add') }}
         </el-button>
       </el-col>

@@ -1,7 +1,8 @@
 <template>
   <div>
-    <ms-run :debug="true" :environment="envMap" :reportId="reportId" :run-data="debugData" @runRefresh="runRefresh" ref="runTest"/>
-    <api-base-component @copy="copyRow" @active="active(controller)" @remove="remove" :data="controller" :draggable="draggable" :is-max="isMax" :show-btn="showBtn" color="#02A7F0" background-color="#F4F4F5" :title="$t('api_test.automation.loop_controller')" v-loading="loading">
+    <ms-run :debug="true" :environment="envMap" :reportId="reportId" :saved="false" :runMode="'DEFINITION'" :run-data="debugData" @errorRefresh="errorRefresh" @runRefresh="runRefresh" ref="runTest"/>
+    <api-base-component :if-from-variable-advance="ifFromVariableAdvance" @copy="copyRow" @active="active(controller)" @remove="remove" :data="controller" :draggable="draggable" :is-max="isMax" :show-btn="showBtn" :show-version="showVersion" color="#02A7F0"
+                        background-color="#F4F4F5" :title="$t('api_test.automation.loop_controller')">
 
       <template v-slot:headerLeft>
         <i class="icon el-icon-arrow-right" :class="{'is-active': controller.active}" style="margin-right: 10px" v-if="!isMax"/>
@@ -12,18 +13,17 @@
 
       <template v-slot:message>
         <span v-if="requestResult && requestResult.scenarios && requestResult.scenarios.length > 0 " style="color: #8c939d;margin-right: 10px">
-          <!--{{$t('api_test.automation.loop_name')}}{{requestResult.scenarios.length}}次 成功{{success}}次 失败{{error}}次-->
         </span>
       </template>
 
       <template v-slot:button>
-        <el-button @click="runDebug" :disabled="!controller.enable" :tip="$t('api_test.run')" icon="el-icon-video-play" style="background-color: #409EFF;color: white;padding: 5px" size="mini" circle/>
+        <el-button @click="conn" :disabled="!controller.enable" :tip="$t('api_test.run')" icon="el-icon-video-play" style="background-color: #409EFF;color: white;padding: 5px" size="mini" circle/>
       </template>
-      <div v-if="controller.loopType==='LOOP_COUNT'" draggable>
+      <div v-if="controller.loopType==='LOOP_COUNT'" draggable v-loading="loading">
         <el-row>
           <el-col :span="8">
             <span class="ms-span ms-radio">{{ $t('loop.loops') }}</span>
-            <el-input-number size="small" v-model="controller.countController.loops" :placeholder="$t('commons.millisecond')" :max="1000*10000000" :min="0"/>
+            <el-input size="small" v-model="controller.countController.loops" style="width: 200px"/>
             <span class="ms-span ms-radio">次</span>
           </el-col>
           <el-col :span="8">
@@ -41,7 +41,7 @@
         </el-row>
       </div>
 
-      <div v-else-if="controller.loopType==='FOREACH'" draggable>
+      <div v-else-if="controller.loopType==='FOREACH'" draggable v-loading="loading">
         <el-row>
           <el-col :span="8">
             <el-input :placeholder="$t('api_test.automation.loop_return_val')" v-model="controller.forEachController.returnVal" size="small"/>
@@ -59,7 +59,7 @@
           </el-col>
         </el-row>
       </div>
-      <div v-else draggable>
+      <div v-else draggable v-loading="loading">
         <el-input size="small" v-model="controller.whileController.variable" style="width: 20%" :placeholder="$t('api_test.request.condition_variable')"/>
         <el-select v-model="controller.whileController.operator" :placeholder="$t('commons.please_select')" size="small" @change="change" style="width: 10%;margin-left: 10px">
           <el-option v-for="o in operators" :key="o.value" :label="$t(o.label)" :value="o.value"/>
@@ -89,14 +89,14 @@ import ApiBaseComponent from "../common/ApiBaseComponent";
 import ApiResponseComponent from "./ApiResponseComponent";
 import MsRun from "../DebugRun";
 import {getUUID} from "@/common/js/utils";
-import {ELEMENT_TYPE, STEP} from "../Setting";
+import {STEP} from "../Setting";
+import {getReportMessageSocket} from "@/business/components/api/automation/api-automation";
 
 export default {
   name: "MsLoopController",
   components: {ApiBaseComponent, ApiResponseComponent, MsRun},
   props: {
     controller: {},
-    currentEnvironmentId: String,
     currentScenario: {},
     node: {},
     message: String,
@@ -108,18 +108,25 @@ export default {
       type: Boolean,
       default: true,
     },
+    showVersion: {
+      type: Boolean,
+      default: true,
+    },
     index: Object,
     draggable: {
       type: Boolean,
       default: false,
     },
     envMap: Map,
+    ifFromVariableAdvance: {
+      type: Boolean,
+      default: false,
+    },
   },
   data() {
     return {
       loading: false,
-      activeName: "first",
-      requestResult: {responseResult: {}},
+      requestResult: new Map(),
       success: 0,
       error: 0,
       debugData: {},
@@ -158,8 +165,10 @@ export default {
           label: "commons.adv_search.operators.is_not_empty",
           value: "is not empty",
         },
-        stepFilter: new STEP,
       },
+      stepFilter: new STEP,
+      messageWebSocket: {},
+      uuid: "",
     };
   },
   watch: {
@@ -168,6 +177,59 @@ export default {
     },
   },
   methods: {
+    initMessageSocket() {
+      this.uuid = getUUID();
+      this.messageWebSocket = getReportMessageSocket(this.uuid);
+      this.messageWebSocket.onmessage = this.onDebugMessage;
+    },
+    onDebugMessage(e) {
+      // 确认连接建立成功，开始执行
+      if (e && e.data === "CONN_SUCCEEDED") {
+        this.runDebug();
+      }
+      if (e.data && e.data.startsWith("result_")) {
+        let data = JSON.parse(e.data.substring(7));
+        this.debugCode(data);
+        let resourceId = data.resourceId.split("_")[0];
+        if (this.requestResult.has(resourceId)) {
+          this.requestResult.get(resourceId).push(data);
+        } else {
+          this.requestResult.set(resourceId, [data]);
+        }
+      } else if (e.data && e.data.indexOf("MS_TEST_END") !== -1) {
+        this.loading = false;
+        this.node.expanded = true;
+        this.messageWebSocket.close();
+        // // 把请求结果分给各个请求
+        this.setResult(this.controller.hashTree);
+        this.$store.state.currentApiCase = {debugLoop: getUUID()};
+        this.reload();
+      }
+    },
+    clear(hashTree) {
+      if (hashTree) {
+        hashTree.forEach((item) => {
+          if (this.stepFilter.get("AllSamplerProxy").indexOf(item.type) !== -1) {
+            item.requestResult = [];
+            item.result = undefined;
+            item.code = undefined;
+          }
+          if (item.hashTree && item.hashTree.length > 0) {
+            this.setResult(item.hashTree);
+          }
+        });
+      }
+    },
+    debugCode(data) {
+      if (data && this.node && this.node.data) {
+        if (data.error > 0) {
+          this.node.data.code = "error";
+        } else {
+          this.node.data.code = this.node.data.code !== 'error' ? "success" : "error";
+        }
+      }
+      this.reload();
+    },
     getCode() {
       if (this.node && this.node.data.code && this.node.data.debug) {
         if (this.node.data.code && this.node.data.code === 'error') {
@@ -177,25 +239,6 @@ export default {
         }
       }
       return '';
-    },
-    initResult() {
-      if (this.controller) {
-        switch (this.controller.loopType) {
-          case "LOOP_COUNT":
-            this.requestResult = this.controller.countController && this.controller.countController.requestResult ? this.controller.countController.requestResult : {};
-            break;
-          case "FOREACH":
-            this.requestResult = this.controller.forEachController && this.controller.forEachController.requestResult ? this.controller.forEachController.requestResult : {};
-            break;
-          case "WHILE":
-            this.requestResult = this.controller.whileController && this.controller.whileController.requestResult ? this.controller.whileController.requestResult : {};
-            break;
-          default:
-            break;
-        }
-      }
-      this.getFails();
-      this.activeName = this.requestResult && this.requestResult.scenarios && this.requestResult.scenarios.length > 0 ? this.requestResult.scenarios[0].name : "";
     },
     switchChange() {
       if (this.controller.hashTree && this.controller.hashTree.length > 1) {
@@ -214,7 +257,6 @@ export default {
             this.recursive(item.hashTree, count);
           }
         });
-
         if (count > 1) {
           this.$warning(this.$t('api_test.automation.loop_message'));
           this.controller.countController.proceed = true;
@@ -232,13 +274,27 @@ export default {
         }
       }
     },
-
-    runDebug() {
+    conn() {
       if (!this.controller.hashTree || this.controller.hashTree.length < 1) {
         this.$warning("当前循环下没有请求，不能执行");
         return;
       }
+      if (!this.controller.enable) {
+        this.$warning(this.$t('api_test.automation.debug_message'));
+        return;
+      }
+      this.requestResult.clear();
+      this.clear(this.controller.hashTree);
+      this.initMessageSocket();
+    },
+    runDebug() {
       this.loading = true;
+      let currentEnvironmentId;
+      let resourceId = this.currentScenario.id + "_" + this.controller.projectId;
+      if (this.$store.state.scenarioEnvMap && this.$store.state.scenarioEnvMap instanceof Map
+        && this.$store.state.scenarioEnvMap.has(resourceId)) {
+        currentEnvironmentId = this.$store.state.scenarioEnvMap.get(resourceId);
+      }
       this.debugData = {
         id: this.currentScenario.id,
         name: this.currentScenario.name,
@@ -247,10 +303,16 @@ export default {
         headers: this.currentScenario.headers,
         referenced: "Created",
         enableCookieShare: this.enableCookieShare,
-        environmentId: this.currentEnvironmentId,
+        environmentId: currentEnvironmentId,
         hashTree: [this.controller],
       };
-      this.reportId = getUUID().substring(0, 8);
+      if (this.node && this.node.data) {
+        this.node.data.debug = true;
+      }
+      this.reportId = this.uuid;
+      this.node.data.code = "";
+      this.node.data.testing = false;
+      this.node.data.debug = true;
     },
 
     remove() {
@@ -282,83 +344,20 @@ export default {
       });
     },
     runRefresh() {
-      this.getReport();
     },
-    getFails() {
-      this.error = 0;
-      this.success = 0;
-      if (this.requestResult.scenarios && this.requestResult.scenarios !== null) {
-        this.requestResult.scenarios.forEach((scenario) => {
-          if (scenario.requestResults) {
-            scenario.requestResults.forEach((item) => {
-              if (item.error > 0) {
-                this.error++;
-                return;
-              }
-            });
-          }
-        });
-        this.success = this.requestResult.scenarios && this.requestResult.scenarios !== null ? this.requestResult.scenarios.length - this.error : 0;
-      }
+    errorRefresh() {
+      this.loading = false;
     },
     setResult(hashTree) {
       if (hashTree) {
         hashTree.forEach((item) => {
-          if (item.type === "HTTPSamplerProxy" || item.type === "DubboSampler" || item.type === "JDBCSampler" || item.type === "TCPSampler") {
-            item.result = this.requestResult;
-            item.activeName = this.activeName;
+          if (this.stepFilter.get("AllSamplerProxy").indexOf(item.type) !== -1 && this.requestResult.has(item.id)) {
+            item.activeName = "0";
             item.active = true;
-            item.requestResult = [];
+            item.requestResult = this.requestResult.get(item.id);
           }
           if (item.hashTree && item.hashTree.length > 0) {
             this.setResult(item.hashTree);
-          }
-        });
-      }
-    },
-    getReport() {
-      if (this.reportId) {
-        let url = "/api/scenario/report/get/" + this.reportId;
-        this.$get(url, (response) => {
-          this.report = response.data || {};
-          if (response.data) {
-            if (this.isNotRunning) {
-              try {
-                this.requestResult = JSON.parse(this.report.content);
-                if (!this.requestResult) {
-                  this.requestResult = {scenarios: []};
-                }
-                this.controller.requestResult = this.requestResult;
-                switch (this.controller.loopType) {
-                  case "LOOP_COUNT":
-                    this.controller.countController.requestResult = this.requestResult;
-                    break;
-                  case "FOREACH":
-                    this.controller.forEachController.requestResult = this.requestResult;
-                    break;
-                  case "WHILE":
-                    this.controller.whileController.requestResult = this.requestResult;
-                    break;
-                  default:
-                    break;
-                }
-                this.getFails();
-                this.activeName = this.requestResult && this.requestResult.scenarios && this.requestResult.scenarios !== null && this.requestResult.scenarios.length > 0 ? this.requestResult.scenarios[0].name : "";
-                // 把请求结果分给各个请求
-                this.setResult(this.controller.hashTree);
-                this.$emit("refReload", this.node);
-              } catch (e) {
-                throw e;
-              }
-              this.loading = false;
-              this.node.expanded = true;
-              this.reload();
-            } else {
-              setTimeout(this.getReport, 2000);
-            }
-          } else {
-            this.loading = false;
-            this.$error(this.$t("api_report.not_exist"));
           }
         });
       }
@@ -367,9 +366,6 @@ export default {
   computed: {
     hasEmptyOperator() {
       return !!this.controller.operator && this.controller.operator.indexOf("empty") > 0;
-    },
-    isNotRunning() {
-      return "Running" !== this.report.status;
     },
   },
 };
@@ -404,7 +400,7 @@ export default {
 }
 
 .ms-test-running {
-  color: #6D317C;
+  color: #783887;
 }
 
 .ms-step-debug-code {

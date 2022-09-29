@@ -3,10 +3,11 @@ import {TokenKey} from '@/common/js/constants';
 import {
   enableModules,
   hasLicense,
-  hasPermissions
+  hasPermissions, removeLicense, saveLicense
 } from "@/common/js/utils";
 import NProgress from 'nprogress'; // progress bar
-import 'nprogress/nprogress.css'; // progress bar style
+import 'nprogress/nprogress.css';
+import {baseGet} from "@/network/base-network"; // progress bar style
 const whiteList = ['/login']; // no redirect whitelist
 
 NProgress.configure({showSpinner: false}); // NProgress Configuration
@@ -18,6 +19,7 @@ function checkLicense(el, binding, type) {
     el.parentNode && el.parentNode.removeChild(el);
   }
 }
+
 
 function checkRolePermission(el, binding, type) {
   const {value} = binding;
@@ -61,6 +63,7 @@ export const xpack = {
   }
 };
 
+
 export const modules = {
   inserted(el, binding) {
     checkModule(el, binding);
@@ -101,3 +104,18 @@ router.afterEach(() => {
   // finish progress bar
   NProgress.done();
 });
+
+export function getLicense(callback) {
+  return baseGet("/license/validate", data => {
+    validateAndSetLicense(data);
+    if (callback) callback(data);
+  });
+}
+
+export function validateAndSetLicense(data) {
+  if (data === null || data.status !== 'valid') {
+    removeLicense();
+  } else {
+    saveLicense(data.status);
+  }
+}

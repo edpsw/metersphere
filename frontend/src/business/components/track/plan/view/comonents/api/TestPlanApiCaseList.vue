@@ -6,12 +6,12 @@
           :project-id="getProjectId()"
           :condition="condition"
           :plan-id="planId"
-          @refresh="initTable"
+          :plan-status="planStatus"
+          @refresh="search"
           @relevanceCase="$emit('relevanceCase')"
           @setEnvironment="setEnvironment"
           v-if="isPlanModel"/>
       </template>
-
       <ms-table
         v-loading="result.loading"
         :data="tableData"
@@ -24,20 +24,44 @@
         @handlePageChange="initTable"
         :fields.sync="fields"
         :field-key="tableHeaderKey"
-        @refresh="initTable"
+        @order="initTable"
         :row-order-group-id="planId"
         :row-order-func="editTestPlanApiCaseOrder"
         :enable-order-drag="enableOrderDrag"
         row-key="id"
+        @filter="search"
         ref="table">
         <span v-for="(item) in fields" :key="item.key">
-
-          <ms-table-column :field="item" prop="num"
+          <ms-table-column :field="item"
                            :fields-width="fieldsWidth"
-                           sortable label="ID" min-width="80"/>
+                           sortable
+                           label="ID"
+                           prop="num"
+                           min-width="80">
+             <template v-slot:default="scope">
+               <el-link @click="openApiById(scope.row)">
+                  <span>
+                    {{ scope.row.num }}
+                  </span>
+               </el-link>
+            </template>
+          </ms-table-column>
 
           <ms-table-column :field="item" :fields-width="fieldsWidth" prop="name" sortable min-width="120"
                            :label="$t('test_track.case.name')"/>
+
+         <ms-table-column
+           v-if="versionEnable"
+           prop="versionId"
+           :field="item"
+           :filters="versionFilters"
+           :fields-width="fieldsWidth"
+           :label="$t('commons.version')"
+           min-width="120px">
+         <template v-slot:default="scope">
+            <span>{{ scope.row.versionName }}</span>
+          </template>
+        </ms-table-column>
 
           <ms-table-column
             :field="item"
@@ -112,6 +136,7 @@
 
           <ms-table-column :field="item"
                            prop="execResult"
+                           :filters="execResultFilters"
                            :fields-width="fieldsWidth"
                            :label="$t('test_track.plan.execute_result')" min-width="150" align="center">
             <template v-slot:default="scope">
@@ -122,7 +147,10 @@
                 <el-link v-else-if="scope.row.execResult && scope.row.execResult === 'success'"
                          type="primary"
                          @click="getReportResult(scope.row)" v-text="getResult(scope.row.execResult)">
-
+                </el-link>
+                <el-link v-else-if="scope.row.execResult && scope.row.execResult === 'errorReportResult'"
+                         style="color: #F6972A"
+                         @click="getReportResult(scope.row)" v-text="getResult(scope.row.execResult)">
                 </el-link>
                 <div v-else v-text="getResult(scope.row.execResult)"/>
 
@@ -149,7 +177,12 @@
       <batch-edit :dialog-title="$t('test_track.case.batch_edit_case')" :type-arr="typeArr" :value-arr="valueArr"
                   :select-row="$refs.table ? $refs.table.selectRows : new Set()" ref="batchEdit" @batchEdit="batchEdit"/>
 
-      <ms-plan-run-mode @handleRunBatch="handleRunBatch" ref="runMode" :plan-case-ids="testPlanCaseIds" :type="'apiCase'"/>
+      <ms-plan-run-mode
+        :type="'apiCase'"
+        :plan-case-ids="testPlanCaseIds"
+        @close="search"
+        @handleRunBatch="handleRunBatch"
+        ref="runMode"/>
     </el-card>
     <ms-task-center ref="taskCenter" :show-menu="false"/>
   </div>
@@ -166,8 +199,7 @@ import MsContainer from "../../../../../common/components/MsContainer";
 import MsBottomContainer from "../../../../../api/definition/components/BottomContainer";
 import BatchEdit from "@/business/components/track/case/components/BatchEdit";
 import {API_METHOD_COLOUR, CASE_PRIORITY, RESULT_MAP} from "../../../../../api/definition/model/JsonData";
-import {getCurrentProjectID, strMapToObj} from "@/common/js/utils";
-import ApiListContainer from "../../../../../api/definition/components/list/ApiListContainer";
+import {getCurrentProjectID, getCurrentWorkspaceId, hasLicense, strMapToObj} from "@/common/js/utils";
 import PriorityTableItem from "../../../../common/tableItems/planview/PriorityTableItem";
 import {getUUID} from "../../../../../../../common/js/utils";
 import TestPlanCaseListHeader from "./TestPlanCaseListHeader";
@@ -176,7 +208,7 @@ import TestPlanApiCaseResult from "./TestPlanApiCaseResult";
 import {TEST_PLAN_API_CASE} from "@/common/js/constants";
 import {
   buildBatchParam,
-  checkTableRowIsSelect, deepClone, getCustomTableHeader, getCustomTableWidth,
+   deepClone, getCustomTableHeader, getCustomTableWidth,
 } from "@/common/js/tableUtils";
 import HeaderCustom from "@/business/components/common/head/HeaderCustom";
 import HeaderLabelOperate from "@/business/components/common/head/HeaderLabelOperate";
@@ -204,13 +236,15 @@ export default {
     TestPlanCaseListHeader,
     ApiCaseList,
     PriorityTableItem,
-    ApiListContainer,
     MsTablePagination,
     MsTag,
     MsApiCaseList,
     MsContainer,
     MsBottomContainer,
     MsTaskCenter
+  },
+  mounted(){
+    this.getVersionOptions();
   },
   data() {
     return {
@@ -230,20 +264,22 @@ export default {
         {
           tip: this.$t('api_test.run'), icon: "el-icon-video-play",
           exec: this.singleRun,
-          class: 'run-button',
+          class: this.planStatus==='Archived'?'disable-run':'run-button',
+          isDisable: this.planStatus==='Archived',
           permissions: ['PROJECT_TRACK_PLAN:READ+RUN']
         },
         {
           tip: this.$t('test_track.plan_view.cancel_relevance'), icon: "el-icon-unlock",
           exec: this.handleDelete,
           type: 'danger',
+          isDisable: this.planStatus==='Archived',
           permissions: ['PROJECT_TRACK_PLAN:READ+RELEVANCE_OR_CANCEL']
         }
       ],
       buttons: [
-        {name: this.$t('test_track.case.batch_unlink'), handleClick: this.handleDeleteBatch, permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_DELETE']},
-        {name: this.$t('api_test.automation.batch_execute'), handleClick: this.handleBatchExecute, permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_RUN']},
-        {name: this.$t('test_track.case.batch_edit_case'), handleClick: this.handleBatchEdit, permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_EDIT']}
+        {name: this.$t('test_track.case.batch_unlink'), handleClick: this.handleDeleteBatch, isDisable: this.planStatus==='Archived', permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_DELETE']},
+        {name: this.$t('api_test.automation.batch_execute'), handleClick: this.handleBatchExecute, isDisable: this.planStatus==='Archived', permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_RUN']},
+        {name: this.$t('test_track.case.batch_edit_case'), handleClick: this.handleBatchEdit,  isDisable: this.planStatus==='Archived', permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_EDIT']}
       ],
       typeArr: [
         {id: 'projectEnv', name: this.$t('api_test.definition.request.run_env')},
@@ -275,7 +311,8 @@ export default {
       rowLoading: "",
       userFilters: [],
       projectIds: [],
-      projectList: []
+      projectList: [],
+      versionFilters: [],
     };
   },
   props: {
@@ -304,8 +341,10 @@ export default {
       }
     },
     planId: String,
+    planStatus: String,
     reviewId: String,
-    clickType: String
+    clickType: String,
+    versionEnable: Boolean,
   },
   created: function () {
     this.getMaintainerOptions();
@@ -345,6 +384,16 @@ export default {
     },
     editTestPlanApiCaseOrder() {
       return editTestPlanApiCaseOrder;
+    },
+    execResultFilters() {
+      let execResultFilters = [];
+      for (let key of RESULT_MAP.keys()) {
+        execResultFilters.push({
+          text: RESULT_MAP.get(key),
+          value: key
+        });
+      }
+      return execResultFilters;
     }
   },
   methods: {
@@ -353,7 +402,7 @@ export default {
       this.$refs.headerCustom.open(list);
     },
     getMaintainerOptions() {
-      this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()}, response => {
+      this.$get('/user/project/member/list', response => {
         this.valueArr.userId = response.data;
         this.userFilters = response.data.map(u => {
           return {text: u.name, value: u.id};
@@ -407,6 +456,7 @@ export default {
       }
     },
     search() {
+      this.currentPage = 1;
       this.initTable();
     },
     buildPagePath(path) {
@@ -480,7 +530,7 @@ export default {
       this.rowLoading = "";
     },
     handleBatchEdit() {
-      this.$refs.batchEdit.open(this.$refs.table.selectRows.size);
+      this.$refs.batchEdit.open(this.condition.selectAll ? this.total : this.$refs.table.selectRows.size);
       this.$refs.batchEdit.setSelectRows(this.$refs.table.selectRows);
     },
     getData() {
@@ -542,6 +592,8 @@ export default {
           let dataRows = response.data;
           let map = new Map();
           param.projectEnvMap = strMapToObj(form.projectEnvMap);
+          param.environmentType = form.environmentType;
+          param.environmentGroupId = form.envGroupId;
           dataRows.forEach(row => {
             map[row.id] = row.projectId;
           });
@@ -573,7 +625,7 @@ export default {
       });
     },
     handleRunBatch(config) {
-      let obj = {planIds: this.testPlanCaseIds, config: config};
+      let obj = {planIds: this.testPlanCaseIds, config: config, triggerMode:"BATCH"};
       this.$post("/test/plan/api/case/run", obj, response => {
         this.$message(this.$t('commons.run_message'));
         this.$refs.taskCenter.open();
@@ -624,6 +676,30 @@ export default {
           this.$refs.apiCaseResult.open();
         }
       });
+    },
+    getVersionOptions() {
+      if (hasLicense()) {
+        this.$get('/project/version/get-project-versions/' + getCurrentProjectID(), response => {
+          this.versionOptions= response.data;
+          this.versionFilters = response.data.map(u => {
+            return {text: u.name, value: u.id};
+          });
+        });
+      }
+    },
+    openApiById(item) {
+      let definitionData = this.$router.resolve({
+        name: 'ApiDefinitionWithQuery',
+        params: {
+          redirectID: getUUID(),
+          dataType: "apiTestCase",
+          dataSelectRange: 'single:' + item.caseId,
+          projectId: getCurrentProjectID(),
+          type: item.protocol,
+          workspaceId: getCurrentWorkspaceId(),
+        }
+      });
+      window.open(definitionData.href, '_blank');
     },
   },
 };

@@ -7,7 +7,7 @@
   <parent>
     <artifactId>metersphere-server</artifactId>
     <groupId>io.metersphere</groupId>
-    <version>1.9</version>
+    <version>${revision}</version>
   </parent>
 
   <modelVersion>4.0.0</modelVersion>
@@ -16,7 +16,7 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-    <frontend-maven-plugin.version>1.12.0</frontend-maven-plugin.version>
+    <frontend-maven-plugin.version>1.9.1</frontend-maven-plugin.version>
   </properties>
 
   <build>
@@ -35,7 +35,8 @@
             <!-- optional: default phase is "generate-resources" -->
             <phase>generate-resources</phase>
             <configuration>
-              <nodeVersion>v16.12.0</nodeVersion>
+              <nodeVersion>v16.10.0</nodeVersion>
+              <npmVersion>6.14.15</npmVersion>
             </configuration>
           </execution>
           <!-- Install all project dependencies -->
@@ -63,6 +64,20 @@
             </configuration>
           </execution>
         </executions>
+      </plugin>
+      <plugin>
+        <artifactId>maven-clean-plugin</artifactId>
+        <configuration>
+          <filesets>
+            <fileset>
+              <directory>dist</directory>
+              <includes>
+                <include>**</include>
+              </includes>
+              <followSymlinks>false</followSymlinks>
+            </fileset>
+          </filesets>
+        </configuration>
       </plugin>
     </plugins>
   </build>

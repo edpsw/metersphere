@@ -8,23 +8,26 @@
       </el-link>
     </div>
     <div v-for="(menu, index) in menus" :key="index">
-      <span class="link-type">
+      <span class="link-type" v-if="!menu.hideScript">
         <i class="icon el-icon-arrow-right" style="font-weight: bold; margin-right: 2px;"
            @click="active(menu)" :class="{'is-active': menu.open}"></i>
-        <span @click="active(menu)" class="nav-menu-title nav-font">{{menu.title}}</span>
+        <span @click="active(menu)" class="nav-menu-title nav-font">{{ menu.title }}</span>
       </span>
 
       <el-collapse-transition>
         <div v-if="menu.open">
           <div v-for="(child, key) in menu.children" :key="key" class="func-div">
-            <el-link :disabled="child.disabled" @click="handleClick(child)" class="func-link nav-font">{{child.title}}</el-link>
+            <el-link :disabled="child.disabled" @click="handleClick(child)" class="func-link nav-font">
+              {{ child.title }}
+            </el-link>
           </div>
         </div>
       </el-collapse-transition>
     </div>
     <custom-function-relate ref="customFunctionRelate" @addCustomFuncScript="handleCodeTemplate"/>
     <!--接口列表-->
-    <api-func-relevance @save="apiSave" @close="apiClose" ref="apiFuncRelevance"/>
+    <api-func-relevance @save="apiSave" :is-test-plan="false" :is-script="true" @close="apiClose"
+                        ref="apiFuncRelevance"/>
   </div>
 
 </template>
@@ -114,20 +117,31 @@ export default {
     _parseRequestObj(data) {
       let requestHeaders = new Map();
       let requestArguments = new Map();
+      let requestRest = new Map();
       let requestMethod = "";
       let requestBody = "";
+      let requestBodyKvs = new Map();
+      let bodyType = "";
       let requestPath = "";
       let request = JSON.parse(data.request);
       // 拼接发送请求需要的参数
       requestPath = request.path;
       requestMethod = request.method;
       let headers = request.headers;
+      let rest = request.rest;
+      if (rest && rest.length > 0) {
+        rest.forEach(r => {
+          if (r.enable) {
+            requestRest.set(r.name, r.value);
+          }
+        })
+      }
       if (headers && headers.length > 0) {
         headers.forEach(header => {
           if (header.name) {
             requestHeaders.set(header.name, header.value);
           }
-        })
+        });
       }
       let args = request.arguments;
       if (args && args.length) {
@@ -138,10 +152,33 @@ export default {
         })
       }
       let body = request.body;
-      if (body.json) {
+      if (body.type === 'XML') {
         requestBody = body.raw;
+        bodyType = "xml";
+      } else if (body.type === 'Raw') {
+        requestBody = body.raw;
+        bodyType = "raw";
+      } else if (body.json) {
+        requestBody = body.raw;
+        bodyType = "json";
+      } else if (body.kvs) {
+        bodyType = "kvs";
+        body.kvs.forEach(arg => {
+          if (arg.name) {
+            requestBodyKvs.set(arg.name, arg.value);
+          }
+        })
       }
-      return {requestPath, requestHeaders, requestMethod, requestBody, requestArguments}
+      return {
+        requestPath,
+        requestHeaders,
+        requestMethod,
+        requestBody,
+        requestBodyKvs,
+        bodyType,
+        requestArguments,
+        requestRest
+      }
     },
     apiClose() {
 
@@ -158,7 +195,7 @@ export default {
         if (this.language !== 'beanshell' && this.language !== 'groovy') {
           if (obj.title === this.$t('api_test.request.processor.code_add_report_length') ||
             obj.title === this.$t('api_test.request.processor.code_hide_report_length')) {
-            this.$warning("无对应的 "+ this.language +" 代码模版！");
+            this.$warning(this.$t('commons.no_corresponding') + " " + this.language + " " + this.$t('commons.code_template') + "！");
             return;
           }
         }

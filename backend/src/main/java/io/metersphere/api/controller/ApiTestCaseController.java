@@ -2,18 +2,23 @@ package io.metersphere.api.controller;
 
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
-import io.metersphere.api.dto.ApiCaseBatchRequest;
+import io.metersphere.api.dto.ApiCaseEditRequest;
+import io.metersphere.api.dto.ApiCaseRunRequest;
 import io.metersphere.api.dto.DeleteCheckResult;
 import io.metersphere.api.dto.definition.*;
+import io.metersphere.api.exec.api.ApiCaseExecuteService;
+import io.metersphere.api.exec.api.ApiExecuteService;
 import io.metersphere.api.service.ApiTestCaseService;
 import io.metersphere.base.domain.ApiTestCase;
-import io.metersphere.base.domain.ApiTestCaseWithBLOBs;
 import io.metersphere.base.domain.ApiTestEnvironment;
 import io.metersphere.commons.constants.NoticeConstants;
 import io.metersphere.commons.constants.OperLogConstants;
+import io.metersphere.commons.constants.OperLogModule;
+import io.metersphere.commons.constants.ReportTriggerMode;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
 import io.metersphere.controller.request.ResetOrderRequest;
+import io.metersphere.dto.MsExecResponseDTO;
 import io.metersphere.log.annotation.MsAuditLog;
 import io.metersphere.notice.annotation.SendNotice;
 import io.metersphere.track.request.testcase.ApiCaseRelevanceRequest;
@@ -33,6 +38,10 @@ public class ApiTestCaseController {
     private ApiTestCaseService apiTestCaseService;
     @Resource
     private TestPlanApiCaseService testPlanApiCaseService;
+    @Resource
+    private ApiCaseExecuteService apiCaseExecuteService;
+    @Resource
+    private ApiExecuteService apiExecuteService;
 
     @PostMapping("/list")
     public List<ApiTestCaseResult> list(@RequestBody ApiTestCaseRequest request) {
@@ -60,7 +69,9 @@ public class ApiTestCaseController {
 
     @PostMapping("/list/{goPage}/{pageSize}")
     public Pager<List<ApiTestCaseDTO>> listSimple(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody ApiTestCaseRequest request) {
+        apiTestCaseService.initRequestBySearch(request);
         Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
+        request.setSelectEnvironment(true);
         return PageUtils.setPageInfo(page, apiTestCaseService.listSimple(request));
     }
 
@@ -89,53 +100,60 @@ public class ApiTestCaseController {
     }
 
     @PostMapping(value = "/create", consumes = {"multipart/form-data"})
-    @MsAuditLog(module = "api_definition_case", type = OperLogConstants.CREATE, title = "#request.name", content = "#msClass.getLogDetails(#request)", msClass = ApiTestCaseService.class)
-    @SendNotice(taskType = NoticeConstants.TaskType.API_DEFINITION_TASK, event = NoticeConstants.Event.CASE_CREATE, mailTemplate = "api/CaseCreate", subject = "接口用例通知")
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.CREATE, title = "#request.name", content = "#msClass.getLogDetails(#request)", msClass = ApiTestCaseService.class)
+    @SendNotice(taskType = NoticeConstants.TaskType.API_DEFINITION_TASK, event = NoticeConstants.Event.CASE_CREATE, subject = "接口用例通知")
     public ApiTestCase create(@RequestPart("request") SaveApiTestCaseRequest request, @RequestPart(value = "files", required = false) List<MultipartFile> bodyFiles) {
         return apiTestCaseService.create(request, bodyFiles);
     }
 
     @PostMapping(value = "/update", consumes = {"multipart/form-data"})
-    @MsAuditLog(module = "api_definition_case", type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#request)", title = "#request.name", content = "#msClass.getLogDetails(#request)", msClass = ApiTestCaseService.class)
-    @SendNotice(taskType = NoticeConstants.TaskType.API_DEFINITION_TASK, event = NoticeConstants.Event.CASE_UPDATE, mailTemplate = "api/CaseUpdate", subject = "接口用例通知")
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#request)", title = "#request.name", content = "#msClass.getLogDetails(#request)", msClass = ApiTestCaseService.class)
+    @SendNotice(taskType = NoticeConstants.TaskType.API_DEFINITION_TASK, event = NoticeConstants.Event.CASE_UPDATE, subject = "接口用例通知")
     public ApiTestCase update(@RequestPart("request") SaveApiTestCaseRequest request, @RequestPart(value = "files", required = false) List<MultipartFile> bodyFiles) {
         return apiTestCaseService.update(request, bodyFiles);
     }
 
+    @PostMapping(value = "/updateExecuteInfo")
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#request)", title = "#request.name", content = "#msClass.getLogDetails(#request)", msClass = ApiTestCaseService.class)
+    @SendNotice(taskType = NoticeConstants.TaskType.API_DEFINITION_TASK, event = NoticeConstants.Event.CASE_UPDATE, subject = "接口用例通知")
+    public ApiTestCase updateExecuteInfo(@RequestBody SaveApiTestCaseRequest request) {
+        return apiTestCaseService.updateExecuteInfo(request);
+    }
+
     @GetMapping("/delete/{id}")
-    @MsAuditLog(module = "api_definition_case", type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#id)", msClass = ApiTestCaseService.class)
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#id)", msClass = ApiTestCaseService.class)
     public void delete(@PathVariable String id) {
         apiTestCaseService.delete(id);
     }
 
     @GetMapping("/deleteToGc/{id}")
-    @MsAuditLog(module = "api_definition_case", type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#id)", msClass = ApiTestCaseService.class)
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#id)", msClass = ApiTestCaseService.class)
     @SendNotice(taskType = NoticeConstants.TaskType.API_DEFINITION_TASK, event = NoticeConstants.Event.CASE_DELETE, target = "#targetClass.get(#id)", targetClass = ApiTestCaseService.class,
-            mailTemplate = "api/CaseDelete", subject = "接口用例通知")
+            subject = "接口用例通知")
     public void deleteToGc(@PathVariable String id) {
         apiTestCaseService.deleteToGc(id);
     }
 
     @PostMapping("/removeToGc")
-    @MsAuditLog(module = "api_definition_case", type = OperLogConstants.GC, beforeEvent = "#msClass.getLogDetails(#ids)", msClass = ApiTestCaseService.class)
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.GC, beforeEvent = "#msClass.getLogDetails(#ids)", msClass = ApiTestCaseService.class)
     public void removeToGc(@RequestBody List<String> ids) {
         apiTestCaseService.removeToGc(ids);
     }
 
     @GetMapping("/get/{id}")
-    public ApiTestCaseWithBLOBs get(@PathVariable String id) {
+    public ApiTestCaseInfo get(@PathVariable String id) {
         return apiTestCaseService.get(id);
     }
 
     @PostMapping("/batch/edit")
-    public void editApiBath(@RequestBody ApiCaseBatchRequest request) {
+    public void editApiBath(@RequestBody ApiCaseEditRequest request) {
         apiTestCaseService.editApiBath(request);
     }
 
     @PostMapping("/batch/editByParam")
-    @MsAuditLog(module = "api_definition_case", type = OperLogConstants.BATCH_UPDATE, beforeEvent = "#msClass.getLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = ApiTestCaseService.class)
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.BATCH_UPDATE, beforeEvent = "#msClass.getLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = ApiTestCaseService.class)
     @SendNotice(taskType = NoticeConstants.TaskType.API_DEFINITION_TASK, event = NoticeConstants.Event.CASE_UPDATE, target = "#targetClass.getApiCaseByIds(#request.ids)", targetClass = ApiTestCaseService.class,
-            mailTemplate = "api/CaseUpdate", subject = "接口用例通知")
+            subject = "接口用例通知")
     public void editApiBathByParam(@RequestBody ApiTestBatchRequest request) {
         apiTestCaseService.editApiBathByParam(request);
     }
@@ -146,28 +164,28 @@ public class ApiTestCaseController {
     }
 
     @PostMapping("/reduction")
-    @MsAuditLog(module = "api_definition_case", type = OperLogConstants.RESTORE, beforeEvent = "#msClass.getLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = ApiTestCaseService.class)
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.RESTORE, beforeEvent = "#msClass.getLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = ApiTestCaseService.class)
     public List<String> reduction(@RequestBody ApiTestBatchRequest request) {
         List<String> cannotReductionTestCaseApiName = apiTestCaseService.reduction(request);
         return cannotReductionTestCaseApiName;
     }
 
     @PostMapping("/deleteBatch")
-    @MsAuditLog(module = "api_definition_case", type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#ids)", msClass = ApiTestCaseService.class)
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#ids)", msClass = ApiTestCaseService.class)
     public void deleteBatch(@RequestBody List<String> ids) {
         apiTestCaseService.deleteBatch(ids);
     }
 
     @PostMapping("/deleteBatchByParam")
-    @MsAuditLog(module = "api_definition_case", type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = ApiTestCaseService.class)
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = ApiTestCaseService.class)
     public void deleteBatchByParam(@RequestBody ApiTestBatchRequest request) {
         apiTestCaseService.deleteBatchByParam(request);
     }
 
     @PostMapping("/deleteToGcByParam")
-    @MsAuditLog(module = "api_definition_case", type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = ApiTestCaseService.class)
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = ApiTestCaseService.class)
     @SendNotice(taskType = NoticeConstants.TaskType.API_DEFINITION_TASK, event = NoticeConstants.Event.CASE_DELETE, target = "#targetClass.getApiCaseByIds(#request.ids)", targetClass = ApiTestCaseService.class,
-            mailTemplate = "api/CaseDelete", subject = "接口用例通知")
+            subject = "接口用例通知")
     public void deleteToGcByParam(@RequestBody ApiTestBatchRequest request) {
         apiTestCaseService.deleteToGcByParam(request);
     }
@@ -188,15 +206,16 @@ public class ApiTestCaseController {
     }
 
     @PostMapping(value = "/batch/run")
-    @MsAuditLog(module = "api_definition_case", type = OperLogConstants.EXECUTE, content = "#msClass.getLogDetails(#request.caseId)", msClass = ApiTestCaseService.class)
-    public void batchRun(@RequestBody ApiCaseBatchRequest request) {
-        apiTestCaseService.batchRun(request);
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.EXECUTE, content = "#msClass.getLogDetails(#request.caseId)", msClass = ApiTestCaseService.class)
+    public List<MsExecResponseDTO> batchRun(@RequestBody ApiCaseRunRequest request) {
+        request.setTriggerMode(ReportTriggerMode.BATCH.name());
+        return apiCaseExecuteService.run(request);
     }
 
     @PostMapping(value = "/jenkins/run")
-    @MsAuditLog(module = "api_definition_case", type = OperLogConstants.EXECUTE, content = "#msClass.getLogDetails(#request.caseId)", msClass = ApiTestCaseService.class)
-    public String jenkinsRun(@RequestBody RunCaseRequest request) {
-        return apiTestCaseService.run(request);
+    @MsAuditLog(module = OperLogModule.API_DEFINITION_CASE, type = OperLogConstants.EXECUTE, content = "#msClass.getLogDetails(#request.caseId)", msClass = ApiTestCaseService.class)
+    public MsExecResponseDTO jenkinsRun(@RequestBody RunCaseRequest request) {
+        return apiExecuteService.jenkinsRun(request);
     }
 
     @GetMapping(value = "/jenkins/exec/result/{id}")
@@ -208,5 +227,15 @@ public class ApiTestCaseController {
     @GetMapping("follow/{testId}")
     public List<String> getFollows(@PathVariable String testId) {
         return apiTestCaseService.getFollows(testId);
+    }
+
+    @PostMapping("/update/follows/{testId}")
+    public void saveFollows(@PathVariable String testId, @RequestBody List<String> follows) {
+        apiTestCaseService.saveFollows(testId, follows);
+    }
+
+    @GetMapping("/be/cited/scenario/{testId}")
+    public Integer getCitedScenarioCount(@PathVariable String testId) {
+        return apiTestCaseService.getCitedScenarioCount(testId);
     }
 }

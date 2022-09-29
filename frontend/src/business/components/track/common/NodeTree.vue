@@ -8,6 +8,7 @@
       class="filter-tree node-tree"
       :data="extendTreeNodes"
       :default-expanded-keys="expandedNode"
+      :default-expand-all="defaultExpandAll"
       node-key="id"
       @node-drag-end="handleDragEnd"
       @node-expand="nodeExpand"
@@ -15,7 +16,7 @@
       :filter-node-method="filterNode"
       :expand-on-click-node="false"
       highlight-current
-      :draggable="!disabled"
+      :draggable="!disabled&&!hideOpretor"
       ref="tree">
 
       <template v-slot:default="{node,data}">
@@ -23,19 +24,21 @@
 
         <span v-if="data.isEdit" @click.stop>
           <el-input @blur.stop="save(node, data)" @keyup.enter.native.stop="$event.target.blur()" v-model="data.name"
-                    class="name-input" size="mini" ref="nameInput"/>
+                    class="name-input" size="mini" ref="nameInput" :draggable="true"/>
         </span>
 
         <span v-if="!data.isEdit" class="node-icon">
           <i class="el-icon-folder"/>
         </span>
-        <span v-if="!data.isEdit" class="node-title" v-text="data.name"/>
-        <span class="count-title" v-if="isDisplay!=='relevance'">
-          <span style="color: #6C317C">{{ data.caseNum }}</span>
+        <el-tooltip class="item" effect="dark" :content="data.name" placement="top-start" :open-delay="1000">
+          <span v-if="!data.isEdit" class="node-title" v-text="isDefault(data) ? getLocalDefaultName() : data.name"/>
+        </el-tooltip>
+        <span class="count-title" v-if="showCaseNum && data.caseNum !== null && data.caseNum !== undefined">
+          <span style="color: var(--primary_color);">{{ data.caseNum }}</span>
         </span>
         <span v-if="!disabled" class="node-operate child">
           <el-tooltip
-            v-if="data.id !== 'root' && data.name !== defaultLabel"
+            v-if="data.id !== 'root' && data.name !== defaultLabel && !hideOpretor"
             class="item"
             effect="dark"
             v-permission="updatePermission"
@@ -45,7 +48,7 @@
             <i @click.stop="edit(node, data)" class="el-icon-edit"></i>
           </el-tooltip>
           <el-tooltip
-            v-if="data.name === defaultLabel && data.level !==1"
+            v-if="data.name === defaultLabel && data.level !== 1 && !hideOpretor"
             v-permission="updatePermission"
             class="item"
             effect="dark"
@@ -59,14 +62,14 @@
             effect="dark"
             :open-delay="200"
             v-permission="addPermission"
-            v-if="!(data.name === defaultLabel && data.level ===1)"
+            v-if="!isDefault(data) && !hideOpretor"
             :content="$t('test_track.module.add_submodule')"
             placement="top">
             <i @click.stop="append(node, data)" class="el-icon-circle-plus-outline"></i>
           </el-tooltip>
 
           <el-tooltip
-            v-if="data.name === defaultLabel && data.level !==1"
+            v-if="data.name === defaultLabel && data.level !==1 && !hideOpretor"
             class="item" effect="dark"
             :open-delay="200"
             v-permission="deletePermission"
@@ -76,7 +79,7 @@
           </el-tooltip>
 
           <el-tooltip
-            v-if="data.id !== 'root' && data.name !== defaultLabel"
+            v-if="data.id !== 'root' && data.name !== defaultLabel && !hideOpretor"
             class="item" effect="dark"
             :open-delay="200"
             :content="$t('commons.delete')"
@@ -110,12 +113,19 @@ export default {
     };
   },
   props: {
-    isDisplay: {
-      type: String,
-    },
     type: {
       type: String,
       default: "view"
+    },
+    //添加操作的操作类型
+    operation_type_add: {
+      type: String,
+      default: "simple"
+    },
+    //修改操作的操作类型
+    operation_type_edit: {
+      type: String,
+      default: "simple"
     },
     treeNodes: {
       type: Array
@@ -129,7 +139,7 @@ export default {
     defaultLabel: {
       type: String,
       default() {
-        return '默认模块';
+        return '未规划用例';
       }
     },
     nameLimit: {
@@ -138,9 +148,29 @@ export default {
         return 50;
       }
     },
+    defaultExpandAll: {
+      type: Boolean,
+      default() {
+        return false;
+      }
+    },
+    showRemoveTip: {
+      type: Boolean,
+      default() {
+        return true;
+      }
+    },
+    showCaseNum: {
+      type: Boolean,
+      default() {
+        return true;
+      }
+    },
     updatePermission: Array,
     addPermission: Array,
-    deletePermission: Array
+    deletePermission: Array,
+    localSuffix: String,
+    hideOpretor: Boolean,
   },
   watch: {
     treeNodes() {
@@ -183,13 +213,15 @@ export default {
     filterNode(value, data) {
       if (!value) return true;
       if (data.label) {
-        return data.label.indexOf(value.toLowerCase()) !== -1;
+        return data.label.toLowerCase().indexOf(value.toLowerCase()) !== -1;
       }
       return false;
     },
     filter(val) {
       this.$nextTick(() => {
-        this.$refs.tree.filter(val);
+        if (this.$refs.tree) {
+          this.$refs.tree.filter(val);
+        }
       });
     },
     nodeExpand(data) {
@@ -204,7 +236,7 @@ export default {
       // this.reloaded = false;
       this.$nextTick(() => {
         let node = this.$refs.tree.getNode(data);
-        if(node){
+        if (node) {
           node.expanded = false;
         }
 
@@ -214,14 +246,14 @@ export default {
       });
     },
     // 改变节点的状态
-    changeTreeNodeStatus (parentData) {
+    changeTreeNodeStatus(parentData) {
       for (let i = 0; i < parentData.children.length; i++) {
         let data = parentData.children[i];
         if (data.id) {
           this.expandedNode.splice(this.expandedNode.indexOf(data.id), 1);
         }
         let node = this.$refs.tree.getNode(data);
-        if(node){
+        if (node) {
           node.expanded = false;
         }
 
@@ -232,20 +264,23 @@ export default {
       }
     },
     edit(node, data, isAppend) {
-      this.$set(data, 'isEdit', true);
-      this.$nextTick(() => {
-        this.$refs.nameInput.focus();
-
-        // 不知为何，执行this.$set(data, 'isEdit', true);进入编辑状态之后过滤会失效，重新执行下过滤
-        if (!isAppend) {
-          this.$nextTick(() => {
-            this.filter(this.filterText);
-          });
-          this.$nextTick(() => {
-            this.$emit('filter');
-          });
-        }
-      });
+      if (this.operation_type_edit === 'simple') {
+        this.$set(data, 'isEdit', true);
+        this.$nextTick(() => {
+          this.$refs.nameInput.focus();
+          // 不知为何，执行this.$set(data, 'isEdit', true);进入编辑状态之后过滤会失效，重新执行下过滤
+          if (!isAppend) {
+            this.$nextTick(() => {
+              this.filter(this.filterText);
+            });
+            this.$nextTick(() => {
+              this.$emit('filter');
+            });
+          }
+        });
+      } else if (this.operation_type_edit === 'external') {
+        this.$emit("editOperation", data);
+      }
     },
     increase(id) {
       this.traverse(id, node => {
@@ -280,7 +315,9 @@ export default {
         }
         return true;
       }
-      if (!rootNode.children) {return false;}
+      if (!rootNode.children) {
+        return false;
+      }
       for (let i = 0; i < rootNode.children.length; i++) {
         let children = rootNode.children[i];
         let result = this._traverse(children, id, callback, isParentCallback);
@@ -293,21 +330,33 @@ export default {
       }
     },
     append(node, data) {
-      const newChild = {
-        id: undefined,
-        isEdit: false,
-        name: "",
-        children: []
-      };
-      if (!data.children) {
-        this.$set(data, 'children', [])
+      if (this.operation_type_add === 'simple') {
+        const newChild = {
+          id: undefined,
+          isEdit: false,
+          name: "",
+          children: []
+        };
+        if (!data.children) {
+          this.$set(data, 'children', [])
+        }
+        data.children.push(newChild);
+        this.edit(node, newChild, true);
+        node.expanded = true;
+        this.$nextTick(() => {
+          this.$refs.nameInput.focus();
+        });
+      } else if (this.operation_type_add === 'external') {
+        let param = {};
+        param.parentId = node.id;
+        param.level = 1;
+        if (data.id != 'root') {
+          // 非根节点
+          param.parentId = data.id;
+          param.level = data.level + 1;
+        }
+        this.$emit("addOperation", param);
       }
-      data.children.push(newChild);
-      this.edit(node, newChild, true);
-      node.expanded = true;
-      this.$nextTick(() => {
-        this.$refs.nameInput.focus();
-      });
     },
     save(node, data) {
       if (data.name.trim() === '') {
@@ -330,6 +379,9 @@ export default {
         this.expandedNode.push(param.parentId);
         this.$emit('add', param);
       }
+      if (!data.level) {
+        data.level = param.level;
+      }
       this.$set(data, 'isEdit', false);
     },
     remove(node, data) {
@@ -337,19 +389,26 @@ export default {
         this.$refs.tree.remove(node);
         return;
       }
-      let tip =  '确定删除节点 ' + data.label + ' 及其子节点下所有资源' + '？';
+      let tip = '确定删除节点 ' + data.label + ' 及其子节点下所有资源' + '？';
       // let info =  this.$t("test_track.module.delete_confirm") + data.label + "，" + this.$t("test_track.module.delete_all_resource") + "？";
-      this.$alert(tip, "", {
-          confirmButtonText: this.$t("commons.confirm"),
-          callback: action => {
-            if (action === "confirm") {
-              let nodeIds = [];
-              this.getChildNodeId(node.data, nodeIds);
-              this.$emit('remove', nodeIds);
+      if (this.showRemoveTip) {
+        this.$alert(tip, "", {
+            confirmButtonText: this.$t("commons.confirm"),
+            callback: action => {
+              if (action === "confirm") {
+                let nodeIds = [];
+                this.getChildNodeId(node.data, nodeIds);
+                this.$emit('remove', nodeIds, data);
+              }
             }
           }
-        }
-      );
+        );
+      } else {
+        let nodeIds = [];
+        this.getChildNodeId(node.data, nodeIds);
+        this.$emit('remove', nodeIds, data);
+      }
+
     },
     handleDragEnd(draggingNode, dropNode, dropType, ev) {
       if (dropType === "none" || dropType === undefined) {
@@ -373,6 +432,7 @@ export default {
         param.type = 'edit';
         param.id = data.id;
         param.level = data.level;
+        param.parentId = data.parentId;
         this.getChildNodeId(data, param.nodeIds);
       } else {
         param.level = 1;
@@ -425,9 +485,9 @@ export default {
       }
       for (let i = 0; i < nodes.length; i++) {
         if (nodes[i].id === id) {
-          i - 1 >= 0 ? list[0] = nodes[i-1].id : list[0] = "";
+          i - 1 >= 0 ? list[0] = nodes[i - 1].id : list[0] = "";
           list[1] = nodes[i].id;
-          i + 1 < nodes.length ? list[2] = nodes[i+1].id : list[2] = "";
+          i + 1 < nodes.length ? list[2] = nodes[i + 1].id : list[2] = "";
           return;
         }
         if (nodes[i].children) {
@@ -464,6 +524,31 @@ export default {
         pNodes.push(rootNode.data);
       }
     },
+    setCurrentKey(currentNode) {
+      if (currentNode && currentNode.data) {
+        this.$nextTick(() => {
+          this.handleNodeSelect(currentNode);
+          this.$refs.tree.setCurrentKey(currentNode.data.id);
+        })
+      }
+    },
+    justSetCurrentKey(id) {
+      if (id) {
+        this.$nextTick(() => {
+          this.$refs.tree.setCurrentKey(id);
+        })
+      }
+    },
+    isDefault(data) {
+      return data.name === this.defaultLabel && data.level === 1;
+    },
+    getLocalDefaultName() {
+      if (this.localSuffix) {
+        return this.$t('commons.default_module.' + this.localSuffix);
+      } else {
+        return this.$t('commons.module_title');
+      }
+    }
   }
 };
 </script>

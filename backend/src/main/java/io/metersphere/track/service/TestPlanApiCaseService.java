@@ -1,55 +1,42 @@
 package io.metersphere.track.service;
 
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
-import io.metersphere.api.dto.JvmInfoDTO;
-import io.metersphere.api.dto.RunModeDataDTO;
+import io.metersphere.api.dto.EnvironmentType;
 import io.metersphere.api.dto.automation.TestPlanFailureApiDTO;
 import io.metersphere.api.dto.definition.ApiTestCaseDTO;
 import io.metersphere.api.dto.definition.ApiTestCaseRequest;
 import io.metersphere.api.dto.definition.BatchRunDefinitionRequest;
 import io.metersphere.api.dto.definition.TestPlanApiCaseDTO;
-import io.metersphere.api.dto.definition.request.ElementUtil;
-import io.metersphere.api.dto.definition.request.MsTestPlan;
-import io.metersphere.api.dto.definition.request.MsThreadGroup;
-import io.metersphere.api.dto.definition.request.ParameterConfig;
-import io.metersphere.api.dto.definition.request.sampler.MsDubboSampler;
-import io.metersphere.api.dto.definition.request.sampler.MsHTTPSamplerProxy;
-import io.metersphere.api.dto.definition.request.sampler.MsJDBCSampler;
-import io.metersphere.api.dto.definition.request.sampler.MsTCPSampler;
-import io.metersphere.api.jmeter.JMeterService;
-import io.metersphere.api.jmeter.MessageCache;
-import io.metersphere.api.jmeter.ResourcePoolCalculation;
+import io.metersphere.api.exec.api.ApiCaseExecuteService;
+import io.metersphere.api.exec.scenario.ApiScenarioEnvService;
 import io.metersphere.api.service.ApiDefinitionExecResultService;
+import io.metersphere.api.service.ApiDefinitionService;
 import io.metersphere.api.service.ApiTestCaseService;
-import io.metersphere.api.service.task.NamedThreadFactory;
 import io.metersphere.base.domain.*;
-import io.metersphere.base.mapper.*;
+import io.metersphere.base.mapper.ApiTestCaseMapper;
+import io.metersphere.base.mapper.TestPlanApiCaseMapper;
+import io.metersphere.base.mapper.TestPlanMapper;
 import io.metersphere.base.mapper.ext.ExtTestPlanApiCaseMapper;
-import io.metersphere.commons.constants.*;
-import io.metersphere.commons.exception.MSException;
+import io.metersphere.commons.constants.ExecuteResult;
 import io.metersphere.commons.utils.*;
 import io.metersphere.controller.request.ResetOrderRequest;
-import io.metersphere.dto.BaseSystemConfigDTO;
+import io.metersphere.dto.MsExecResponseDTO;
+import io.metersphere.dto.RunModeConfigDTO;
 import io.metersphere.log.vo.OperatingLogDetails;
-import io.metersphere.plugin.core.MsTestElement;
-import io.metersphere.service.SystemParameterService;
+import io.metersphere.service.EnvironmentGroupProjectService;
 import io.metersphere.track.dto.PlanReportCaseDTO;
 import io.metersphere.track.dto.TestCaseReportStatusResultDTO;
 import io.metersphere.track.dto.TestPlanApiResultReportDTO;
 import io.metersphere.track.dto.TestPlanSimpleReportDTO;
 import io.metersphere.track.request.testcase.TestPlanApiCaseBatchRequest;
-import io.metersphere.track.service.task.SerialApiExecTask;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
-import org.apache.jorphan.collections.HashTree;
+import org.mybatis.spring.SqlSessionUtils;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,9 +44,6 @@ import org.springframework.util.CollectionUtils;
 
 import javax.annotation.Resource;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
 @Service
@@ -80,20 +64,19 @@ public class TestPlanApiCaseService {
     @Resource
     ApiTestCaseMapper apiTestCaseMapper;
     @Resource
-    private SystemParameterService systemParameterService;
-    @Resource
-    private JMeterService jMeterService;
-    @Resource
-    private ApiDefinitionExecResultMapper mapper;
+    private ApiCaseExecuteService testPlanApiCaseExecuteService;
     @Resource
     SqlSessionFactory sqlSessionFactory;
-    @Resource
-    private ResourcePoolCalculation resourcePoolCalculation;
     @Resource
     @Lazy
     private TestPlanService testPlanService;
     @Resource
-    private TestResourcePoolMapper testResourcePoolMapper;
+    private EnvironmentGroupProjectService environmentGroupProjectService;
+    @Resource
+    private ApiDefinitionService apiDefinitionService;
+    @Resource
+    private ApiScenarioEnvService apiScenarioEnvService;
+
 
     public TestPlanApiCase getInfo(String caseId, String testPlanId) {
         TestPlanApiCaseExample example = new TestPlanApiCaseExample();
@@ -105,6 +88,7 @@ public class TestPlanApiCaseService {
         request.setProjectId(null);
         request.setOrders(ServiceUtils.getDefaultSortOrder(request.getOrders()));
         List<TestPlanApiCaseDTO> apiTestCases = extTestPlanApiCaseMapper.list(request);
+        ServiceUtils.buildVersionInfo(apiTestCases);
         if (CollectionUtils.isEmpty(apiTestCases)) {
             return apiTestCases;
         }
@@ -114,13 +98,13 @@ public class TestPlanApiCaseService {
 
     public void buildUserInfo(List<? extends TestPlanApiCaseDTO> apiTestCases) {
         List<String> userIds = new ArrayList();
-        userIds.addAll(apiTestCases.stream().map(TestPlanApiCaseDTO::getCreateUser).collect(Collectors.toList()));
+        userIds.addAll(apiTestCases.stream().map(TestPlanApiCaseDTO::getCreateUserId).collect(Collectors.toList()));
         userIds.addAll(apiTestCases.stream().map(TestPlanApiCaseDTO::getUpdateUser).collect(Collectors.toList()));
         userIds.addAll(apiTestCases.stream().map(TestPlanApiCaseDTO::getUserId).collect(Collectors.toList()));
         if (!org.apache.commons.collections.CollectionUtils.isEmpty(userIds)) {
             Map<String, String> userMap = ServiceUtils.getUserNameMap(userIds);
             apiTestCases.forEach(caseResult -> {
-                caseResult.setCreatorName(userMap.get(caseResult.getCreateUser()));
+                caseResult.setCreatorName(userMap.get(caseResult.getCreateUserId()));
                 caseResult.setUpdateName(userMap.get(caseResult.getUpdateUser()));
                 caseResult.setPrincipalName(userMap.get(caseResult.getUserId()));
             });
@@ -152,17 +136,28 @@ public class TestPlanApiCaseService {
     }
 
     public int delete(String id) {
-        apiDefinitionExecResultService.deleteByResourceId(id);
         TestPlanApiCaseExample example = new TestPlanApiCaseExample();
         example.createCriteria()
                 .andIdEqualTo(id);
+        return testPlanApiCaseMapper.deleteByExample(example);
+    }
 
+    public int deleteByCaseId(String caseId) {
+        return this.deleteByCaseIds(Arrays.asList(caseId));
+    }
+
+    public int deleteByCaseIds(List<String> caseIds) {
+        if (CollectionUtils.isEmpty(caseIds)) {
+            return 0;
+        }
+        TestPlanApiCaseExample example = new TestPlanApiCaseExample();
+        example.createCriteria()
+                .andApiCaseIdIn(caseIds);
         return testPlanApiCaseMapper.deleteByExample(example);
     }
 
     public int deleteByPlanId(String planId) {
         List<String> ids = extTestPlanApiCaseMapper.getIdsByPlanId(planId);
-        apiDefinitionExecResultService.deleteByResourceIds(ids);
         TestPlanApiCaseExample example = new TestPlanApiCaseExample();
         example.createCriteria()
                 .andTestPlanIdEqualTo(planId);
@@ -181,7 +176,6 @@ public class TestPlanApiCaseService {
         if (CollectionUtils.isEmpty(deleteIds)) {
             return;
         }
-        apiDefinitionExecResultService.deleteByResourceIds(deleteIds);
         TestPlanApiCaseExample example = new TestPlanApiCaseExample();
         example.createCriteria()
                 .andIdIn(deleteIds)
@@ -190,6 +184,12 @@ public class TestPlanApiCaseService {
     }
 
     public List<TestPlanApiCase> getCasesByPlanId(String planId) {
+        TestPlanApiCaseExample example = new TestPlanApiCaseExample();
+        example.createCriteria().andTestPlanIdEqualTo(planId);
+        return testPlanApiCaseMapper.selectByExample(example);
+    }
+
+    public List<TestPlanApiCase> getCases(String planId) {
         TestPlanApiCaseExample example = new TestPlanApiCaseExample();
         example.createCriteria().andTestPlanIdEqualTo(planId);
         return testPlanApiCaseMapper.selectByExample(example);
@@ -223,12 +223,20 @@ public class TestPlanApiCaseService {
         Map<String, String> rows = request.getSelectRows();
         Set<String> ids = rows.keySet();
         request.setIds(new ArrayList<>(ids));
-        Map<String, String> env = request.getProjectEnvMap();
+        Map<String, String> env = new HashMap<>();
+        String environmentType = request.getEnvironmentType();
+        String environmentGroupId = request.getEnvironmentGroupId();
+        if (StringUtils.equals(environmentType, EnvironmentType.JSON.name())) {
+            env = request.getProjectEnvMap();
+        } else if (StringUtils.equals(environmentType, EnvironmentType.GROUP.name()) && StringUtils.isNotBlank(environmentGroupId)) {
+            env = environmentGroupProjectService.getEnvMap(environmentGroupId);
+        }
         if (env != null && !env.isEmpty()) {
+            Map<String, String> finalEnv = env;
             ids.forEach(id -> {
                 TestPlanApiCase apiCase = new TestPlanApiCase();
                 apiCase.setId(id);
-                apiCase.setEnvironmentId(env.get(rows.get(id)));
+                apiCase.setEnvironmentId(finalEnv.get(rows.get(id)));
                 testPlanApiCaseMapper.updateByPrimaryKeySelective(apiCase);
             });
         }
@@ -255,6 +263,7 @@ public class TestPlanApiCaseService {
         ApiTestCaseRequest selectReq = new ApiTestCaseRequest();
         selectReq.setIds(ids);
         List<TestPlanApiCaseDTO> returnList = extTestPlanApiCaseMapper.list(selectReq);
+        ServiceUtils.buildVersionInfo(returnList);
         return returnList;
     }
 
@@ -286,253 +295,41 @@ public class TestPlanApiCaseService {
         return null;
     }
 
-
-    private MsTestElement parse(ApiTestCaseWithBLOBs caseWithBLOBs, String planId) {
-        ObjectMapper mapper = new ObjectMapper();
-        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        try {
-            String api = caseWithBLOBs.getRequest();
-            JSONObject element = JSON.parseObject(api);
-            ElementUtil.dataFormatting(element);
-
-            LinkedList<MsTestElement> list = new LinkedList<>();
-            if (element != null && StringUtils.isNotEmpty(element.getString("hashTree"))) {
-                LinkedList<MsTestElement> elements = mapper.readValue(element.getString("hashTree"),
-                        new TypeReference<LinkedList<MsTestElement>>() {
-                        });
-                list.addAll(elements);
-            }
-            TestPlanApiCase apiCase = testPlanApiCaseMapper.selectByPrimaryKey(planId);
-            if (element.getString("type").equals("HTTPSamplerProxy")) {
-                MsHTTPSamplerProxy httpSamplerProxy = JSON.parseObject(api, MsHTTPSamplerProxy.class);
-                httpSamplerProxy.setHashTree(list);
-                httpSamplerProxy.setName(planId);
-                httpSamplerProxy.setUseEnvironment(apiCase.getEnvironmentId());
-                return httpSamplerProxy;
-            }
-            if (element.getString("type").equals("TCPSampler")) {
-                MsTCPSampler msTCPSampler = JSON.parseObject(api, MsTCPSampler.class);
-                msTCPSampler.setUseEnvironment(apiCase.getEnvironmentId());
-                msTCPSampler.setHashTree(list);
-                msTCPSampler.setName(planId);
-                return msTCPSampler;
-            }
-            if (element.getString("type").equals("DubboSampler")) {
-                MsDubboSampler dubboSampler = JSON.parseObject(api, MsDubboSampler.class);
-                dubboSampler.setUseEnvironment(apiCase.getEnvironmentId());
-                dubboSampler.setHashTree(list);
-                dubboSampler.setName(planId);
-                return dubboSampler;
-            }
-            if (element.getString("type").equals("JDBCSampler")) {
-                MsJDBCSampler jDBCSampler = JSON.parseObject(api, MsJDBCSampler.class);
-                jDBCSampler.setUseEnvironment(apiCase.getEnvironmentId());
-                jDBCSampler.setHashTree(list);
-                jDBCSampler.setName(planId);
-                return jDBCSampler;
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            LogUtil.error(e);
-        }
-        return null;
-    }
-
-    public HashTree generateHashTree(String testId) {
-        TestPlanApiCase apiCase = testPlanApiCaseMapper.selectByPrimaryKey(testId);
-        if (apiCase != null) {
-            ApiTestCaseWithBLOBs caseWithBLOBs = apiTestCaseMapper.selectByPrimaryKey(apiCase.getApiCaseId());
-            HashTree jmeterHashTree = new HashTree();
-            MsTestPlan testPlan = new MsTestPlan();
-            testPlan.setHashTree(new LinkedList<>());
-            if (caseWithBLOBs != null) {
-                try {
-                    MsThreadGroup group = new MsThreadGroup();
-                    group.setLabel(caseWithBLOBs.getName());
-                    group.setName(caseWithBLOBs.getName());
-                    MsTestElement testElement = parse(caseWithBLOBs, testId);
-                    group.setHashTree(new LinkedList<>());
-                    group.getHashTree().add(testElement);
-                    testPlan.getHashTree().add(group);
-                } catch (Exception ex) {
-                    MSException.throwException(ex.getMessage());
-                }
-            }
-            testPlan.toHashTree(jmeterHashTree, testPlan.getHashTree(), new ParameterConfig());
-            return jmeterHashTree;
-        }
-        return null;
-    }
-
-    private ApiDefinitionExecResult addResult(BatchRunDefinitionRequest request, TestPlanApiCase key, String status, ApiDefinitionExecResultMapper batchMapper) {
-        ApiDefinitionExecResult apiResult = new ApiDefinitionExecResult();
-        apiResult.setId(UUID.randomUUID().toString());
-        apiResult.setCreateTime(System.currentTimeMillis());
-        apiResult.setStartTime(System.currentTimeMillis());
-        apiResult.setEndTime(System.currentTimeMillis());
-        ApiTestCaseWithBLOBs caseWithBLOBs = apiTestCaseMapper.selectByPrimaryKey(key.getApiCaseId());
-        if (caseWithBLOBs != null) {
-            apiResult.setName(caseWithBLOBs.getName());
-        }
-        apiResult.setTriggerMode(TriggerMode.BATCH.name());
-        apiResult.setActuator("LOCAL");
-        if (request.getConfig() != null && StringUtils.isNotEmpty(request.getConfig().getResourcePoolId())) {
-            apiResult.setActuator(request.getConfig().getResourcePoolId());
-        }
-        if (SessionUtils.getUser() != null) {
-            apiResult.setUserId(SessionUtils.getUser().getId());
-        }
-        apiResult.setResourceId(key.getApiCaseId());
-        apiResult.setStartTime(System.currentTimeMillis());
-        apiResult.setType(ApiRunMode.API_PLAN.name());
-        apiResult.setStatus(status);
-        batchMapper.insert(apiResult);
-        return apiResult;
-    }
-
-    public String modeRun(BatchRunDefinitionRequest request) {
-        List<String> ids = request.getPlanIds();
-        TestPlanApiCaseExample example = new TestPlanApiCaseExample();
-        example.createCriteria().andIdIn(ids);
-        List<TestPlanApiCase> planApiCases = testPlanApiCaseMapper.selectByExample(example);
-        SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
-        ApiDefinitionExecResultMapper batchMapper = sqlSession.getMapper(ApiDefinitionExecResultMapper.class);
-        // 资源池
-        if (request.getConfig() != null && StringUtils.isNotEmpty(request.getConfig().getResourcePoolId())) {
-            TestResourcePool pool = testResourcePoolMapper.selectByPrimaryKey(request.getConfig().getResourcePoolId());
-            if (pool != null && pool.getApi() && pool.getType().equals(ResourcePoolTypeEnum.K8S.name())) {
-                LogUtil.info("K8S 暂时不做校验 ");
-            } else {
-                List<JvmInfoDTO> testResources = resourcePoolCalculation.getPools(request.getConfig().getResourcePoolId());
-                request.getConfig().setTestResources(testResources);
-            }
-        }
-        // 开始选择执行模式
-        if (request.getConfig() != null && request.getConfig().getMode().equals(RunModeConstants.SERIAL.toString())) {
-            Map<TestPlanApiCase, ApiDefinitionExecResult> executeQueue = new HashMap<>();
-            planApiCases.forEach(testPlanApiCase -> {
-                ApiDefinitionExecResult report = addResult(request, testPlanApiCase, APITestStatus.Waiting.name(), batchMapper);
-                executeQueue.put(testPlanApiCase, report);
-            });
-            sqlSession.commit();
-            List<String> reportIds = new LinkedList<>();
-            // 开始串行执行
-            Thread thread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    ExecutorService executorService = Executors.newFixedThreadPool(1, new NamedThreadFactory("TestPlanApiCaseService"));
-                    try {
-                        Thread.currentThread().setName("TestPlanCase串行执行线程");
-                        for (TestPlanApiCase testPlanApiCase : executeQueue.keySet()) {
-                            try {
-                                if (executeQueue.get(testPlanApiCase) != null && MessageCache.terminationOrderDeque.contains(executeQueue.get(testPlanApiCase).getId())) {
-                                    MessageCache.terminationOrderDeque.remove(executeQueue.get(testPlanApiCase).getId());
-                                    break;
-                                }
-                                ApiDefinitionExecResult execResult = executeQueue.get(testPlanApiCase);
-                                execResult.setId(executeQueue.get(testPlanApiCase).getId());
-                                execResult.setStatus(APITestStatus.Running.name());
-                                mapper.updateByPrimaryKey(execResult);
-                                reportIds.add(execResult.getId());
-                                RunModeDataDTO modeDataDTO;
-                                if (request.getConfig() != null && StringUtils.isNotBlank(request.getConfig().getResourcePoolId())) {
-                                    modeDataDTO = new RunModeDataDTO(testPlanApiCase.getId(), UUID.randomUUID().toString());
-                                } else {
-                                    // 生成报告和HashTree
-                                    HashTree hashTree = generateHashTree(testPlanApiCase.getId());
-                                    modeDataDTO = new RunModeDataDTO(hashTree, UUID.randomUUID().toString());
-                                }
-                                modeDataDTO.setApiCaseId(execResult.getId());
-                                Future<ApiDefinitionExecResult> future = executorService.submit(new SerialApiExecTask(jMeterService, mapper, modeDataDTO, request.getConfig(), ApiRunMode.API_PLAN.name()));
-                                ApiDefinitionExecResult report = future.get();
-                                // 如果开启失败结束执行，则判断返回结果状态
-                                if (request.getConfig().isOnSampleError()) {
-                                    if (report == null || !report.getStatus().equals("Success")) {
-                                        reportIds.remove(execResult.getId());
-                                        break;
-                                    }
-                                }
-                            } catch (Exception e) {
-                                reportIds.remove(executeQueue.get(testPlanApiCase).getId());
-                                LogUtil.error("执行终止：" + e.getMessage());
-                                break;
-                            }
-                        }
-                        // 清理未执行的队列
-                        if (reportIds.size() < executeQueue.size()) {
-                            List<String> removeList = executeQueue.entrySet().stream()
-                                    .filter(map -> !reportIds.contains(map.getValue().getId()))
-                                    .map(map -> map.getValue().getId()).collect(Collectors.toList());
-                            ApiDefinitionExecResultExample example = new ApiDefinitionExecResultExample();
-                            example.createCriteria().andIdIn(removeList);
-                            mapper.deleteByExample(example);
-                        }
-                    } catch (Exception e) {
-                        LogUtil.error(e);
-                    } finally {
-                        executorService.shutdownNow();
-                    }
-                }
-            });
-            thread.start();
-        } else {
-            Map<String, TestPlanApiCase> executeQueue = new HashMap<>();
-            planApiCases.forEach(testPlanApiCase -> {
-                ApiDefinitionExecResult report = addResult(request, testPlanApiCase, APITestStatus.Running.name(), batchMapper);
-                executeQueue.put(report.getId(), testPlanApiCase);
-                MessageCache.batchTestCases.put(report.getId(), report);
-            });
-            sqlSession.commit();
-
-            // 开始并发执行
-            for (String reportId : executeQueue.keySet()) {
-                if (request.getConfig() != null && StringUtils.isNotEmpty(request.getConfig().getResourcePoolId())) {
-                    jMeterService.runTest(executeQueue.get(reportId).getId(), reportId, ApiRunMode.API_PLAN.name(), null, request.getConfig());
-                } else {
-                    HashTree hashTree = generateHashTree(executeQueue.get(reportId).getId());
-                    jMeterService.runLocal(reportId, hashTree, TriggerMode.BATCH.name(), ApiRunMode.API_PLAN.name());
-                }
-            }
-        }
-        return request.getId();
-    }
-
     /**
      * 测试执行
      *
      * @param request
      * @return
      */
-    public String run(BatchRunDefinitionRequest request) {
+    public List<MsExecResponseDTO> run(BatchRunDefinitionRequest request) {
         if (request.getConfig() != null) {
-            if (request.getConfig().getMode().equals(RunModeConstants.PARALLEL.toString())) {
-                // 校验并发数量
-                int count = 50;
-                BaseSystemConfigDTO dto = systemParameterService.getBaseInfo();
-                if (StringUtils.isNotEmpty(dto.getConcurrency())) {
-                    count = Integer.parseInt(dto.getConcurrency());
-                }
-                if (request.getPlanIds().size() > count) {
-                    MSException.throwException("并发数量过大，请重新选择！");
+            RunModeConfigDTO config = request.getConfig();
+            if (config != null) {
+                String envType = config.getEnvironmentType();
+                String envGroupId = config.getEnvironmentGroupId();
+                Map<String, String> envMap = config.getEnvMap();
+                if ((StringUtils.equals(envType, EnvironmentType.JSON.toString()) && envMap != null && !envMap.isEmpty())) {
+                    setApiCaseEnv(null, request.getPlanIds(), envMap);
+                } else if ((StringUtils.equals(envType, EnvironmentType.GROUP.toString()) && StringUtils.isNotBlank(envGroupId))) {
+                    Map<String, String> map = environmentGroupProjectService.getEnvMap(envGroupId);
+                    setApiCaseEnv(null, request.getPlanIds(), map);
                 }
             }
-            Map<String, String> envMap = request.getConfig().getEnvMap();
-            if (!envMap.isEmpty()) {
-                setApiCaseEnv(request.getPlanIds(), envMap);
-            }
-            return this.modeRun(request);
+            return testPlanApiCaseExecuteService.run(request);
         }
-        return request.getId();
+        return null;
     }
 
-    public void setApiCaseEnv(List<String> planIds, Map<String, String> map) {
-        if (CollectionUtils.isEmpty(planIds)) {
+    public void setApiCaseEnv(List<TestPlanApiCase> testPlanApiCases, List<String> planIds, Map<String, String> map) {
+        if (CollectionUtils.isEmpty(planIds) || (map != null && map.isEmpty())) {
             return;
         }
 
-        TestPlanApiCaseExample caseExample = new TestPlanApiCaseExample();
-        caseExample.createCriteria().andIdIn(planIds);
-        List<TestPlanApiCase> testPlanApiCases = testPlanApiCaseMapper.selectByExample(caseExample);
+        if (CollectionUtils.isEmpty(testPlanApiCases)) {
+            TestPlanApiCaseExample caseExample = new TestPlanApiCaseExample();
+            caseExample.createCriteria().andIdIn(planIds);
+            testPlanApiCases = testPlanApiCaseMapper.selectByExample(caseExample);
+        }
         List<String> apiCaseIds = testPlanApiCases.stream().map(TestPlanApiCase::getApiCaseId).collect(Collectors.toList());
         if (CollectionUtils.isEmpty(apiCaseIds)) {
             return;
@@ -551,13 +348,16 @@ public class TestPlanApiCaseService {
             String caseId = testPlanApiCase.getApiCaseId();
             String projectId = projectCaseIdMap.get(caseId);
             String envId = map.get(projectId);
-            if (StringUtils.isNotBlank(envId)) {
+            if (StringUtils.isNotBlank(envId) && !StringUtils.equals(testPlanApiCase.getEnvironmentId(), envId)) {
                 testPlanApiCase.setEnvironmentId(envId);
                 mapper.updateByPrimaryKey(testPlanApiCase);
             }
         });
 
         sqlSession.flushStatements();
+        if (sqlSession != null && sqlSessionFactory != null) {
+            SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+        }
     }
 
     public Boolean hasFailCase(String planId, List<String> apiCaseIds) {
@@ -576,14 +376,92 @@ public class TestPlanApiCaseService {
         return extTestPlanApiCaseMapper.getApiTestCaseById(testPlanApiCaseId);
     }
 
+    /**
+     * 计算测试计划中接口用例的相关数据
+     *
+     * @param planId
+     * @param report
+     * @return 接口用例的最新执行报告
+     */
     public void calculatePlanReport(String planId, TestPlanSimpleReportDTO report) {
         List<PlanReportCaseDTO> planReportCaseDTOS = extTestPlanApiCaseMapper.selectForPlanReport(planId);
+        //计算测试计划中接口用例的相关数据
+        calculatePlanReport(report, planReportCaseDTOS);
+        //记录接口用例的运行环境信息
+        List<String> idList = planReportCaseDTOS.stream().map(PlanReportCaseDTO::getId).collect(Collectors.toList());
+        this.initProjectEnvironment(report, idList, "ApiCase");
+    }
 
+    /**
+     * 初始化项目环境信息
+     *
+     * @param report
+     * @param resourceIds  资源ID
+     * @param resourceType 资源类型 ApiCase/Scenario
+     */
+    public void initProjectEnvironment(TestPlanSimpleReportDTO report, List<String> resourceIds, String resourceType) {
+        if (!CollectionUtils.isEmpty(resourceIds)) {
+            if (StringUtils.equalsIgnoreCase("ApiCase", resourceType)) {
+                List<ApiDefinitionExecResultWithBLOBs> execResults = apiDefinitionExecResultService.selectByResourceIdsAndMaxCreateTime(resourceIds);
+                execResults.forEach(item -> {
+                    String envConf = item.getEnvConfig();
+                    String projectId = item.getProjectId();
+                    Map<String, List<String>> projectEnvMap = apiDefinitionService.getProjectEnvNameByEnvConfig(projectId, envConf);
+                    this.setProjectEnvMap(report, projectEnvMap);
+                });
+            } else if (StringUtils.equalsIgnoreCase("Scenario", resourceType)) {
+                Map<String, List<String>> projectEnvMap = apiScenarioEnvService.selectProjectEnvMapByTestPlanScenarioIds(resourceIds);
+                this.setProjectEnvMap(report, projectEnvMap);
+            }
+        }
+
+    }
+
+    private void setProjectEnvMap(TestPlanSimpleReportDTO report, Map<String, List<String>> projectEnvMap) {
+        if (report != null && MapUtils.isNotEmpty(projectEnvMap)) {
+            if (report.getProjectEnvMap() == null) {
+                report.setProjectEnvMap(new LinkedHashMap<>());
+            }
+            for (Map.Entry<String, List<String>> entry : projectEnvMap.entrySet()) {
+                String projectName = entry.getKey();
+                List<String> envNameList = entry.getValue();
+                if (report.getProjectEnvMap().containsKey(projectName)) {
+                    envNameList.forEach(envName -> {
+                        if (!report.getProjectEnvMap().get(projectName).contains(envName)) {
+                            report.getProjectEnvMap().get(projectName).add(envName);
+                        }
+                    });
+                } else {
+                    report.getProjectEnvMap().put(projectName, envNameList);
+                }
+            }
+        }
+    }
+
+    public void calculatePlanReport(List<String> apiReportIds, TestPlanSimpleReportDTO report) {
+        List<PlanReportCaseDTO> planReportCaseDTOS = apiDefinitionExecResultService.selectForPlanReport(apiReportIds);
+        calculatePlanReport(report, planReportCaseDTOS);
+    }
+
+    public void calculatePlanReportByApiCaseList(List<TestPlanFailureApiDTO> apiCaseList, TestPlanSimpleReportDTO report) {
+        List<PlanReportCaseDTO> planReportCaseDTOS = new ArrayList<>();
+        for (TestPlanFailureApiDTO dto : apiCaseList) {
+            PlanReportCaseDTO reportCaseDTO = new PlanReportCaseDTO();
+            reportCaseDTO.setId(dto.getId());
+            reportCaseDTO.setCaseId(dto.getCaseId());
+            reportCaseDTO.setReportId(dto.getReportId());
+            reportCaseDTO.setStatus(dto.getExecResult());
+            planReportCaseDTOS.add(reportCaseDTO);
+        }
+        calculatePlanReport(report, planReportCaseDTOS);
+    }
+
+    private void calculatePlanReport(TestPlanSimpleReportDTO report, List<PlanReportCaseDTO> planReportCaseDTOS) {
         TestPlanApiResultReportDTO apiResult = report.getApiResult();
         List<TestCaseReportStatusResultDTO> statusResult = new ArrayList<>();
         Map<String, TestCaseReportStatusResultDTO> statusResultMap = new HashMap<>();
 
-        TestPlanUtils.calculatePlanReport(planReportCaseDTOS, statusResultMap, report, "success");
+        TestPlanUtils.buildStatusResultMap(planReportCaseDTOS, statusResultMap, report, "success");
 
         TestPlanUtils.addToReportCommonStatusResultList(statusResultMap, statusResult);
 
@@ -597,14 +475,6 @@ public class TestPlanApiCaseService {
 
     public List<TestPlanFailureApiDTO> getAllCases(String planId) {
         List<TestPlanFailureApiDTO> apiTestCases = extTestPlanApiCaseMapper.getFailureList(planId, null);
-        return buildCases(apiTestCases);
-    }
-
-    public List<TestPlanFailureApiDTO> getAllCases(Collection<String> caseIdList, String planId, String status) {
-        if (caseIdList.isEmpty()) {
-            return new ArrayList<>();
-        }
-        List<TestPlanFailureApiDTO> apiTestCases = extTestPlanApiCaseMapper.getFailureListByIds(caseIdList, planId, status);
         return buildCases(apiTestCases);
     }
 
@@ -635,4 +505,40 @@ public class TestPlanApiCaseService {
                 testPlanApiCaseMapper::updateByPrimaryKeySelective);
     }
 
+    public List<TestPlanFailureApiDTO> getByApiExecReportIds(Map<String, String> testPlanApiCaseReportMap, Map<String, TestPlanFailureApiDTO> apiCaseInfoDTOMap) {
+        if (testPlanApiCaseReportMap.isEmpty()) {
+            return new ArrayList<>();
+        }
+        String defaultStatus = "error";
+        Map<String, String> reportResult = apiDefinitionExecResultService.selectReportResultByReportIds(testPlanApiCaseReportMap.values());
+        Map<String, String> savedReportMap = new HashMap<>(testPlanApiCaseReportMap);
+        List<TestPlanFailureApiDTO> apiTestCases = new ArrayList<>();
+        for (TestPlanFailureApiDTO dto : apiCaseInfoDTOMap.values()) {
+            String testPlanApiCaseId = dto.getId();
+            String reportId = savedReportMap.get(testPlanApiCaseId);
+            savedReportMap.remove(testPlanApiCaseId);
+            dto.setReportId(reportId);
+            if (StringUtils.isEmpty(reportId)) {
+                dto.setExecResult(defaultStatus);
+            } else {
+                String status = reportResult.get(reportId);
+                if (status == null) {
+                    status = defaultStatus;
+                }
+                dto.setExecResult(status);
+            }
+            apiTestCases.add(dto);
+        }
+        return buildCases(apiTestCases);
+    }
+
+    public List<TestPlanFailureApiDTO> getErrorReportCases(String planId) {
+        List<TestPlanFailureApiDTO> apiTestCases = extTestPlanApiCaseMapper.getFailureList(planId, ExecuteResult.ERROR_REPORT_RESULT.toString());
+        return buildCases(apiTestCases);
+    }
+
+    public List<TestPlanFailureApiDTO> getUnExecuteCases(String planId) {
+        List<TestPlanFailureApiDTO> apiTestCases = extTestPlanApiCaseMapper.getFailureList(planId, "unExecute");
+        return buildCases(apiTestCases);
+    }
 }

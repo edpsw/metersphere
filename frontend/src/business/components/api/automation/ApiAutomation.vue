@@ -1,6 +1,6 @@
 <template>
   <ms-container v-if="renderComponent" v-loading="loading">
-    <ms-aside-container>
+    <ms-aside-container v-show="isAsideHidden">
       <ms-api-scenario-module
         :show-operator="true"
         @nodeSelectEvent="nodeChange"
@@ -13,15 +13,15 @@
         @exportJmx="exportJmx"
         @refreshAll="refreshAll"
         page-source="scenario"
+        :is-trash-data="trashEnable"
         :type="'edit'"
         :total='total'
         ref="nodeTree"/>
     </ms-aside-container>
-
     <ms-main-container style="overflow: hidden">
       <el-tabs v-model="activeName" @tab-click="addTab" @tab-remove="closeConfirm">
         <el-tab-pane
-          name="trash"
+          name="trash" :closable="true"
           :label="$t('commons.trash')" v-if="trashEnable">
           <ms-api-scenario-list
             @getTrashCase="getTrashCase"
@@ -33,16 +33,21 @@
             :checkRedirectID="checkRedirectID"
             :isRedirectEdit="isRedirectEdit"
             :is-read-only="isReadOnly"
-            @openScenario="editScenario"
+            @openScenario="clickResource"
             @edit="editScenario"
             @changeSelectDataRangeAll="changeSelectDataRangeAll"
             :custom-num="customNum"
             :init-api-table-opretion="initApiTableOpretion"
             @updateInitApiTableOpretion="updateInitApiTableOpretion"
-            ref="apiTrashScenarioList"/>
+            ref="apiTrashScenarioList">
+            <template v-slot:version>
+              <version-select v-xpack :project-id="projectId" @changeVersion="changeVersion"/>
+            </template>
+          </ms-api-scenario-list>
         </el-tab-pane>
         <el-tab-pane name="default" :label="$t('api_test.automation.scenario_list')">
           <ms-api-scenario-list
+            v-if="!trashEnable"
             @getTrashCase="getTrashCase"
             @refreshTree="refreshTree"
             :module-tree="nodeTree"
@@ -52,13 +57,17 @@
             :checkRedirectID="checkRedirectID"
             :isRedirectEdit="isRedirectEdit"
             :is-read-only="isReadOnly"
-            @openScenario="editScenario"
+            @openScenario="clickResource"
             @edit="editScenario"
             @changeSelectDataRangeAll="changeSelectDataRangeAll"
             :custom-num="customNum"
             :init-api-table-opretion="initApiTableOpretion"
             @updateInitApiTableOpretion="updateInitApiTableOpretion"
-            ref="apiScenarioList"/>
+            ref="apiScenarioList">
+            <template v-slot:version>
+              <version-select v-xpack :project-id="projectId" @changeVersion="changeVersion"/>
+            </template>
+          </ms-api-scenario-list>
         </el-tab-pane>
 
 
@@ -68,6 +77,10 @@
           :label="item.label"
           :name="item.name"
           closable>
+          <el-tooltip slot="label" effect="dark" :content="item.label" placement="bottom-start"
+                      class="ms-tab-name-width">
+            <span>{{ item.label }}</span>
+          </el-tooltip>
           <div class="ms-api-scenario-div">
             <ms-edit-api-scenario @refresh="refresh" @openScenario="editScenario" @closePage="closePage"
                                   :currentScenario="item.currentScenario"
@@ -97,11 +110,18 @@
 
 <script>
 
-import {getCurrentProjectID, getCurrentUser, getUUID, hasPermission} from "@/common/js/utils";
+import {getCurrentProjectID, getCurrentUser, getCurrentWorkspaceId, getUUID, hasPermission} from "@/common/js/utils";
+import {PROJECT_ID, WORKSPACE_ID} from "@/common/js/constants";
+import {buildTree} from "@/business/components/api/definition/model/NodeTree";
+
+const requireComponent = require.context('@/business/components/xpack/', true, /\.vue$/);
+const VersionSelect = requireComponent.keys().length > 0 ? requireComponent("./version/VersionSelect.vue") : {};
+const jsondiffpatch = require('jsondiffpatch');
 
 export default {
   name: "ApiAutomation",
   components: {
+    'VersionSelect': VersionSelect.default,
     MsApiScenarioModule: () => import("@/business/components/api/automation/scenario/ApiScenarioModule"),
     MsApiScenarioList: () => import("@/business/components/api/automation/scenario/ApiScenarioList"),
     MsMainContainer: () => import("@/business/components/common/components/MsMainContainer"),
@@ -147,14 +167,32 @@ export default {
       customNum: false,
       //影响API表格刷新的操作。 为了防止高频率刷新模块列表用。如果是模块更新而造成的表格刷新，则不回调模块刷新方法
       initApiTableOpretion: 'init',
+      isSave: false,
+      isAsideHidden: true,
     };
+  },
+  created() {
+    let workspaceId = this.$route.params.workspaceId;
+    if (workspaceId) {
+      sessionStorage.setItem(WORKSPACE_ID, workspaceId);
+    }
+    let projectId = this.$route.params.projectId;
+    if (projectId) {
+      sessionStorage.setItem(PROJECT_ID, projectId);
+    }
+  },
+  activated() {
+    this.selectNodeIds = [];
   },
   mounted() {
     this.getProject();
     this.getTrashCase();
-    this.init()
+    this.init();
   },
   watch: {
+    trashEnable() {
+      this.selectNodeIds = [];
+    },
     redirectID() {
       this.renderComponent = false;
       this.$nextTick(() => {
@@ -172,9 +210,12 @@ export default {
       }
     },
     selectNodeIds() {
-      this.activeName = "default";
+      if (!this.trashEnable) {
+        this.activeName = "default";
+      }
     },
     activeName() {
+      this.isAsideHidden = (this.activeName === 'default' || this.activeName === 'trash');
     }
   },
   methods: {
@@ -185,34 +226,48 @@ export default {
     exportJmx() {
       this.$refs.apiScenarioList.exportJmx();
     },
-    checkRedirectEditPage(redirectParam) {
-      if (redirectParam != null) {
-        let selectParamArr = redirectParam.split("edit:");
-        if (selectParamArr.length == 2) {
-          let scenarioId = selectParamArr[1];
-          //查找单条数据，跳转修改页面
-          let url = "/api/automation/list/" + 1 + "/" + 1;
-          this.$post(url, {id: scenarioId}, response => {
-            let data = response.data;
-            if (data != null) {
-              //如果树未加载
-              if (this.moduleOptions && JSON.stringify(this.moduleOptions) === '{}') {
-                this.$refs.nodeTree.list();
-              }
-              if (data.listObject && data.listObject.length > 0) {
-                let row = data.listObject[0];
-                if (row != null && row.tags != 'null' && row.tags != '' && row.tags != undefined) {
-                  if (Object.prototype.toString.call(row.tags).match(/\[object (\w+)\]/)[1].toLowerCase() !== 'object'
-                    && Object.prototype.toString.call(row.tags).match(/\[object (\w+)\]/)[1].toLowerCase() !== 'array') {
-                    row.tags = JSON.parse(row.tags);
-                  }
-                }
-                this.editScenario(row);
-              }
-            }
-          });
-        }
+    checkRedirectEditPage(params) {
+      if (!params) {
+        return;
       }
+      if (typeof params === "string") {
+        let paramArr = params.split("edit:");
+        if (paramArr.length !== 2) {
+          return;
+        }
+        let scenarioId = paramArr[1];
+        //查找单条数据，跳转修改页面
+        this.$post("/api/automation/list/1/1", {id: scenarioId}, response => {
+          let data = response.data;
+          if (data && data.listObject && data.listObject.length > 0) {
+            let row = data.listObject[0];
+            let checks = ["array", "object"];
+            if (row && row.tags && (checks.indexOf(Object.prototype.toString.call(row.tags)
+              .match(/\[object (\w+)\]/)[1].toLowerCase()) !== -1)) {
+              row.tags = JSON.parse(row.tags);
+            }
+            //如果树未加载
+            if (this.moduleOptions && this.moduleOptions.length === 0) {
+              let projectId = data.projectId ? data.projectId : this.projectId;
+              this.initModules(row, projectId);
+            } else {
+              this.editScenario(row);
+            }
+          }
+        });
+      }
+    },
+    initModules(row, projectId) {
+      this.$get("/api/automation/module/list/" + projectId, response => {
+        if (response.data) {
+          response.data.forEach(node => {
+            node.name = node.name === '未规划场景' ? this.$t('api_test.automation.unplanned_scenario') : node.name
+            buildTree(node, {path: ''});
+          });
+          this.moduleOptions = response.data;
+        }
+        this.editScenario(row);
+      });
     },
     changeRedirectParam(redirectIDParam) {
       this.redirectID = redirectIDParam;
@@ -242,6 +297,7 @@ export default {
       }
     },
     addTab(tab) {
+      this.trashEnable = tab.name === 'trash';
       if (tab.name === 'default') {
         this.$refs.apiScenarioList.search();
       } else if (tab.name === 'trash') {
@@ -260,7 +316,7 @@ export default {
           status: "Underway", principal: getCurrentUser().id,
           apiScenarioModuleId: "default-module", id: getUUID(),
           modulePath: "/" + this.$t("commons.module_title"),
-          level: "P0"
+          level: "P0", type: "add"
         };
         if (this.nodeTree && this.nodeTree.length > 0) {
           currentScenario.apiScenarioModuleId = this.nodeTree[0].id;
@@ -303,27 +359,38 @@ export default {
     handleTabClose() {
       let message = "";
       this.tabs.forEach(t => {
-        if (t && this.$store.state.scenarioMap.has(t.currentScenario.id) && this.$store.state.scenarioMap.get(t.currentScenario.id) > 1) {
+        this.diff(t);
+        if (t && this.isSave) {
           message += t.currentScenario.name + "，";
+          this.isSave = false;
         }
-      })
+      });
       if (message !== "") {
-        this.$alert("场景[ " + message.substr(0, message.length - 1) + " ]未保存，是否确认关闭全部？", '', {
+        this.$alert(this.$t('commons.scenario') + " [ " + message.substr(0, message.length - 1) + " ] " + this.$t('commons.confirm_info'), '', {
           confirmButtonText: this.$t('commons.confirm'),
           cancelButtonText: this.$t('commons.cancel'),
           callback: (action) => {
             if (action === 'confirm') {
-              this.$store.state.scenarioMap.clear();
               this.tabs = [];
+              this.trashEnable = false;
               this.activeName = "default";
-              this.refresh();
+              this.isSave = false;
+              // 清除vuex中缓存的环境
+              this.$store.state.scenarioEnvMap = new Map();
+            } else {
+              this.isSave = false;
             }
           }
         });
       } else {
         this.tabs = [];
+        this.trashEnable = false;
         this.activeName = "default";
         this.refresh();
+        this.isSave = false;
+      }
+      if (this.tabs && this.tabs.length === 0) {
+        this.refreshAll();
       }
     },
     handleCommand(e) {
@@ -348,25 +415,177 @@ export default {
         this.activeName = "default";
       }
     },
+    diff(t) {
+      if (t.currentScenario.type !== "add") {
+        let v1 = t.currentScenario.scenarioDefinitionOrg;
+        let v2 = {
+          apiScenarioModuleId: t.currentScenario.apiScenarioModuleId,
+          name: t.currentScenario.name,
+          status: t.currentScenario.status,
+          principal: t.currentScenario.principal,
+          level: t.currentScenario.level,
+          tags: t.currentScenario.tags,
+          description: t.currentScenario.description,
+          scenarioDefinition: t.currentScenario.scenarioDefinition
+        };
+        let v3 = JSON.parse(JSON.stringify(v2));
+        if (v1.scenarioDefinition) {
+          this.deleteResourceIds(v1.scenarioDefinition);
+        }
+        if (v3.scenarioDefinition) {
+          this.deleteResourceIds(v3.scenarioDefinition);
+        }
+        let delta = jsondiffpatch.diff(JSON.parse(JSON.stringify(v1)), JSON.parse(JSON.stringify(v3)));
+        if (delta) {
+          this.isSave = true;
+        }
+      }
+      if (t.currentScenario.type === 'add') {
+        this.isSave = true;
+      }
+      if (t.currentScenario.copy === true) {
+        this.isSave = true;
+      }
+    },
+    deleteResourceIds(array) {
+      if (array instanceof Array && array.length > 0) {
+        array.forEach(item => {
+          if (item.currentScenarioId && item.currentScenarioId.length > 0) {
+            delete item.currentScenarioId;
+          }
+          if (item.resourceId) {
+            delete item.resourceId;
+          }
+          if (item.method) {
+            delete item.method;
+          }
+          if (item.timeout >= 0) {
+            delete item.timeout;
+          }
+          if (item.ctimeout >= 0) {
+            delete item.ctimeout;
+          }
+          if (item.rest && item.rest.length === 0) {
+            delete item.rest;
+          }
+          if (item.arguments && item.arguments.length === 0) {
+            delete item.arguments;
+          }
+          if (item.id) {
+            delete item.id;
+          }
+          if (!item.checkBox) {
+            delete item.checkBox;
+          }
+          if (!item.isBatchProcess) {
+            delete item.isBatchProcess;
+          }
+          if (!item.isLeaf || item.isLeaf) {
+            delete item.isLeaf;
+          }
+          if (item.maxThreads) {
+            delete item.maxThreads;
+          }
+          if (item.parentIndex) {
+            delete item.parentIndex
+          }
+          if (item.connectTimeout) {
+            delete item.connectTimeout;
+          }
+          if (item.index) {
+            delete item.index;
+          }
+          if (item.postSize >= 0) {
+            delete item.postSize;
+          }
+          if (item.preSize >= 0) {
+            delete item.preSize;
+          }
+          if (item.requestResult) {
+            delete item.requestResult;
+          }
+          if (item.responseTimeout) {
+            delete item.responseTimeout;
+          }
+          if (item.root) {
+            delete item.root;
+          }
+          if (item.ruleSize >= 0) {
+            delete item.ruleSize;
+          }
+          if (item.delay) {
+            item.delay = Number(item.delay);
+          }
+          if (item.body && item.body.kvs) {
+            item.body.kvs.forEach(v => {
+              if (v.files) {
+                delete v.files;
+              }
+            })
+          }
+          if (item.body && ((item.body.binary && item.body.binary.length === 0) || (item.body.kvs && item.body.kvs.length === 0))) {
+            delete item.body;
+          }
+          delete item.projectId;
+          if (item.hashTree && item.hashTree.length > 0) {
+            this.deleteResourceIds(item.hashTree);
+          }
+        })
+      }
+    },
     closeConfirm(targetName) {
-      let t = this.tabs.filter(tab => tab.name === targetName);
-      if (t && this.$store.state.scenarioMap.has(t[0].currentScenario.id) && this.$store.state.scenarioMap.get(t[0].currentScenario.id) > 1) {
-        this.$alert("场景[ " + t[0].currentScenario.name + " ]未保存，是否确认关闭？", '', {
-          confirmButtonText: this.$t('commons.confirm'),
-          cancelButtonText: this.$t('commons.cancel'),
-          callback: (action) => {
-            if (action === 'confirm') {
-              this.$store.state.scenarioMap.delete(t[0].currentScenario.id);
-              this.removeTab(targetName);
+      if (targetName === 'trash') {
+        this.selectNodeIds = [];
+        this.trashEnable = false;
+      } else {
+        let message = "";
+        this.tabs.forEach(tab => {
+          if (tab.name === targetName) {
+            this.diff(tab);
+            if (tab && this.isSave) {
+              message += tab.currentScenario.name ? tab.currentScenario.name : this.$t('api_test.automation.add_scenario');
             }
           }
-        });
-      } else {
-        this.$store.state.scenarioMap.delete(t[0].currentScenario.id);
-        this.removeTab(targetName);
+        })
+        if (message !== "") {
+          this.$alert(this.$t('commons.scenario') + " [ " + message + " ] " + this.$t('commons.confirm_info'), '', {
+            confirmButtonText: this.$t('commons.confirm'),
+            cancelButtonText: this.$t('commons.cancel'),
+            callback: (action) => {
+              if (action === 'confirm') {
+                this.removeTab(targetName);
+                this.isSave = false;
+              } else {
+                this.isSave = false;
+              }
+            }
+          });
+        } else {
+          this.isSave = false;
+          this.removeTab(targetName);
+        }
+        if (this.tabs && this.tabs.length === 0) {
+          this.refreshAll();
+        }
       }
     },
     removeTab(targetName) {
+      let index = this.tabs.findIndex(item => item.name === targetName);
+      if (index !== -1) {
+        // 清除vuex中缓存的环境
+        let tab = this.tabs[index];
+        if (tab && tab.currentScenario && this.$store.state.scenarioEnvMap && this.$store.state.scenarioEnvMap instanceof Map) {
+          this.$store.state.scenarioEnvMap.forEach((v, k) => {
+            if (k.indexOf(tab.currentScenario.id) !== -1) {
+              this.$store.state.scenarioEnvMap.delete(k);
+            }
+          })
+        }
+        this.tabs.splice(index, 1);
+        if (tab) {
+          tab = undefined;
+        }
+      }
       this.tabs = this.tabs.filter(tab => tab.name !== targetName);
       if (this.tabs.length > 0) {
         this.activeName = this.tabs[this.tabs.length - 1].name;
@@ -394,19 +613,20 @@ export default {
       }
     },
     refresh(data) {
-      this.setTabTitle(data);
-      this.$refs.apiScenarioList.search(data);
-      if (this.$refs.apiTrashScenarioList) {
-        this.$refs.apiTrashScenarioList.search(data);
+      if (data) {
+        this.setTabTitle(data);
       }
-      this.$refs.nodeTree.list();
     },
     refreshTree() {
-      this.$refs.nodeTree.list();
+      if (this.$refs.nodeTree) {
+        this.$refs.nodeTree.list();
+      }
     },
     refreshAll() {
       this.$refs.nodeTree.list();
-      this.$refs.apiScenarioList.search();
+      if (this.$refs.apiScenarioList) {
+        this.$refs.apiScenarioList.search();
+      }
       if (this.$refs.apiTrashScenarioList) {
         this.$refs.apiTrashScenarioList.search();
       }
@@ -414,7 +634,7 @@ export default {
     setTabTitle(data) {
       for (let index in this.tabs) {
         let tab = this.tabs[index];
-        if (tab.name === this.activeName) {
+        if (tab && tab.name === this.activeName) {
           tab.label = data.name;
           break;
         }
@@ -423,18 +643,22 @@ export default {
     init() {
       let scenarioData = this.$route.params.scenarioData;
       if (scenarioData) {
-        this.editScenario(scenarioData)
+        this.editScenario(scenarioData);
       }
     },
     editScenario(row) {
-      const index = this.tabs.find(p => p.currentScenario.id === row.id);
+      if (!row) {
+        this.activeName = 'default';
+        this.$error(this.$t('api_test.scenario_jump_message'));
+        return;
+      }
+      const index = this.tabs.find(p => p.currentScenario.id === row.id && p.currentScenario.copy === row.copy);
       if (!index) {
         this.addTab({name: 'edit', currentScenario: row});
       } else {
         this.activeName = index.name;
       }
     },
-
     nodeChange(node, nodeIds, pNodes) {
       this.initApiTableOpretion = "nodeChange";
       this.selectNodeIds = nodeIds;
@@ -468,7 +692,7 @@ export default {
       });
     },
     getProject() {
-      this.$get("/project/get/" + this.projectId, result => {
+      this.$get('/project_application/get/config/' + this.projectId + "/SCENARIO_CUSTOM_NUM", result => {
         let data = result.data;
         if (data) {
           this.customNum = data.scenarioCustomNum;
@@ -477,6 +701,57 @@ export default {
     },
     updateInitApiTableOpretion(param) {
       this.initApiTableOpretion = param;
+    },
+    changeVersion(currentVersion) {
+      if (this.$refs.apiScenarioList) {
+        this.$refs.apiScenarioList.condition.versionId = currentVersion || null;
+      }
+      if (this.$refs.apiTrashScenarioList) {
+        this.$refs.apiTrashScenarioList.condition.versionId = currentVersion || null;
+      }
+      this.refreshAll();
+    },
+    clickResource(resource) {
+      let workspaceId = getCurrentWorkspaceId();
+      let isTurnSpace = true
+      if (resource.projectId !== getCurrentProjectID()) {
+        isTurnSpace = false;
+        this.$get("/project/get/" + resource.projectId, response => {
+          if (response.data) {
+            workspaceId = response.data.workspaceId;
+            isTurnSpace = true;
+            this.checkPermission(resource, workspaceId, isTurnSpace);
+          }
+        });
+      } else {
+        this.checkPermission(resource, workspaceId, isTurnSpace);
+      }
+
+    },
+    gotoTurn(resource, workspaceId, isTurnSpace) {
+      let automationData = this.$router.resolve({
+        name: 'ApiAutomation',
+        params: {
+          redirectID: getUUID(),
+          dataType: "scenario",
+          dataSelectRange: 'edit:' + resource.id,
+          projectId: resource.projectId,
+          workspaceId: workspaceId
+        }
+      });
+      if (isTurnSpace) {
+        window.open(automationData.href, '_blank');
+      }
+    },
+    checkPermission(resource, workspaceId, isTurnSpace) {
+      this.$get('/project/getOwnerProjectIds', res => {
+        const project = res.data.find(p => p === resource.projectId);
+        if (!project) {
+          this.$warning(this.$t('commons.no_permission'));
+        } else {
+          this.gotoTurn(resource, workspaceId, isTurnSpace)
+        }
+      })
     }
   }
 };
@@ -486,4 +761,21 @@ export default {
 /deep/ .el-tabs__header {
   margin: 0 0 0px;
 }
+
+/deep/ .el-table__empty-block {
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
+  padding-right: 100%;
+}
+
+.ms-tab-name-width {
+  display: inline-block;
+  overflow-x: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
 </style>

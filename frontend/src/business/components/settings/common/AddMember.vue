@@ -9,24 +9,22 @@
           v-model="form.userIds"
           multiple
           filterable
+          @visible-change="visibleChange"
           :filter-method="userFilter"
           :popper-append-to-body="false"
-          class="select-width"
+          class="member_select"
           :placeholder="$t('member.please_choose_member')">
           <el-option
             v-for="item in userList"
             :key="item.id"
             :label="item.id"
             :value="item.id">
-            <template>
-              <span class="user-select-left">{{ item.name }} ({{ item.id }})</span>
-              <span class="user-select-right">{{ item.email }}</span>
-            </template>
+            <user-option-item :user="item"/>
           </el-option>
         </el-select>
       </el-form-item>
       <el-form-item :label="$t('commons.group')" prop="groupIds">
-        <el-select v-model="form.groupIds" multiple :placeholder="$t('group.please_select_group')" class="select-width">
+        <el-select v-model="form.groupIds" multiple :placeholder="$t('group.please_select_group')" class="group_select">
           <el-option
             v-for="item in form.groups"
             :key="item.id"
@@ -39,7 +37,7 @@
     <template v-slot:footer>
       <div class="dialog-footer">
         <el-button @click="dialogVisible = false" size="medium">{{ $t('commons.cancel') }}</el-button>
-        <el-button type="primary" @click="submitForm('form')" @keydown.enter.native.prevent size="medium">
+        <el-button type="primary" @click="submitForm('form')" size="medium" @keydown.enter.native.prevent>
           {{ $t('commons.confirm') }}
         </el-button>
       </div>
@@ -49,8 +47,13 @@
 
 <script>
 
+import UserOptionItem from "@/business/components/settings/common/UserOptionItem";
+import {GROUP_PROJECT} from "@/common/js/constants";
+import {getCurrentProjectID} from "@/common/js/utils";
+
 export default {
   name: "AddMember",
+  components: {UserOptionItem},
   data() {
     return {
       dialogVisible: false,
@@ -80,9 +83,26 @@ export default {
       default() {
         return '';
       }
+    },
+    projectId: {
+      type: String,
+      default() {
+        return '';
+      }
+    },
+    userResourceUrl: {
+      type: String,
+      default() {
+        return '/user/list/';
+      }
     }
   },
   methods: {
+    visibleChange(val) {
+      if (!val) {
+        this.userFilter(null);
+      }
+    },
     submitForm() {
       this.$refs['form'].validate((valid) => {
         if (valid) {
@@ -96,13 +116,17 @@ export default {
     },
     open() {
       this.dialogVisible = true;
-      this.result = this.$get('/user/list/', response => {
+      this.result = this.$get(this.userResourceUrl, response => {
         this.userList = response.data;
         this.copyUserList = response.data;
       })
-      this.result = this.$post('/user/group/list', {type: this.groupType, resourceId: this.groupScopeId}, response => {
+      let param = {type: this.groupType, resourceId: this.groupScopeId};
+      if (this.groupType === GROUP_PROJECT) {
+        param.projectId = this.projectId || getCurrentProjectID();
+      }
+      this.result = this.$post('/user/group/list', param, response => {
         this.$set(this.form, "groups", response.data);
-      })
+      });
     },
     close() {
       this.dialogVisible = false;
@@ -124,17 +148,7 @@ export default {
 </script>
 
 <style scoped>
-.user-select-left {
-  float: left;
-}
-
-.user-select-right {
-  float: right;
-  color: #8492a6;
-  font-size: 13px;
-}
-
-.select-width {
-  width: 100%;
+.member_select, .group_select {
+  display: block;
 }
 </style>

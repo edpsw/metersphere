@@ -33,5 +33,11 @@ public class LoadTest implements Serializable {
 
     private Long order;
 
+    private String versionId;
+
+    private String refId;
+
+    private Boolean latest;
+
     private static final long serialVersionUID = 1L;
 }

@@ -5,7 +5,9 @@
         <test-plan-load-case-list-header
             :condition="condition"
             :plan-id="planId"
-            @refresh="initTable"
+            :plan-status="planStatus"
+            :isShowVersion="false"
+            @refresh="search"
             @relevanceCase="$emit('relevanceCase')"/>
       </template>
 
@@ -25,7 +27,8 @@
         row-key="id"
         :row-order-group-id="planId"
         :row-order-func="editTestPlanLoadCaseOrder"
-        @refresh="initTable"
+        @order="initTable"
+        @filter="search"
         ref="table">
         <span v-for="(item) in fields" :key="item.key">
           <ms-table-column
@@ -34,7 +37,16 @@
             prop="num"
             sortable
             min-width="80"
-            label="ID"/>
+            label="ID">
+             <template v-slot:default="scope">
+               <el-link @click="openById(scope.row)">
+                  <span>
+                    {{ scope.row.num }}
+                  </span>
+               </el-link>
+            </template>
+          </ms-table-column>
+
           <ms-table-column
             :field="item"
             :fields-width="fieldsWidth"
@@ -42,6 +54,18 @@
             :label="$t('commons.name')"
             min-width="120"
             sortable>
+          </ms-table-column>
+          <ms-table-column
+            v-if="versionEnable"
+            prop="versionId"
+            :field="item"
+            :filters="versionFilters"
+            :fields-width="fieldsWidth"
+            :label="$t('commons.version')"
+            min-width="120px">
+           <template v-slot:default="scope">
+            <span>{{ scope.row.versionName }}</span>
+           </template>
           </ms-table-column>
           <ms-table-column
             :field="item"
@@ -129,7 +153,14 @@ import {
   buildBatchParam, getCustomTableHeader, getCustomTableWidth
 } from "@/common/js/tableUtils";
 import {TEST_PLAN_LOAD_CASE} from "@/common/js/constants";
-import {getCurrentProjectID, getCurrentUser, getCurrentUserId} from "@/common/js/utils";
+import {
+  getCurrentProjectID,
+  getCurrentUser,
+  getCurrentUserId,
+  getCurrentWorkspaceId,
+  getUUID,
+  hasLicense
+} from "@/common/js/utils";
 import HeaderLabelOperate from "@/business/components/common/head/HeaderLabelOperate";
 import MsPlanRunMode from "../../../common/PlanRunMode";
 import MsTable from "@/business/components/common/components/table/MsTable";
@@ -174,31 +205,31 @@ export default {
         {
           tip: this.$t('api_test.run'), icon: "el-icon-video-play",
           exec: this.run,
-          class: 'run-button',
-          isDisable: this.isReadOnly,
+          class: (this.planStatus==='Archived' || this.isReadOnly )?'disable-run':'run-button',
+          isDisable: this.isReadOnly || this.planStatus==='Archived',
           permissions: ['PROJECT_TRACK_PLAN:READ+RUN']
         },
         {
-          tip: '修改压力配置',
+          tip: '修改配置',
           icon: "el-icon-setting",
           exec: this.changeLoadConfig,
           type: 'success',
-          isDisable: this.isReadOnly,
+          isDisable: this.isReadOnly || this.planStatus==='Archived',
         },
         {
           tip: this.$t('test_track.plan_view.cancel_relevance'), icon: "el-icon-unlock",
           exec: this.handleDelete,
           type: 'danger',
-          isDisable: this.isReadOnly,
+          isDisable: this.isReadOnly || this.planStatus==='Archived',
           permissions: ['PROJECT_TRACK_PLAN:READ+RELEVANCE_OR_CANCEL']
         },
       ],
       buttons: [
         {
-          name: this.$t('test_track.plan.load_case.unlink_in_bulk'), handleClick: this.handleDeleteBatch, permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_DELETE']
+          name: this.$t('test_track.plan.load_case.unlink_in_bulk'), handleClick: this.handleDeleteBatch,  isDisable: this.planStatus==='Archived', permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_DELETE']
         },
         {
-          name: this.$t('test_track.plan.load_case.batch_exec_cases'), handleClick: this.handleRunBatch, permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_RUN']
+          name: this.$t('test_track.plan.load_case.batch_exec_cases'), handleClick: this.handleRunBatch,  isDisable: this.planStatus==='Archived', permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_RUN']
         }
       ],
       statusFilters: [
@@ -211,7 +242,8 @@ export default {
       ],
       reportId: '',
       loading: false,
-      statusScheduler: null
+      statusScheduler: null,
+      versionFilters: []
     }
   },
   props: {
@@ -221,8 +253,10 @@ export default {
       default: false
     },
     planId: String,
+    planStatus: String,
     reviewId: String,
     clickType: String,
+    versionEnable: Boolean,
   },
   computed: {
     editTestPlanLoadCaseOrder() {
@@ -241,6 +275,9 @@ export default {
     planId() {
       this.initTable();
     }
+  },
+  mounted() {
+    this.getVersionOptions();
   },
   methods: {
     orderBySelectRows(rows){
@@ -299,11 +336,18 @@ export default {
       this.initTable();
       this.refreshStatus();
     },
+    search() {
+      this.currentPage = 1;
+      this.initTable();
+    },
     initTable() {
       this.autoCheckStatus();
       this.condition.testPlanId = this.planId;
       if (this.selectProjectId && this.selectProjectId !== 'root') {
         this.condition.projectId = this.selectProjectId;
+      }
+      if (this.selectProjectId === 'root') {
+        this.condition.projectId = null;
       }
       if (this.clickType) {
         if (this.status == 'default') {
@@ -342,11 +386,13 @@ export default {
       });
     },
     refreshStatus() {
-      this.refreshScheduler = setInterval(() => {
-        // 如果有状态不是最终状态则定时查询
-        let arr = this.tableData.filter(data => data.status !== 'Completed' && data.status !== 'Error' && data.status !== 'Saved');
-        arr.length > 0 ? this.initTable() : clearInterval(this.refreshScheduler);
-      }, 8000);
+      // 暂时保留，试运行后再看是否还需要
+      // this.refreshScheduler = setInterval(() => {
+      //   // 如果有状态不是最终状态则定时查询
+      //   let arr = this.tableData.filter(data => data.status !== 'Completed' && data.status !== 'Error' && data.status !== 'Saved');
+      //   arr.length > 0 ? this.initTable() : clearInterval(this.refreshScheduler);
+      // }, 8000);
+      this.initTable();
     },
     handleDeleteBatch() {
       this.$alert(this.$t('test_track.plan_view.confirm_cancel_relevance') + "？", '', {
@@ -446,6 +492,25 @@ export default {
       if (this.refreshScheduler) {
         clearInterval(this.refreshScheduler);
       }
+    },
+    getVersionOptions() {
+      if (hasLicense()) {
+        this.$get('/project/version/get-project-versions/' + getCurrentProjectID(), response => {
+          this.versionOptions= response.data;
+          this.versionFilters = response.data.map(u => {
+            return {text: u.name, value: u.id};
+          });
+        });
+      }
+    },
+    openById(item) {
+      let loadData = this.$router.resolve({
+        name: 'editPerTest',
+        params: {
+          testId: item.loadCaseId,
+        }
+      });
+      window.open(loadData.href, '_blank');
     },
   },
   beforeDestroy() {

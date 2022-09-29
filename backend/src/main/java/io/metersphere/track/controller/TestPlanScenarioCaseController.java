@@ -3,13 +3,19 @@ package io.metersphere.track.controller;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import io.metersphere.api.dto.automation.*;
+import io.metersphere.api.service.ApiAutomationService;
 import io.metersphere.commons.constants.ApiRunMode;
 import io.metersphere.commons.constants.OperLogConstants;
+import io.metersphere.commons.constants.OperLogModule;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
+import io.metersphere.constants.RunModeConstants;
 import io.metersphere.controller.request.ResetOrderRequest;
+import io.metersphere.dto.MsExecResponseDTO;
+import io.metersphere.dto.RunModeConfigDTO;
 import io.metersphere.log.annotation.MsAuditLog;
 import io.metersphere.track.dto.RelevanceScenarioRequest;
+import io.metersphere.track.request.testcase.ApiCaseRelevanceRequest;
 import io.metersphere.track.request.testcase.TestPlanScenarioCaseBatchRequest;
 import io.metersphere.track.service.TestPlanScenarioCaseService;
 import org.springframework.web.bind.annotation.*;
@@ -37,6 +43,16 @@ public class TestPlanScenarioCaseController {
         return testPlanScenarioCaseService.getFailureCases(planId);
     }
 
+    @GetMapping("/list/errorReport/{planId}")
+    public List<TestPlanFailureScenarioDTO> getErrorReportList(@PathVariable String planId) {
+        return testPlanScenarioCaseService.getErrorReportCases(planId);
+    }
+
+    @GetMapping("/list/unExecute/{planId}")
+    public List<TestPlanFailureScenarioDTO> getUnExecuteCases(@PathVariable String planId) {
+        return testPlanScenarioCaseService.getUnExecuteCases(planId);
+    }
+
     @GetMapping("/list/all/{planId}")
     public List<TestPlanFailureScenarioDTO> getAllList(@PathVariable String planId) {
         return testPlanScenarioCaseService.getAllCases(planId);
@@ -52,28 +68,40 @@ public class TestPlanScenarioCaseController {
         return testPlanScenarioCaseService.relevanceList(request, goPage, pageSize);
     }
 
+    @PostMapping("/relevance")
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.ASSOCIATE_CASE, content = "#msClass.getLogDetails(#request)", msClass = ApiAutomationService.class)
+    public void testPlanRelevance(@RequestBody ApiCaseRelevanceRequest request) {
+        testPlanScenarioCaseService.relevance(request);
+    }
+
     @GetMapping("/delete/{id}")
-    @MsAuditLog(module = "track_test_case_review", type = OperLogConstants.UN_ASSOCIATE_CASE, beforeEvent = "#msClass.getLogDetails(#id)", msClass = TestPlanScenarioCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE_REVIEW, type = OperLogConstants.UN_ASSOCIATE_CASE, beforeEvent = "#msClass.getLogDetails(#id)", msClass = TestPlanScenarioCaseService.class)
     public int deleteTestCase(@PathVariable String id) {
         return testPlanScenarioCaseService.delete(id);
     }
 
     @PostMapping("/batch/delete")
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.UN_ASSOCIATE_CASE, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = TestPlanScenarioCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.UN_ASSOCIATE_CASE, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = TestPlanScenarioCaseService.class)
     public void deleteApiCaseBath(@RequestBody TestPlanScenarioCaseBatchRequest request) {
         testPlanScenarioCaseService.deleteApiCaseBath(request);
     }
 
     @PostMapping(value = "/run")
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.EXECUTE, content = "#msClass.getLogDetails(#request.planCaseIds)", msClass = TestPlanScenarioCaseService.class)
-    public String run(@RequestBody RunTestPlanScenarioRequest request) {
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.EXECUTE, content = "#msClass.getLogDetails(#request.planCaseIds)", msClass = TestPlanScenarioCaseService.class)
+    public List<MsExecResponseDTO> run(@RequestBody RunTestPlanScenarioRequest request) {
         request.setExecuteType(ExecuteType.Completed.name());
+        if(request.getConfig() == null){
+            RunModeConfigDTO config = new RunModeConfigDTO();
+            config.setMode(RunModeConstants.PARALLEL.toString());
+            config.setEnvMap(new HashMap<>());
+            request.setConfig(config);
+        }
         return testPlanScenarioCaseService.run(request);
     }
 
     @PostMapping(value = "/jenkins/run")
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.EXECUTE, content = "#msClass.getLogDetails(#request.ids)", msClass = TestPlanScenarioCaseService.class)
-    public String runByRun(@RequestBody RunTestPlanScenarioRequest request) {
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.EXECUTE, content = "#msClass.getLogDetails(#request.ids)", msClass = TestPlanScenarioCaseService.class)
+    public List<MsExecResponseDTO> runByRun(@RequestBody RunTestPlanScenarioRequest request) {
         request.setExecuteType(ExecuteType.Saved.name());
         request.setTriggerMode(ApiRunMode.API.name());
         request.setRunMode(ApiRunMode.SCENARIO.name());
@@ -81,7 +109,7 @@ public class TestPlanScenarioCaseController {
     }
 
     @PostMapping("/batch/update/env")
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.BATCH_UPDATE, beforeEvent = "#msClass.batchLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = TestPlanScenarioCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.BATCH_UPDATE, beforeEvent = "#msClass.batchLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = TestPlanScenarioCaseService.class)
     public void batchUpdateEnv(@RequestBody RelevanceScenarioRequest request) {
         testPlanScenarioCaseService.batchUpdateEnv(request);
     }

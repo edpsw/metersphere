@@ -17,6 +17,8 @@ public class ApiScenarioDTO extends ApiScenarioWithBLOBs {
     private String principalName;
     private List<String> tagNames;
     private String deleteUser;
+    private String versionName;
+    private Boolean versionEnable;
 
     /**
      * 场景跨项目ID
@@ -30,4 +32,5 @@ public class ApiScenarioDTO extends ApiScenarioWithBLOBs {
      */
     private String env;
     private Map<String, String> environmentMap;
+    private String creator;
 }

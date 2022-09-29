@@ -1,23 +1,30 @@
 package io.metersphere.api.dto.definition;
 
-import io.metersphere.api.dto.automation.RunModeConfig;
 import io.metersphere.api.dto.definition.response.Response;
+import io.metersphere.dto.RunModeConfigDTO;
 import io.metersphere.plugin.core.MsTestElement;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
 import java.util.List;
 import java.util.Map;
 
-@Setter
-@Getter
+@Data
 public class RunDefinitionRequest {
-
     private String id;
 
     private String reportId;
 
+    private String runMode;
+
+    private String uiRunMode;
+
+    private boolean isDebug;
+
     private boolean saved;
+
+    private boolean runLocal;
+
+    private String browserLanguage;
 
     private String requestId;
 
@@ -43,7 +50,14 @@ public class RunDefinitionRequest {
 
     List<String> scenarioFileIds;
 
-    private RunModeConfig config;
+    private RunModeConfigDTO config;
 
     private Map<String, String> environmentMap;
+
+    private String environmentType;
+    private String environmentJson;
+    private String environmentGroupId;
+
+    private boolean syncResult;
+    private boolean editCaseRequest;
 }

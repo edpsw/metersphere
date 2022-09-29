@@ -9,6 +9,7 @@
       :case-id="resourceId"
       :read-only="readOnly"
       :relationship-type="relationshipType"
+      :version-enable="versionEnable"
       @setCount="setCount"
       @deleteRelationship="handleDelete"
       ref="testCaseRelationshipList"/>
@@ -18,6 +19,7 @@
       :read-only="readOnly"
       :api-definition-id="resourceId"
       :relationship-type="relationshipType"
+      :version-enable="versionEnable"
       @setCount="setCount"
       @deleteRelationship="handleDelete"
       ref="testCaseRelationshipList"/>
@@ -26,19 +28,12 @@
 </template>
 
 <script>
-import MsTable from "@/business/components/common/components/table/MsTable";
-import MsTableColumn from "@/business/components/common/components/table/MsTableColumn";
-import MsTableSearchBar from "@/business/components/common/components/MsTableSearchBar";
-import RelationshipFunctionalRelevance
-  from "@/business/components/track/case/components/RelationshipFunctionalRelevance";
 import {deleteRelationshipEdge} from "@/network/relationship-edge";
 import TestCaseRelationshipList from "@/business/components/track/case/components/TestCaseRelationshipList";
 import ApiRelationshipList from "@/business/components/api/definition/components/complete/ApiRelationshipList";
 export default {
   name: "RelationshipList",
-  components: {
-    ApiRelationshipList,
-    TestCaseRelationshipList, RelationshipFunctionalRelevance, MsTableSearchBar, MsTableColumn, MsTable},
+  components: {ApiRelationshipList, TestCaseRelationshipList},
   data() {
     return {
       result: {},
@@ -53,7 +48,8 @@ export default {
     readOnly: Boolean,
     relationshipType: String,
     title: String,
-    resourceType: String
+    resourceType: String,
+    versionEnable: Boolean,
   },
   methods: {
     getTableData() {

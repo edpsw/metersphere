@@ -1,11 +1,13 @@
 <template>
-  <div>
-    <div>
-      <el-link type="primary" @click="open" style="float: right;margin-top: 5px">{{ $t('commons.adv_search.title') }}
-      </el-link>
-      <el-input :placeholder="$t('commons.search_by_id_name_tag_path')" @blur="search" class="search-input" size="small"
-                @keyup.enter.native="enterSearch"
-                v-model="condition.name" ref="inputVal"/>
+  <span>
+    <span>
+      <ms-search
+        v-if="visibleSearch"
+        :condition.sync="condition"
+        :base-search-tip="$t('commons.search_by_id_name_tag_path')"
+        :base-search-width="260"
+        @search="search">
+      </ms-search>
 
       <ms-table
         :data="tableData" :select-node-ids="selectNodeIds" :condition="condition" :page-size="pageSize"
@@ -66,8 +68,8 @@
 
         <ms-table-column
           prop="status"
-          sortable="custom"
-          :filters="statusFilters"
+          :sortable="trashEnable ? false:'custom'"
+          :filters="!trashEnable ? statusFilters : null"
           :field="item"
           :fields-width="fieldsWidth"
           min-width="120px"
@@ -79,6 +81,7 @@
           </span>
           </template>
         </ms-table-column>
+
 
         <ms-table-column
           prop="method"
@@ -116,13 +119,31 @@
           prop="tags"
           :field="item"
           :fields-width="fieldsWidth"
-          min-width="100px"
+          min-width="80px"
+          :show-overflow-tooltip=false
           :label="$t('commons.tag')">
           <template v-slot:default="scope">
-            <ms-tag v-for="(itemName,index)  in scope.row.tags" :key="index" type="success" effect="plain"
-                    :show-tooltip="true" :content="itemName"
-                    style="margin-left: 0px; margin-right: 2px"/>
+            <el-tooltip class="item" effect="dark" placement="top">
+              <div v-html="getTagToolTips(scope.row.tags)" slot="content"></div>
+              <div class="oneLine">
+                <ms-tag v-for="(itemName,index)  in scope.row.tags" :key="index" type="success" effect="plain"
+                        :show-tooltip="scope.row.tags.length===1&&itemName.length*12<=100" :content="itemName"
+                        style="margin-left: 0px; margin-right: 2px"/>
+              </div>
+            </el-tooltip>
             <span/>
+          </template>
+        </ms-table-column>
+
+        <ms-table-column
+          :label="$t('project.version.name')"
+          :field="item"
+          :fields-width="fieldsWidth"
+          :filters="versionFilters"
+          min-width="100px"
+          prop="versionId">
+          <template v-slot:default="scope">
+            <span>{{ scope.row.versionName }}</span>
           </template>
         </ms-table-column>
 
@@ -153,7 +174,6 @@
           :field="item"
           :fields-width="fieldsWidth"
           min-width="100px"
-          sortable
           :label="$t('api_test.definition.api_case_number')"/>
 
         <ms-table-column
@@ -167,24 +187,32 @@
           prop="casePassingRate"
           :field="item"
           min-width="120px"
-          sortable
           :fields-width="fieldsWidth"
           :label="$t('api_test.definition.api_case_passing_rate')"/>
+
+          <ms-table-column
+            prop="description"
+            :field="item"
+            min-width="120px"
+            :fields-width="fieldsWidth"
+            :label="$t('commons.description')"/>
         </span>
       </ms-table>
       <ms-table-pagination :change="initTable" :current-page.sync="currentPage" :page-size.sync="pageSize"
                            :total="total"/>
-    </div>
+    </span>
     <ms-api-case-list @refresh="initTable" @showExecResult="showExecResult" :currentApi="selectApi" ref="caseList"/>
     <!--批量编辑-->
-    <ms-batch-edit ref="batchEdit" @batchEdit="batchEdit" :data-count="$refs.table ? $refs.table.selectDataCounts : 0" :typeArr="typeArr" :value-arr="valueArr"/>
+    <ms-batch-edit ref="batchEdit" @batchEdit="batchEdit" :data-count="$refs.table ? $refs.table.selectDataCounts : 0"
+                   :typeArr="typeArr" :value-arr="valueArr"/>
     <!--高级搜索-->
     <ms-table-adv-search-bar :condition.sync="condition" :showLink="false" ref="searchBar" @search="search"/>
     <case-batch-move @refresh="initTable" @moveSave="moveSave" ref="testCaseBatchMove"/>
 
-    <relationship-graph-drawer :graph-data="graphData" ref="relationshipGraph"/>
-
-  </div>
+    <relationship-graph-drawer v-xpack :graph-data="graphData" ref="relationshipGraph"/>
+    <!--  删除接口提示  -->
+    <list-item-delete-confirm ref="apiDeleteConfirm" @handleDelete="_handleDelete"/>
+  </span>
 
 </template>
 
@@ -203,23 +231,34 @@ import MsTableColumn from "@/business/components/common/components/table/MsTable
 import MsBottomContainer from "../BottomContainer";
 import MsBatchEdit from "../basis/BatchEdit";
 import {API_METHOD_COLOUR, API_STATUS, DUBBO_METHOD, REQ_METHOD, SQL_METHOD, TCP_METHOD} from "../../model/JsonData";
-import {downloadFile, getCurrentProjectID, getUUID} from "@/common/js/utils";
+import {downloadFile, getCurrentProjectID, hasLicense, operationConfirm} from "@/common/js/utils";
 import {API_LIST} from '@/common/js/constants';
 import MsTableHeaderSelectPopover from "@/business/components/common/components/table/MsTableHeaderSelectPopover";
 import ApiStatus from "@/business/components/api/definition/components/list/ApiStatus";
 import MsTableAdvSearchBar from "@/business/components/common/components/search/MsTableAdvSearchBar";
-import {API_DEFINITION_CONFIGS} from "@/business/components/common/components/search/search-components";
+import {
+  API_DEFINITION_CONFIGS,
+  API_DEFINITION_CONFIGS_TRASH
+} from "@/business/components/common/components/search/search-components";
 import MsTipButton from "@/business/components/common/components/MsTipButton";
 import CaseBatchMove from "@/business/components/api/definition/components/basis/BatchMove";
 import {
-  initCondition,
-  getCustomTableHeader, getCustomTableWidth, buildBatchParam, getLastTableSortField
+  buildBatchParam,
+  deepClone,
+  getCustomTableHeader,
+  getCustomTableWidth,
+  getLastTableSortField,
+  getSelectDataCounts,
+  initCondition
 } from "@/common/js/tableUtils";
 import HeaderLabelOperate from "@/business/components/common/head/HeaderLabelOperate";
 import {Body} from "@/business/components/api/definition/model/ApiTestModel";
 import {editApiDefinitionOrder} from "@/network/api";
 import {getProtocolFilter} from "@/business/components/api/definition/api-definition";
 import {getGraphByCondition} from "@/network/graph";
+import ListItemDeleteConfirm from "@/business/components/common/components/ListItemDeleteConfirm";
+import MsSearch from "@/business/components/common/components/search/MsSearch";
+import {buildNodePath} from "@/business/components/api/definition/model/NodeTree";
 
 const requireComponent = require.context('@/business/components/xpack/', true, /\.vue$/);
 const relationshipGraphDrawer = requireComponent.keys().length > 0 ? requireComponent("./graph/RelationshipGraphDrawer.vue") : {};
@@ -228,6 +267,7 @@ const relationshipGraphDrawer = requireComponent.keys().length > 0 ? requireComp
 export default {
   name: "ApiList",
   components: {
+    ListItemDeleteConfirm,
     HeaderLabelOperate,
     CaseBatchMove,
     ApiStatus,
@@ -246,6 +286,7 @@ export default {
     MsTableAdvSearchBar,
     MsTable,
     MsTableColumn,
+    MsSearch,
     "relationshipGraphDrawer": relationshipGraphDrawer.default,
   },
   data() {
@@ -255,7 +296,7 @@ export default {
       fields: getCustomTableHeader('API_DEFINITION'),
       fieldsWidth: getCustomTableWidth('API_DEFINITION'),
       condition: {
-        components: API_DEFINITION_CONFIGS
+        components: this.trashEnable ? API_DEFINITION_CONFIGS_TRASH : API_DEFINITION_CONFIGS
       },
       selectApi: {},
       result: {},
@@ -263,6 +304,7 @@ export default {
       enableOrderDrag: true,
       selectDataRange: "all",
       graphData: [],
+      isMoveBatch: true,
       deletePath: "/test/case/delete",
       buttons: [
         {
@@ -281,7 +323,12 @@ export default {
           permissions: ['PROJECT_API_DEFINITION:READ+EDIT_API']
         },
         {
-          name: this.$t('生成依赖关系'),
+          name: this.$t('api_test.batch_copy'),
+          handleClick: this.handleBatchCopy,
+          permissions: ['PROJECT_API_DEFINITION:READ+CREATE_API']
+        },
+        {
+          name: this.$t('test_track.case.generate_dependencies'),
           isXPack: true,
           handleClick: this.generateGraph,
           permissions: ['PROJECT_API_DEFINITION:READ+EDIT_API']
@@ -294,7 +341,8 @@ export default {
           permissions: ['PROJECT_API_DEFINITION:READ+DELETE_API']
         },
         {
-          name: "批量恢复", handleClick: this.handleBatchRestore
+          name: this.$t('commons.batch_restore'),
+          handleClick: this.handleBatchRestore
         },
       ],
       tableOperatorButtons: [],
@@ -348,33 +396,26 @@ export default {
         {id: 'status', name: this.$t('api_test.definition.api_status')},
         {id: 'method', name: this.$t('api_test.definition.api_type')},
         {id: 'userId', name: this.$t('api_test.definition.api_principal')},
+        {id: 'tags', name: this.$t('commons.tag')},
       ],
       statusFilters: [
         {text: this.$t('test_track.plan.plan_status_prepare'), value: 'Prepare'},
         {text: this.$t('test_track.plan.plan_status_running'), value: 'Underway'},
         {text: this.$t('test_track.plan.plan_status_completed'), value: 'Completed'},
+      ],
+
+      statusFiltersTrash: [
         {text: this.$t('test_track.plan.plan_status_trash'), value: 'Trash'},
       ],
+
       caseStatusFilters: [
         {text: this.$t('api_test.home_page.detail_card.unexecute'), value: '未执行'},
         {text: this.$t('test_track.review.pass'), value: '通过'},
         {text: this.$t('test_track.review.un_pass'), value: '未通过'},
       ],
-      methodFilters: [
-        {text: 'GET', value: 'GET'},
-        {text: 'POST', value: 'POST'},
-        {text: 'PUT', value: 'PUT'},
-        {text: 'PATCH', value: 'PATCH'},
-        {text: 'DELETE', value: 'DELETE'},
-        {text: 'OPTIONS', value: 'OPTIONS'},
-        {text: 'HEAD', value: 'HEAD'},
-        {text: 'CONNECT', value: 'CONNECT'},
-        {text: 'DUBBO', value: 'DUBBO'},
-        {text: 'dubbo://', value: 'dubbo://'},
-        {text: 'SQL', value: 'SQL'},
-        {text: 'TCP', value: 'TCP'},
-      ],
+      methodFilters: [],
       userFilters: [],
+      versionFilters: [],
       valueArr: {
         status: API_STATUS,
         method: REQ_METHOD,
@@ -385,14 +426,18 @@ export default {
       currentPage: 1,
       pageSize: 10,
       total: 0,
-      screenHeight: 'calc(100vh - 258px)',//屏幕高度,
+      screenHeight: 'calc(100vh - 180px)',//屏幕高度,
       environmentId: undefined,
       selectDataCounts: 0,
       projectName: "",
+      versionEnable: false,
+      isFirstInitTable: true,
+      visibleSearch: true
     };
   },
   props: {
     currentProtocol: String,
+    currentVersion: String,
     selectNodeIds: Array,
     isSelectThisWeek: String,
     activeDom: String,
@@ -439,7 +484,14 @@ export default {
     },
     editApiDefinitionOrder() {
       return editApiDefinitionOrder;
-    }
+    },
+    moduleOptionsNew() {
+      let moduleOptions = [];
+      this.moduleOptions.forEach(node => {
+        buildNodePath(node, {path: ''}, moduleOptions);
+      });
+      return moduleOptions;
+    },
   },
   created: function () {
     if (!this.projectName || this.projectName === "") {
@@ -453,9 +505,13 @@ export default {
       this.condition.filters = {status: ["Prepare", "Underway", "Completed"]};
     }
     this.condition.orders = getLastTableSortField(this.tableHeaderKey);
-
+    // 切换tab之后版本查询
+    this.condition.versionId = this.currentVersion;
     this.initTable();
     this.getMaintainerOptions();
+    this.getVersionOptions();
+    this.checkVersionEnable();
+    this.getProtocolFilter();
 
     // 通知过来的数据跳转到编辑
     if (this.$route.query.resourceId) {
@@ -463,23 +519,32 @@ export default {
         this.editApi(response.data);
       });
     }
+    this.setAdvSearchParam();
   },
   watch: {
     selectNodeIds() {
-      if (!this.trashEnable) {
-        initCondition(this.condition, false);
-        this.currentPage = 1;
-        this.condition.moduleIds = [];
-        this.condition.moduleIds.push(this.selectNodeIds);
-        this.closeCaseModel();
-        this.initTable();
-      }
+      initCondition(this.condition, false);
+      this.currentPage = 1;
+      this.condition.moduleIds = [];
+      this.condition.moduleIds.push(this.selectNodeIds);
+      this.closeCaseModel();
+      this.initTable();
     },
     currentProtocol() {
+      this.getProtocolFilter();
       this.currentPage = 1;
       initCondition(this.condition, false);
       this.closeCaseModel();
       this.initTable(true);
+      this.visibleSearch = false;
+      this.$nextTick(() => (this.visibleSearch = true));
+      this.setAdvSearchParam();
+    },
+    currentVersion() {
+      this.condition.versionId = this.currentVersion;
+      this.initTable();
+      // 选择了版本过滤，版本列上的checkbox也进行过滤
+      this.getVersionOptions(this.currentVersion);
     },
     trashEnable() {
       if (this.trashEnable) {
@@ -496,6 +561,19 @@ export default {
     },
   },
   methods: {
+    setAdvSearchParam() {
+      let comp = this.condition.components.find(c => c.key === 'moduleIds');
+      if (comp) {
+        comp.options.params = {protocol: this.currentProtocol};
+      }
+      let method = this.condition.components.find(c => c.key === 'method');
+      if (method) {
+        method.options = getProtocolFilter(this.currentProtocol);
+      }
+    },
+    getProtocolFilter() {
+      this.methodFilters = getProtocolFilter(this.currentProtocol);
+    },
     getProjectName() {
       this.$get('project/get/' + this.projectId, response => {
         let project = response.data;
@@ -505,13 +583,22 @@ export default {
       });
     },
     generateGraph() {
+      if (getSelectDataCounts(this.condition, this.total, this.$refs.table.selectRows) > 100) {
+        this.$warning(this.$t('test_track.case.generate_dependencies_warning'));
+        return;
+      }
       getGraphByCondition('API', buildBatchParam(this, this.$refs.table.selectIds), (data) => {
         this.graphData = data;
         this.$refs.relationshipGraph.open();
       });
     },
     handleBatchMove() {
-      this.$refs.testCaseBatchMove.open(this.moduleTree, [], this.moduleOptions);
+      this.isMoveBatch = true;
+      this.$refs.testCaseBatchMove.open(this.moduleTree, [], this.moduleOptionsNew);
+    },
+    handleBatchCopy() {
+      this.isMoveBatch = false;
+      this.$refs.testCaseBatchMove.open(this.moduleTree, this.$refs.table.selectIds, this.moduleOptionsNew);
     },
     closeCaseModel() {
       //关闭案例弹窗
@@ -526,9 +613,7 @@ export default {
 
       initCondition(this.condition, this.condition.selectAll);
       this.selectDataCounts = 0;
-      if (!this.trashEnable) {
-        this.condition.moduleIds = this.selectNodeIds;
-      }
+      this.condition.moduleIds = this.selectNodeIds;
       this.condition.projectId = this.projectId;
       if (this.currentProtocol != null) {
         this.condition.protocol = this.currentProtocol;
@@ -540,15 +625,32 @@ export default {
       this.getSelectDataRange();
       this.condition.selectThisWeedData = false;
       this.condition.apiCaseCoverage = null;
+      this.condition.apiCoverage = null;
       switch (this.selectDataRange) {
         case 'thisWeekCount':
           this.condition.selectThisWeedData = true;
           break;
-        case 'uncoverage':
+        case 'notCoverate':
+          this.condition.apiCoverage = 'uncoverage';
+          this.condition.scenarioCoverage = null;
+          break;
+        case 'coverate':
+          this.condition.apiCoverage = 'coverage';
+          this.condition.scenarioCoverage = null;
+          break;
+        case 'unCoverageTestCase':
           this.condition.apiCaseCoverage = 'uncoverage';
           break;
-        case 'coverage':
+        case 'coverageTestCase':
           this.condition.apiCaseCoverage = 'coverage';
+          break;
+        case 'coverageScenario':
+          this.condition.scenarioCoverage = 'coverage';
+          this.condition.apiCoverage = null;
+          break;
+        case 'unCoverageScenario':
+          this.condition.scenarioCoverage = 'uncoverage';
+          this.condition.apiCoverage = null;
           break;
         case 'Prepare':
           this.condition.filters.status = [this.selectDataRange];
@@ -563,6 +665,9 @@ export default {
       if (currentProtocol) {
         this.condition.moduleIds = [];
       }
+      if (!this.condition.filters.status) {
+        this.condition.filters = {status: ["Prepare", "Underway", "Completed"]};
+      }
 
       if (this.condition.projectId) {
         this.result = this.$post("/api/definition/list/" + this.currentPage + "/" + this.pageSize, this.condition, response => {
@@ -573,21 +678,101 @@ export default {
             if (item.tags && item.tags.length > 0) {
               item.tags = JSON.parse(item.tags);
             }
+            item.caseTotal = parseInt(item.caseTotal);
+            if (item.protocol === 'HTTP') {
+              if (!item.response || item.response === 'null') {
+                let response = {headers: [], body: new Body(), statusCode: [], type: "HTTP"};
+                item.response = JSON.stringify(response);
+              }
+              if (item.response) {
+                item.response = JSON.parse(item.response);
+                if (!item.response.body) {
+                  item.response.body = new Body();
+                }
+                if (!item.response.headers) {
+                  item.response.headers = [];
+                }
+                if (!item.response.statusCode) {
+                  item.response.statusCode = [];
+                }
+                item.response = JSON.stringify(item.response);
+              }
+              //request
+              if (item.request) {
+                item.request = JSON.parse(item.request);
+                if (!item.request.body) {
+                  item.request.body = new Body();
+                }
+                if (!item.request.body.type) {
+                  this.$set(item.request.body, "type", null);
+                }
+                if (!item.request.headers) {
+                  item.request.headers = [];
+                }
+                if (!item.request.body.kvs) {
+                  item.request.body.kvs = [];
+                }
+                item.request.body.kvs.forEach(i => {
+                  if (!i.files) {
+                    i.files = []
+                  }
+                })
+                if (!item.request.rest) {
+                  item.request.rest = [];
+                }
+                if (!item.request.arguments) {
+                  item.request.arguments = [
+                    {
+                      contentType: "text/plain",
+                      enable: true,
+                      file: false,
+                      required: false,
+                      type: "text",
+                      urlEncode: false,
+                      valid: false
+                    }
+                  ];
+                }
+                item.request = JSON.stringify(item.request);
+              }
+            }
           });
           this.$emit('getTrashApi');
+          if (this.$refs.table) {
+            this.$refs.table.clearSelection();
+          }
         });
       }
       if (this.needRefreshModule()) {
-        this.$emit("refreshTree");
+        if (this.isFirstInitTable) {
+          this.isFirstInitTable = false;
+        } else {
+          this.$emit("refreshTree");
+        }
       }
     },
     getMaintainerOptions() {
-      this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()}, response => {
+      this.$get('/user/project/member/list', response => {
         this.valueArr.userId = response.data;
         this.userFilters = response.data.map(u => {
           return {text: u.name, value: u.id};
         });
       });
+    },
+    getVersionOptions(currentVersion) {
+      if (hasLicense()) {
+        this.$get('/project/version/get-project-versions/' + getCurrentProjectID(), response => {
+          if (currentVersion) {
+            this.versionFilters = response.data.filter(u => u.id === currentVersion).map(u => {
+              return {text: u.name, value: u.id};
+            });
+          } else {
+            this.versionFilters = response.data.map(u => {
+              return {text: u.name, value: u.id};
+            });
+          }
+        });
+      }
     },
     enterSearch() {
       this.$refs.inputVal.blur();
@@ -602,16 +787,21 @@ export default {
     },
 
     editApi(row) {
-      this.$emit('editApi', row);
+      this.$emit('editApiModule', row);
     },
     handleCopy(row) {
       let obj = JSON.parse(JSON.stringify(row));
       obj.isCopy = true;
-      obj.id =getUUID();
-      this.$emit('editApi', obj);
+      this.$emit('copyApi', obj);
     },
     runApi(row) {
-      let request = row ? JSON.parse(row.request) : {};
+      let request;
+      if (typeof (row.request) === 'string') {
+        request = row ? JSON.parse(row.request) : {};
+      } else {
+        request = row ? row.request : {};
+      }
+
       if (row.tags instanceof Array) {
         row.tags = JSON.stringify(row.tags);
       }
@@ -709,7 +899,13 @@ export default {
     },
     batchEdit(form) {
       let param = buildBatchParam(this, this.$refs.table.selectIds);
-      param[form.type] = form.value;
+      if (form.type === 'tags') {
+        param.type = form.type;
+        param.appendTag = form.appendTag;
+        param.tagList = form.tags;
+      } else {
+        param[form.type] = form.value;
+      }
       this.$post('/api/definition/batch/editByParams', param, () => {
         this.$success(this.$t('commons.save_success'));
         this.initTable();
@@ -721,14 +917,18 @@ export default {
       param.projectId = this.projectId;
       param.condition = this.condition;
       param.moduleId = param.nodeId;
-      this.$post('/api/definition/batch/editByParams', param, () => {
+      param.modulePath = param.nodePath;
+      let url = '/api/definition/batch/editByParams';
+      if (!this.isMoveBatch)
+        url = '/api/definition/batch/copy';
+      this.$post(url, param, () => {
         this.$success(this.$t('commons.save_success'));
         this.$refs.testCaseBatchMove.close();
         this.initTable();
       });
     },
     handleTestCase(api) {
-      this.$emit("handleTestCase", api)
+      this.$emit("handleTestCase", api);
       // this.$refs.caseList.open(this.selectApi);
     },
     handleDelete(api) {
@@ -740,20 +940,38 @@ export default {
         });
         return;
       }
-      this.$alert(this.$t('api_test.definition.request.delete_confirm') + ' ' + api.name + " ？", '', {
-        confirmButtonText: this.$t('commons.confirm'),
-        callback: (action) => {
-          if (action === 'confirm') {
-            let ids = [api.id];
-            this.$post('/api/definition/removeToGc/', ids, () => {
-              this.$success(this.$t('commons.delete_success'));
-              // this.initTable();
-              this.$emit("refreshTable");
-              this.$refs.caseList.apiCaseClose();
-            });
-          }
+      // 检查api有几个版本
+      this.$get('/api/definition/versions/' + api.id, response => {
+        if (hasLicense() && this.versionEnable && response.data.length > 1) {
+          // 删除提供列表删除和全部版本删除
+          this.$refs.apiDeleteConfirm.open(api, this.$t('api_test.definition.request.delete_confirm'));
+        } else {
+          operationConfirm(this.$t('api_test.definition.request.delete_confirm') + ' ' + api.name, () => {
+            this._handleDelete(api, false);
+          });
         }
       });
+    },
+    _handleDelete(api, deleteCurrentVersion) {
+      // 删除指定版本
+      if (deleteCurrentVersion) {
+        this.$get('/api/definition/delete/' + api.versionId + '/' + api.refId, () => {
+          this.$success(this.$t('commons.delete_success'));
+          this.$refs.apiDeleteConfirm.close();
+          this.$emit("refreshTable");
+        });
+      }
+      // 删除全部版本
+      else {
+        let ids = [api.id];
+        this.$post('/api/definition/removeToGc/', ids, () => {
+          this.$success(this.$t('commons.delete_success'));
+          // this.initTable();
+          this.$refs.apiDeleteConfirm.close();
+          this.$emit("refreshTable");
+          this.$refs.caseList.apiCaseClose();
+        });
+      }
     },
 
     getColor(enable, method) {
@@ -768,12 +986,10 @@ export default {
     getSelectDataRange() {
       let dataRange = this.$route.params.dataSelectRange;
       let dataType = this.$route.params.dataType;
-      if (dataType === 'api') {
-        this.selectDataRange = dataRange;
-      } else {
-        this.selectDataRange = 'all';
-      }
-      if (this.selectDataRange != null) {
+      this.selectDataRange = dataType === 'api' ? dataRange : "all";
+      if (this.selectDataRange &&
+        Object.prototype.toString.call(this.selectDataRange).match(/\[object (\w+)\]/)[1].toLowerCase() !== 'object'
+        && this.selectDataRange.indexOf(":") !== -1) {
         let selectParamArr = this.selectDataRange.split(":");
         if (selectParamArr.length === 2) {
           if (selectParamArr[0] === "apiList") {
@@ -801,12 +1017,43 @@ export default {
         let obj = response.data;
         if (type == 'MS') {
           obj.protocol = this.currentProtocol;
-          obj.nodeTree = nodeTree;
+          obj.nodeTree = this.getExportNodeTree(nodeTree, obj.data);
           downloadFile("Metersphere_Api_" + this.projectName + ".json", JSON.stringify(obj));
         } else {
           downloadFile("Swagger_Api_" + this.projectName + ".json", JSON.stringify(obj));
         }
       });
+    },
+    getExportNodeTree(nodeTree, apis) {
+      let idSet = new Set();
+      apis.forEach((item) => {
+        idSet.add(item.moduleId);
+      });
+      let exportTree = deepClone(nodeTree);
+      for (let i = exportTree.length - 1; i >= 0; i--) {
+        if (!this.cutDownTree(exportTree[i], idSet)) {
+          exportTree.splice(i, 1);
+        }
+      }
+      return exportTree;
+    },
+    // 去掉没有数据的模块再导出
+    cutDownTree(nodeTree, nodeIdSet) {
+      let hasData = false;
+      if (nodeIdSet.has(nodeTree.id)) {
+        hasData = true;
+      }
+      let children = nodeTree.children;
+      if (children) {
+        for (let i = children.length - 1; i >= 0; i--) {
+          if (!this.cutDownTree(children[i], nodeIdSet)) {
+            children.splice(i, 1);
+          } else {
+            hasData = true;
+          }
+        }
+      }
+      return hasData;
     },
     headerDragend(newWidth, oldWidth, column, event) {
       let finalWidth = newWidth;
@@ -827,6 +1074,30 @@ export default {
         return false;
       }
     },
+    checkVersionEnable() {
+      if (!this.projectId) {
+        return;
+      }
+      if (hasLicense()) {
+        this.$get('/project/version/enable/' + this.projectId, response => {
+          this.versionEnable = response.data;
+          if (!response.data) {
+            this.fields = this.fields.filter(f => f.id !== 'versionId');
+          }
+        });
+      }
+    },
+    getTagToolTips(tags) {
+      try {
+        let showTips = "";
+        tags.forEach(item => {
+          showTips += item + ",";
+        })
+        return showTips.substr(0, showTips.length - 1);
+      } catch (e) {
+        return "";
+      }
+    }
   },
 };
 </script>
@@ -849,7 +1120,6 @@ export default {
 .search-input {
   float: right;
   width: 300px;
-  margin-right: 10px;
 }
 
 .el-tag {
@@ -864,8 +1134,17 @@ export default {
   top: -2px;
 }
 
-/* /deep/ .el-table__fixed-body-wrapper {
-  top: 60px !important;
-} */
+/deep/ .el-table__empty-block {
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
+  padding-right: 100%;
+}
+
+.oneLine {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 
 </style>

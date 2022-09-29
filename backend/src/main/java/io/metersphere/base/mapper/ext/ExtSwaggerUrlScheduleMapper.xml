@@ -9,9 +9,11 @@
                sup.mode_id,
                sup.module_id,
                sup.project_id,
+               sup.config,
+               sup.cover_module,
                sch.value as rule,
                sch.enable,
-               sch.id as taskId
+               sch.id    as taskId
         FROM swagger_url_project sup
                  INNER JOIN schedule sch ON sup.id = sch.resource_id
         WHERE sup.project_id = #{projectId}

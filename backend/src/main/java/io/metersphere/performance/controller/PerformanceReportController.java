@@ -6,6 +6,7 @@ import io.metersphere.base.domain.LoadTestReportLog;
 import io.metersphere.base.domain.LoadTestReportWithBLOBs;
 import io.metersphere.commons.constants.NoticeConstants;
 import io.metersphere.commons.constants.OperLogConstants;
+import io.metersphere.commons.constants.OperLogModule;
 import io.metersphere.commons.constants.PermissionConstants;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
@@ -19,6 +20,7 @@ import io.metersphere.performance.controller.request.RenameReportRequest;
 import io.metersphere.performance.controller.request.ReportRequest;
 import io.metersphere.performance.dto.LoadTestExportJmx;
 import io.metersphere.performance.service.PerformanceReportService;
+import org.apache.shiro.authz.annotation.Logical;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.springframework.web.bind.annotation.*;
 
@@ -34,7 +36,7 @@ public class PerformanceReportController {
     private PerformanceReportService performanceReportService;
 
     @PostMapping("/recent/{count}")
-    @RequiresPermissions("PROJECT_PERFORMANCE_REPORT:READ")
+    @RequiresPermissions(value = {"PROJECT_PERFORMANCE_REPORT:READ", "PROJECT_PERFORMANCE_HOME:READ"}, logical = Logical.OR)
     public List<ReportDTO> recentProjects(@PathVariable int count, @RequestBody ReportRequest request) {
         // 最近 `count` 个项目
         PageHelper.startPage(1, count);
@@ -50,9 +52,9 @@ public class PerformanceReportController {
 
     @PostMapping("/delete/{reportId}")
     @RequiresPermissions(PermissionConstants.PROJECT_PERFORMANCE_REPORT_READ_DELETE)
-    @MsAuditLog(module = "performance_test_report", type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#reportId)", msClass = PerformanceReportService.class)
+    @MsAuditLog(module = OperLogModule.PERFORMANCE_TEST_REPORT, type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#reportId)", msClass = PerformanceReportService.class)
     @SendNotice(taskType = NoticeConstants.TaskType.PERFORMANCE_REPORT_TASK, event = NoticeConstants.Event.DELETE,
-            target = "#targetClass.getReport(#reportId)", targetClass = PerformanceReportService.class, mailTemplate = "performance/ReportDelete", subject = "性能测试报告通知")
+            target = "#targetClass.getReport(#reportId)", targetClass = PerformanceReportService.class, subject = "性能测试报告通知")
     public void deleteReport(@PathVariable String reportId) {
         performanceReportService.deleteReport(reportId);
     }
@@ -125,7 +127,7 @@ public class PerformanceReportController {
 
     @GetMapping("log/{reportId}/{resourceId}/{goPage}")
     public Pager<List<LoadTestReportLog>> logs(@PathVariable String reportId, @PathVariable String resourceId, @PathVariable int goPage) {
-        Page<Object> page = PageHelper.startPage(goPage, 1, true);
+        Page<Object> page = PageHelper.startPage(goPage, 5, true);
         return PageUtils.setPageInfo(page, performanceReportService.getReportLogs(reportId, resourceId));
     }
 
@@ -136,9 +138,9 @@ public class PerformanceReportController {
 
     @PostMapping("/batch/delete")
     @RequiresPermissions(PermissionConstants.PROJECT_PERFORMANCE_REPORT_READ_DELETE)
-    @MsAuditLog(module = "performance_test_report", type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#reportRequest.ids)", msClass = PerformanceReportService.class)
+    @MsAuditLog(module = OperLogModule.PERFORMANCE_TEST_REPORT, type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#reportRequest.ids)", msClass = PerformanceReportService.class)
     @SendNotice(taskType = NoticeConstants.TaskType.PERFORMANCE_REPORT_TASK, event = NoticeConstants.Event.DELETE,
-            target = "#targetClass.getReportList(#reportRequest.ids)", targetClass = PerformanceReportService.class, mailTemplate = "performance/ReportDelete", subject = "性能测试报告通知")
+            target = "#targetClass.getReportList(#reportRequest.ids)", targetClass = PerformanceReportService.class, subject = "性能测试报告通知")
     public void deleteReportBatch(@RequestBody DeleteReportRequest reportRequest) {
         performanceReportService.deleteReportBatch(reportRequest);
     }
@@ -149,12 +151,22 @@ public class PerformanceReportController {
     }
 
     @GetMapping("get-jmx-content/{reportId}")
-    public LoadTestExportJmx getJmxContent(@PathVariable String reportId) {
+    public List<LoadTestExportJmx> getJmxContent(@PathVariable String reportId) {
         return performanceReportService.getJmxContent(reportId);
     }
 
+    @GetMapping("/get-load-config/{reportId}")
+    public String getLoadConfiguration(@PathVariable String reportId) {
+        return performanceReportService.getLoadConfiguration(reportId);
+    }
+
+    @GetMapping("/get-advanced-config/{reportId}")
+    public String getAdvancedConfiguration(@PathVariable String reportId) {
+        return performanceReportService.getAdvancedConfiguration(reportId);
+    }
+
     @PostMapping("rename")
-    @MsAuditLog(module = "performance_test_report", type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#request.id)", title = "#request.name", content = "#msClass.getLogDetails(#request.id)", msClass = PerformanceReportService.class)
+    @MsAuditLog(module = OperLogModule.PERFORMANCE_TEST_REPORT, type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#request.id)", title = "#request.name", content = "#msClass.getLogDetails(#request.id)", msClass = PerformanceReportService.class)
     public void renameReport(@RequestBody RenameReportRequest request) {
         performanceReportService.renameReport(request);
     }

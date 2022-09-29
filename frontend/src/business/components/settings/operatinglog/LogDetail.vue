@@ -88,8 +88,8 @@
           {id: 'BATCH_UPDATE', label: this.$t('api_test.definition.request.batch_edit')},
           {id: 'BATCH_ADD', label: this.$t('commons.batch_add')},
           {id: 'UN_ASSOCIATE_CASE', label: this.$t('test_track.case.unlink')},
-          {id: 'BATCH_RESTORE', label: "批量恢复"},
-          {id: 'BATCH_GC', label: "批量回收"}
+          {id: 'BATCH_RESTORE', label: this.$t('commons.batch_restore')},
+          {id: 'BATCH_GC', label: this.$t('commons.batch_gc')}
         ],
         LOG_TYPE_MAP: new Map([
           ['CREATE', this.$t('api_test.definition.request.create_info')],
@@ -136,8 +136,13 @@
         this.infoVisible = false;
       },
       getDiff(v1, v2) {
-        let delta = jsondiffpatch.diff(v1, v2);
-        return formattersHtml.format(delta, v1);
+        if(typeof v1 === 'string' && typeof v2 === 'string' && v1.indexOf("{") !==-1 && v2.indexOf("{") !==-1 ){
+          let delta = jsondiffpatch.diff(JSON.parse(v1), JSON.parse(v2));
+          return formattersHtml.format(delta,delta);
+        }else{
+          let delta = jsondiffpatch.diff(v1, v2);
+          return formattersHtml.format(delta,v1);
+        }
       },
       getDetails(id) {
         this.result = this.$get("/operating/log/get/" + id, response => {

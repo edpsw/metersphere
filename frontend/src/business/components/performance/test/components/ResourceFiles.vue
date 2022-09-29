@@ -83,7 +83,7 @@
 import MsTablePagination from "@/business/components/common/pagination/TablePagination";
 import MsTableButton from "@/business/components/common/components/MsTableButton";
 import MsDialogFooter from "@/business/components/common/components/MsDialogFooter";
-import {getCurrentProjectID} from "@/common/js/utils";
+import {getCurrentProjectID, operationConfirm} from "@/common/js/utils";
 import MsTableOperatorButton from "@/business/components/common/components/MsTableOperatorButton";
 import {Message} from "element-ui";
 import MsTableHeader from "@/business/components/common/components/MsTableHeader";
@@ -197,18 +197,11 @@ export default {
       this.currentRow = row;
     },
     handleDelete(row) {
-      console.log(row);
-      this.$confirm(this.$t('project.file_delete_tip', [row.name]), '', {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
+      operationConfirm(this.$t('project.file_delete_tip', [row.name]), () => {
         this.$get('/project/delete/file/' + row.id, response => {
           Message.success(this.$t('commons.delete_success'));
           this.getProjectFiles();
         });
-      }).catch(() => {
-
       });
     }
   }

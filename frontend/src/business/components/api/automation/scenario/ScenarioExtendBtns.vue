@@ -16,7 +16,7 @@
       </el-dropdown-menu>
     </el-dropdown>
     <ms-reference-view @openScenario="openScenario" ref="viewRef"/>
-    <ms-schedule-maintain ref="scheduleMaintain" @refreshTable="refreshTable"/>
+    <ms-schedule-maintain ref="scheduleMaintain" @refreshTable="refreshTable" :request="request"/>
 
   </div>
 </template>
@@ -24,21 +24,24 @@
 <script>
 import MsReferenceView from "@/business/components/api/automation/scenario/ReferenceView";
 import MsScheduleMaintain from "@/business/components/api/automation/schedule/ScheduleMaintain";
-import {getCurrentProjectID, getUUID} from "@/common/js/utils";
+import {getCurrentProjectID, getUUID, hasPermission} from "@/common/js/utils";
 
 export default {
   name: "MsScenarioExtendButtons",
   components: {MsReferenceView, MsScheduleMaintain},
   props: {
-    row: Object
+    row: Object,
+    request: {}
   },
   methods: {
+    hasPermission,
     handleCommand(cmd) {
       switch (cmd) {
         case  "ref":
           this.$refs.viewRef.open(this.row);
           break;
         case "schedule":
+          this.$emit('openSchedule');
           this.$refs.scheduleMaintain.open(this.row);
           break;
         case "create_performance":
@@ -47,6 +50,10 @@ export default {
       }
     },
     createPerformance(row) {
+      if (!hasPermission('PROJECT_PERFORMANCE_TEST:READ+CREATE')) {
+        this.$warning(this.$t('api_test.create_performance_test_tips'));
+        return;
+      }
       this.infoDb = false;
       let url = "/api/automation/genPerformanceTestJmx";
       let run = {};
@@ -57,20 +64,25 @@ export default {
       run.id = getUUID();
       run.name = row.name;
       this.$post(url, run, response => {
-        let jmxObj = {};
-        jmxObj.name = response.data.name;
-        jmxObj.xml = response.data.xml;
-        jmxObj.attachFiles = response.data.attachFiles;
-        jmxObj.attachByteFiles = response.data.attachByteFiles;
-        jmxObj.scenarioId = row.id;
-        jmxObj.version = row.version;
-        this.$store.commit('setTest', {
-          name: row.name,
-          jmx: jmxObj
-        });
-        this.$router.push({
-          path: "/performance/test/create"
-        });
+        let jmxInfo = response.data.jmxInfoDTO;
+        if (jmxInfo) {
+          let projectEnvMap = response.data.projectEnvMap;
+          let jmxObj = {};
+          jmxObj.name = jmxInfo.name;
+          jmxObj.xml = jmxInfo.xml;
+          jmxObj.attachFiles = jmxInfo.attachFiles;
+          jmxObj.attachByteFiles = jmxInfo.attachByteFiles;
+          jmxObj.scenarioId = row.id;
+          jmxObj.version = row.version;
+          jmxObj.projectEnvMap = projectEnvMap;
+          this.$store.commit('setTest', {
+            name: row.name,
+            jmx: jmxObj
+          });
+          this.$router.push({
+            path: "/performance/test/create"
+          });
+        }
       });
     },
     openScenario(item) {
@@ -78,7 +90,7 @@ export default {
     },
     refreshTable() {
 
-    }
+    },
   }
 };
 </script>

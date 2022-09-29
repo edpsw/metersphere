@@ -1,5 +1,5 @@
 <template>
-  <ms-chart v-if="visible && data.length > 0" :options="options" :autoresize ="true"  style="width: 100%"/>
+  <ms-chart v-if="visible && pieData.length > 0" :options="options" :autoresize ="true" :height="height" style="width: 100%"/>
 </template>
 
 <script>
@@ -28,7 +28,6 @@ export default {
         },
         series: [
           {
-            name: 'Access From',
             type: 'pie',
             radius: this.radius,
             itemStyle: {
@@ -44,7 +43,7 @@ export default {
             labelLine: {
               show: true
             },
-            data: this.data,
+            data: this.pieData,
             colorBy: "data"
           }
         ]
@@ -70,19 +69,16 @@ export default {
         return ['40%', '70%']
       }
     },
-    data: {
+    pieData: {
       type: Array,
       default() {
         return []
       }
+    },
+    height:{
+      type: [Number, String],
     }
-  },
-  watch: {
-    data() {
-
-    }
-  },
-
+  }
 }
 </script>
 

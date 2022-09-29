@@ -13,6 +13,7 @@ import io.metersphere.base.domain.TestCaseWithBLOBs;
 import io.metersphere.base.mapper.TestCaseMapper;
 import io.metersphere.commons.constants.NoticeConstants;
 import io.metersphere.commons.constants.OperLogConstants;
+import io.metersphere.commons.constants.OperLogModule;
 import io.metersphere.commons.constants.PermissionConstants;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
@@ -27,13 +28,11 @@ import io.metersphere.notice.annotation.SendNotice;
 import io.metersphere.service.CheckPermissionService;
 import io.metersphere.service.FileService;
 import io.metersphere.track.dto.TestCaseDTO;
-import io.metersphere.track.request.testcase.EditTestCaseRequest;
-import io.metersphere.track.request.testcase.QueryTestCaseRequest;
-import io.metersphere.track.request.testcase.TestCaseBatchRequest;
-import io.metersphere.track.request.testcase.TestCaseMinderEditRequest;
+import io.metersphere.track.request.testcase.*;
 import io.metersphere.track.request.testplan.FileOperationRequest;
 import io.metersphere.track.request.testplan.LoadCaseRequest;
 import io.metersphere.track.service.TestCaseService;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -44,6 +43,8 @@ import org.springframework.web.multipart.MultipartFile;
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
@@ -65,6 +66,13 @@ public class TestCaseController {
         return PageUtils.setPageInfo(page, testCaseService.listTestCase(request));
     }
 
+    @PostMapping("/public/list/{goPage}/{pageSize}")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_CASE_READ)
+    public Pager<List<TestCaseDTO>> publicList(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestCaseRequest request) {
+        Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
+        return PageUtils.setPageInfo(page, testCaseService.publicListTestCase(request));
+    }
+
     @GetMapping("/list/{projectId}")
     @RequiresPermissions("PROJECT_TRACK_CASE:READ")
     public List<TestCaseDTO> list(@PathVariable String projectId) {
@@ -82,9 +90,16 @@ public class TestCaseController {
     }
 
     @PostMapping("/list/minder")
-    public List<TestCaseWithBLOBs> listDetail(@RequestBody QueryTestCaseRequest request) {
+    public List<TestCaseDTO> listForMinder(@RequestBody QueryTestCaseRequest request) {
         checkPermissionService.checkProjectOwner(request.getProjectId());
         return testCaseService.listTestCaseForMinder(request);
+    }
+
+    @PostMapping("/list/minder/{goPage}/{pageSize}")
+    public Pager<List<TestCaseDTO>> listForMinder(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestCaseRequest request) {
+        checkPermissionService.checkProjectOwner(request.getProjectId());
+        Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
+        return PageUtils.setPageInfo(page, testCaseService.listTestCaseForMinder(request));
     }
 
     /*jenkins项目下所有接口和性能测试用例*/
@@ -92,17 +107,17 @@ public class TestCaseController {
     public List<TestCaseDTO> listByMethod(@PathVariable String projectId) {
         QueryTestCaseRequest request = new QueryTestCaseRequest();
         request.setProjectId(projectId);
-        return testCaseService.listTestCaseMthod(request);
-    }
-
-    @PostMapping("/list/ids")
-    public List<TestCaseDTO> getTestPlanCaseIds(@RequestBody QueryTestCaseRequest request) {
-        return testCaseService.listTestCaseIds(request);
+        return testCaseService.listTestCaseMethod(request);
     }
 
     @GetMapping("/relationship/case/{id}/{relationshipType}")
     public List<RelationshipEdgeDTO> getRelationshipCase(@PathVariable("id") String id, @PathVariable("relationshipType") String relationshipType) {
         return testCaseService.getRelationshipCase(id, relationshipType);
+    }
+
+    @PostMapping("/relationship/add")
+    public void saveRelationshipBatch(@RequestBody TestCaseRelationshipEdgeRequest request) {
+        testCaseService.saveRelationshipBatch(request);
     }
 
     @GetMapping("/relationship/case/count/{id}")
@@ -120,13 +135,12 @@ public class TestCaseController {
     }
 
     @PostMapping("/relate/{goPage}/{pageSize}")
-    public Pager<List<TestCase>> getTestCaseRelateList(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestCaseRequest request) {
-//        Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
+    public Pager<List<TestCaseDTO>> getTestCaseRelateList(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestCaseRequest request) {
         return testCaseService.getTestCaseRelateList(request, goPage, pageSize);
     }
 
     @PostMapping("/relationship/relate/{goPage}/{pageSize}")
-    public Pager<List<TestCase>> getRelationshipRelateList(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestCaseRequest request) {
+    public Pager<List<TestCaseDTO>> getRelationshipRelateList(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestCaseRequest request) {
         return testCaseService.getRelationshipRelateList(request, goPage, pageSize);
     }
 
@@ -170,14 +184,13 @@ public class TestCaseController {
     }
 
     @PostMapping("/reviews/case/{goPage}/{pageSize}")
-    public Pager<List<TestCase>> getReviewCase(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestCaseRequest request) {
+    public Pager<List<TestCaseDTO>> getReviewCase(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestCaseRequest request) {
         Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
         return PageUtils.setPageInfo(page, testCaseService.getReviewCase(request));
     }
 
     @GetMapping("/get/{testCaseId}")
-    public TestCaseWithBLOBs getTestCase(@PathVariable String testCaseId) {
-        checkPermissionService.checkTestCaseOwner(testCaseId);
+    public TestCaseDTO getTestCase(@PathVariable String testCaseId) {
         return testCaseService.getTestCase(testCaseId);
     }
 
@@ -194,12 +207,17 @@ public class TestCaseController {
 
     @PostMapping(value = "/add", consumes = {"multipart/form-data"})
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_CASE_READ_CREATE)
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.CREATE, title = "#request.name", content = "#msClass.getLogDetails(#request.id)", msClass = TestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.CREATE, title = "#request.name", content = "#msClass.getLogDetails(#request.id)", msClass = TestCaseService.class)
     @SendNotice(taskType = NoticeConstants.TaskType.TRACK_TEST_CASE_TASK, targetClass = TestCaseMapper.class,
-            event = NoticeConstants.Event.CREATE, mailTemplate = "track/TestCaseCreate", subject = "测试用例通知")
+            event = NoticeConstants.Event.CREATE, subject = "测试用例通知")
     public TestCase addTestCase(@RequestPart("request") EditTestCaseRequest request, @RequestPart(value = "file", required = false) List<MultipartFile> files) {
-        request.setId(UUID.randomUUID().toString());
-        return testCaseService.save(request, files);
+        if (StringUtils.isBlank(request.getId())) {
+            //新增 后端生成 id
+            request.setId(UUID.randomUUID().toString());
+        } else {
+            //复制，前端生成 id
+        }
+        return testCaseService.add(request, files);
     }
 
     @PostMapping("/edit/order")
@@ -209,48 +227,49 @@ public class TestCaseController {
     }
 
     @PostMapping(value = "/edit", consumes = {"multipart/form-data"})
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#request.id)", title = "#request.name", content = "#msClass.getLogDetails(#request.id)", msClass = TestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#request.id)", title = "#request.name", content = "#msClass.getLogDetails(#request.id)", msClass = TestCaseService.class)
     @SendNotice(taskType = NoticeConstants.TaskType.TRACK_TEST_CASE_TASK, target = "#targetClass.getTestCase(#request.id)", targetClass = TestCaseService.class,
-            event = NoticeConstants.Event.UPDATE, mailTemplate = "track/TestCaseUpdate", subject = "测试用例通知")
-    public TestCase editTestCase(@RequestPart("request") EditTestCaseRequest request, @RequestPart(value = "file", required = false) List<MultipartFile> files) {
-        return testCaseService.edit(request, files);
+            event = NoticeConstants.Event.UPDATE, subject = "测试用例通知")
+    public TestCase editTestCase(@RequestPart("request") EditTestCaseRequest request) {
+        return testCaseService.edit(request);
     }
 
     @PostMapping(value = "/edit/testPlan", consumes = {"multipart/form-data"})
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogBeforeDetails(#request.id)", title = "#request.name", content = "#msClass.getLogDetails(#request.id)", msClass = TestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogBeforeDetails(#request.id)", title = "#request.name", content = "#msClass.getLogDetails(#request.id)", msClass = TestCaseService.class)
     public String editTestCaseByTestPlan(@RequestPart("request") EditTestCaseRequest request, @RequestPart(value = "file", required = false) List<MultipartFile> files) {
         return testCaseService.editTestCase(request, files);
     }
 
     @PostMapping("/delete/{testCaseId}")
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#testCaseId)", msClass = TestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#testCaseId)", msClass = TestCaseService.class)
     public int deleteTestCase(@PathVariable String testCaseId) {
         checkPermissionService.checkTestCaseOwner(testCaseId);
-        return testCaseService.deleteTestCase(testCaseId);
+        return testCaseService.deleteTestCaseBySameVersion(testCaseId);
     }
 
     @PostMapping("/deleteToGc/{testCaseId}")
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.GC, beforeEvent = "#msClass.getLogDetails(#testCaseId)", msClass = TestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.GC, beforeEvent = "#msClass.getLogDetails(#testCaseId)", msClass = TestCaseService.class)
     @SendNotice(taskType = NoticeConstants.TaskType.TRACK_TEST_CASE_TASK, event = NoticeConstants.Event.DELETE, target = "#targetClass.getTestCase(#testCaseId)", targetClass = TestCaseService.class,
-            mailTemplate = "track/TestCaseDelete", subject = "测试用例通知")
+            subject = "测试用例通知")
     public int deleteToGC(@PathVariable String testCaseId) {
         checkPermissionService.checkTestCaseOwner(testCaseId);
         return testCaseService.deleteTestCaseToGc(testCaseId);
     }
 
-
-    @PostMapping("/import/{projectId}/{userId}/{importType}")
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.IMPORT, project = "#projectId")
-    public ExcelResponse testCaseImport(MultipartFile file, @PathVariable String projectId, @PathVariable String userId, @PathVariable String importType, HttpServletRequest request) {
-        checkPermissionService.checkProjectOwner(projectId);
-        return testCaseService.testCaseImport(file, projectId, userId, importType, request);
+    @GetMapping("/deletePublic/{versionId}/{refId}")
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.GC, beforeEvent = "#msClass.getLogDetails(#testCaseId)", msClass = TestCaseService.class)
+    @SendNotice(taskType = NoticeConstants.TaskType.TRACK_TEST_CASE_TASK, event = NoticeConstants.Event.DELETE, target = "#targetClass.getTestCase(#testCaseId)", targetClass = TestCaseService.class,
+            subject = "测试用例通知")
+    public void deletePublic(@PathVariable String versionId, @PathVariable String refId) {
+        testCaseService.deleteTestCasePublic(versionId, refId);
     }
 
-    @PostMapping("/importIgnoreError/{projectId}/{userId}/{importType}")
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.IMPORT, project = "#projectId")
-    public ExcelResponse testCaseImportIgnoreError(MultipartFile file, @PathVariable String projectId, @PathVariable String userId, @PathVariable String importType, HttpServletRequest request) {
-        checkPermissionService.checkProjectOwner(projectId);
-        return testCaseService.testCaseImportIgnoreError(file, projectId, userId, importType, request);
+
+    @PostMapping("/import")
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.IMPORT, project = "#request.projectId")
+    public ExcelResponse testCaseImport(@RequestPart("request") TestCaseImportRequest request, @RequestPart("file") MultipartFile file, HttpServletRequest httpRequest) {
+        checkPermissionService.checkProjectOwner(request.getProjectId());
+        return testCaseService.testCaseImport(file, request, httpRequest);
     }
 
     @GetMapping("/export/template/{projectId}/{importType}")
@@ -267,45 +286,77 @@ public class TestCaseController {
 
     @PostMapping("/export/testcase")
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_CASE_READ_EXPORT)
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.EXPORT, sourceId = "#request.id", title = "#request.name", project = "#request.projectId")
-    public void testCaseExport(HttpServletResponse response, @RequestBody TestCaseBatchRequest request) {
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.EXPORT, sourceId = "#request.id", title = "#request.name", project = "#request.projectId")
+    public void testCaseExport(HttpServletResponse response, @RequestBody TestCaseExportRequest request) {
         testCaseService.testCaseExport(response, request);
     }
 
     @PostMapping("/export/testcase/xmind")
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_CASE_READ_EXPORT)
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.EXPORT, sourceId = "#request.id", title = "#request.name", project = "#request.projectId")
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.EXPORT, sourceId = "#request.id", title = "#request.name", project = "#request.projectId")
     public void testCaseXmindExport(HttpServletResponse response, @RequestBody TestCaseBatchRequest request) {
         testCaseService.testCaseXmindExport(response, request);
     }
 
     @PostMapping("/batch/edit")
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_CASE_READ_EDIT)
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.BATCH_UPDATE, beforeEvent = "#msClass.getLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = TestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.BATCH_UPDATE, beforeEvent = "#msClass.getLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = TestCaseService.class)
     @SendNotice(taskType = NoticeConstants.TaskType.TRACK_TEST_CASE_TASK, target = "#targetClass.findByBatchRequest(#request)", targetClass = TestCaseService.class,
-            event = NoticeConstants.Event.UPDATE, mailTemplate = "track/TestCaseUpdate", subject = "测试用例通知")
+            event = NoticeConstants.Event.UPDATE, subject = "测试用例通知")
     public void editTestCaseBath(@RequestBody TestCaseBatchRequest request) {
         testCaseService.editTestCaseBath(request);
     }
 
+    @PostMapping("/batch/relate/demand")
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.BATCH_UPDATE, beforeEvent = "#msClass.getLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = TestCaseService.class)
+    public void batchRelateDemand(@RequestBody TestCaseBatchRequest request) {
+        testCaseService.batchRelateDemand(request);
+    }
+
+    @PostMapping("/batch/copy")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_CASE_READ_COPY)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.BATCH_ADD, beforeEvent = "#msClass.getLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = TestCaseService.class)
+    public void copyTestCaseBath(@RequestBody TestCaseBatchRequest request) {
+        testCaseService.copyTestCaseBath(request);
+    }
+
+    @PostMapping("/batch/copy/public")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_CASE_READ_EDIT)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.BATCH_ADD, beforeEvent = "#msClass.getLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = TestCaseService.class)
+    @SendNotice(taskType = NoticeConstants.TaskType.TRACK_TEST_CASE_TASK, target = "#targetClass.findByBatchRequest(#request)", targetClass = TestCaseService.class,
+            event = NoticeConstants.Event.CREATE, subject = "测试用例通知")
+    public void copyTestCaseBathPublic(@RequestBody TestCaseBatchRequest request) {
+        testCaseService.copyTestCaseBathPublic(request);
+    }
+
+
     @PostMapping("/batch/delete")
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_CASE_READ_DELETE)
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = TestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = TestCaseService.class)
     public void deleteTestCaseBath(@RequestBody TestCaseBatchRequest request) {
         testCaseService.deleteTestCaseBath(request);
     }
 
     @PostMapping("/batch/deleteToGc")
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_CASE_READ_DELETE)
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = TestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = TestCaseService.class)
     @SendNotice(taskType = NoticeConstants.TaskType.TRACK_TEST_CASE_TASK, target = "#targetClass.findByBatchRequest(#request)", targetClass = TestCaseService.class,
-            event = NoticeConstants.Event.DELETE, mailTemplate = "track/TestCaseDelete", subject = "测试用例通知")
+            event = NoticeConstants.Event.DELETE, subject = "测试用例通知")
     public void deleteToGcBatch(@RequestBody TestCaseBatchRequest request) {
-        testCaseService.deleteToGcBatch(request.getIds());
+        testCaseService.deleteToGcBatch(request);
+    }
+
+    @PostMapping("/batch/movePublic/deleteToGc")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_CASE_READ_DELETE)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.BATCH_DEL, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = TestCaseService.class)
+    @SendNotice(taskType = NoticeConstants.TaskType.TRACK_TEST_CASE_TASK, target = "#targetClass.findByBatchRequest(#request)", targetClass = TestCaseService.class,
+            event = NoticeConstants.Event.DELETE, subject = "测试用例通知")
+    public void deleteToGcBatchPublic(@RequestBody TestCaseBatchRequest request) {
+        testCaseService.deleteToGcBatchPublic(request);
     }
 
     @PostMapping("/reduction")
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.GC, beforeEvent = "#msClass.getLogDetails(#testCaseId)", msClass = TestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.RESTORE, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = TestCaseService.class)
     public void reduction(@RequestBody TestCaseBatchRequest request) {
         testCaseService.reduction(request);
     }
@@ -321,7 +372,7 @@ public class TestCaseController {
         byte[] bytes = fileService.loadFileAsBytes(fileOperationRequest.getId());
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/octet-stream"))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileOperationRequest.getName() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + URLEncoder.encode(fileOperationRequest.getName(), StandardCharsets.UTF_8) + "\"")
                 .body(bytes);
     }
 
@@ -335,7 +386,7 @@ public class TestCaseController {
     }
 
     @PostMapping("/save")
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.CREATE, title = "#testCaseWithBLOBs.name", content = "#msClass.getLogDetails(#testCaseWithBLOBs.id)", msClass = TestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.CREATE, title = "#testCaseWithBLOBs.name", content = "#msClass.getLogDetails(#testCaseWithBLOBs.id)", msClass = TestCaseService.class)
     public TestCaseWithBLOBs saveTestCase(@RequestBody EditTestCaseRequest request) {
         request.setId(UUID.randomUUID().toString());
         return testCaseService.addTestCase(request);
@@ -343,7 +394,7 @@ public class TestCaseController {
 
     @PostMapping("/minder/edit")
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_CASE_READ_EDIT)
-    @MsAuditLog(module = "track_test_case", type = OperLogConstants.BATCH_UPDATE, project = "#request.projectId", beforeEvent = "#msClass.getCaseLogDetails(#request)", content = "#msClass.getCaseLogDetails(#request)", msClass = TestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE, type = OperLogConstants.BATCH_UPDATE, project = "#request.projectId", beforeEvent = "#msClass.getCaseLogDetails(#request)", content = "#msClass.getCaseLogDetails(#request)", msClass = TestCaseService.class)
     public void minderEdit(@RequestBody TestCaseMinderEditRequest request) {
         testCaseService.minderEdit(request);
     }
@@ -351,5 +402,37 @@ public class TestCaseController {
     @GetMapping("/follow/{caseId}")
     public List<String> getFollows(@PathVariable String caseId) {
         return testCaseService.getFollows(caseId);
+    }
+
+    @PostMapping("/edit/follows/{caseId}")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_PLAN_READ_EDIT)
+    public void editTestFollows(@PathVariable String caseId, @RequestBody List<String> follows) {
+        testCaseService.saveFollows(caseId, follows);
+    }
+
+    @GetMapping("versions/{caseId}")
+    public List<TestCaseDTO> getTestCaseVersions(@PathVariable String caseId) {
+        return testCaseService.getTestCaseVersions(caseId);
+    }
+
+    @GetMapping("get/{version}/{refId}")
+    public TestCaseDTO getTestCase(@PathVariable String version, @PathVariable String refId) {
+        return testCaseService.getTestCaseByVersion(refId, version);
+    }
+
+    @GetMapping("delete/{version}/{refId}")
+    public void deleteApiDefinition(@PathVariable String version, @PathVariable String refId) {
+        testCaseService.deleteTestCaseByVersion(refId, version);
+    }
+
+    /**
+     * 判断是否有其他信息
+     *
+     * @param caseId 用例 ID
+     * @return
+     */
+    @GetMapping("hasOtherInfo/{caseId}")
+    public Boolean hasOtherInfo(@PathVariable String caseId) {
+        return testCaseService.hasOtherInfo(caseId);
     }
 }

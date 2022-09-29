@@ -14,6 +14,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.spring.SqlSessionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,18 +43,18 @@ public class RelationshipEdgeService {
         example.createCriteria()
                 .andSourceIdEqualTo(sourceId)
                 .andTargetIdEqualTo(targetId);
-
-        String graphId = relationshipEdgeMapper.selectByExample(example).get(0).getGraphId();
-        updateGraphId(graphId, sourceId, targetId);
-
-        relationshipEdgeMapper.deleteByExample(example);
+        List<RelationshipEdge> list = relationshipEdgeMapper.selectByExample(example);
+        if (CollectionUtils.isNotEmpty(list)) {
+            String graphId = relationshipEdgeMapper.selectByExample(example).get(0).getGraphId();
+            updateGraphId(graphId, sourceId, targetId);
+            relationshipEdgeMapper.deleteByExample(example);
+        }
     }
 
     public void delete(String sourceId ,List<String> targetIds) {
-        RelationshipEdgeExample example = new RelationshipEdgeExample();
-        example.createCriteria().andSourceIdEqualTo(sourceId).andTargetIdIn(targetIds);
-
-        relationshipEdgeMapper.deleteByExample(example);
+        targetIds.forEach(targetId -> {
+            delete(sourceId, targetId);
+        });
     }
 
     /**
@@ -249,6 +250,9 @@ public class RelationshipEdgeService {
             }
         });
         sqlSession.flushStatements();
+        if (sqlSession != null && sqlSessionFactory != null) {
+            SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+        }
     }
 
     private RelationshipEdge getNewRelationshipEdge(String graphId, String sourceId, String targetId, String type) {

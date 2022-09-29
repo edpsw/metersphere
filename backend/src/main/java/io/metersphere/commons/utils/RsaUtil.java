@@ -16,10 +16,23 @@ public class RsaUtil {
     public static final String CHARSET = "UTF-8";
     public static final String RSA_ALGORITHM = "RSA";
 
+    private static RsaKey rsaKey;
 
     /**
      * 创建RSA 公钥-私钥
      */
+    public static RsaKey getRsaKey() throws NoSuchAlgorithmException {
+        if (rsaKey == null) {
+            rsaKey = createKeys();
+        }
+        return rsaKey;
+    }
+
+    public static void setRsaKey(RsaKey rsaKey) throws NoSuchAlgorithmException {
+        // 放到缓存里
+        RsaUtil.rsaKey = rsaKey;
+    }
+
     public static RsaKey createKeys() throws NoSuchAlgorithmException {
         return createKeys(1024);
     }
@@ -113,7 +126,7 @@ public class RsaUtil {
         try {
             key = (RSAPublicKey) keyFactory.generatePublic(x509KeySpec);
         } catch (InvalidKeySpecException e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         }
         return key;
     }
@@ -148,7 +161,7 @@ public class RsaUtil {
         try {
             key = (RSAPrivateKey) keyFactory.generatePrivate(pkcs8KeySpec);
         } catch (InvalidKeySpecException e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         }
         return key;
     }

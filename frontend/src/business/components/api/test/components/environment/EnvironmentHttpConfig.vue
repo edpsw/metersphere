@@ -3,15 +3,25 @@
   <el-form :model="condition" :rules="rules" ref="httpConfig" class="ms-el-form-item__content" :disabled="isReadOnly">
     <div class="ms-border">
       <el-form-item prop="socket">
-        <span class="ms-env-span">{{ $t('api_test.environment.socket') }}</span>
-        <el-input v-model="condition.socket" style="width: 80%" :placeholder="$t('api_test.request.url_description')" clearable size="small">
-          <template slot="prepend">
-            <el-select v-model="condition.protocol" class="request-protocol-select" size="small">
-              <el-option label="http://" value="http"/>
-              <el-option label="https://" value="https"/>
-            </el-select>
-          </template>
-        </el-input>
+        <el-row type="flex" justify="space-between">
+          <el-col :span="14">
+            <span class="ms-env-span" style="line-height: 30px;">{{ $t('api_test.environment.socket') }}</span>
+            <el-input v-model="condition.socket" style="width: 85%"
+                      :placeholder="$t('api_test.request.url_description')" clearable size="small">
+              <template slot="prepend">
+                <el-select v-model="condition.protocol" class="request-protocol-select" size="small">
+                  <el-option label="http://" value="http"/>
+                  <el-option label="https://" value="https"/>
+                </el-select>
+              </template>
+            </el-input>
+          </el-col>
+          <el-col :span="10">
+            <span style="margin-right: 12px; line-height: 30px;">{{ $t('commons.description') }}</span>
+            <el-input v-model="condition.description" maxlength="200" :show-word-limit="true" size="small"
+                      style="width: 70%;"/>
+          </el-col>
+        </el-row>
       </el-form-item>
       <el-form-item prop="enable">
         <span class="ms-env-span">{{ $t('api_test.environment.condition_enable') }}</span>
@@ -21,7 +31,8 @@
           <el-radio label="PATH">{{ $t('api_test.definition.api_path') }}</el-radio>
         </el-radio-group>
         <div v-if="condition.type === 'MODULE'" style="margin-top: 6px">
-          <ms-select-tree size="small" :data="moduleOptions" :default-key="condition.ids" @getValue="setModule" :obj="moduleObj" clearable :checkStrictly="true" multiple v-if="!loading"/>
+          <ms-select-tree size="small" :data="moduleOptions" :default-key="condition.ids" @getValue="setModule"
+                          :obj="moduleObj" clearable :checkStrictly="true" multiple v-if="!loading"/>
         </div>
         <div v-if="condition.type === 'PATH'" style="margin-top: 6px">
           <el-input v-model="pathDetails.name" :placeholder="$t('api_test.value')" clearable size="small">
@@ -35,12 +46,22 @@
         </div>
 
         <p>{{ $t('api_test.request.headers') }}</p>
+        <el-row>
+          <el-link class="ms-el-link" @click="batchAdd" style="color: #783887"> {{ $t("commons.batch_add") }}</el-link>
+        </el-row>
         <ms-api-key-value :items="condition.headers" :isShowEnable="true" :suggestions="headerSuggestions"/>
         <div style="margin-top: 20px">
-          <el-button v-if="!condition.id" type="primary" style="float: right" size="mini" @click="add">{{ $t('commons.add') }}</el-button>
+          <el-button v-if="!condition.id" type="primary" style="float: right" size="mini" @click="add">
+            {{ $t('commons.add') }}
+          </el-button>
           <div v-else>
-            <el-button type="primary" style="float: right;margin-left: 10px" size="mini" @click="clear">{{ $t('commons.clear') }}</el-button>
-            <el-button type="primary" style="float: right" size="mini" @click="update">{{ $t('commons.update') }}</el-button>
+            <el-button type="primary" style="float: right;margin-left: 10px" size="mini" @click="clear">
+              {{ $t('commons.clear') }}
+            </el-button>
+            <el-button type="primary" style="float: right" size="mini" @click="update(condition)">{{
+                $t('commons.update')
+              }}
+            </el-button>
           </div>
         </div>
       </el-form-item>
@@ -52,7 +73,8 @@
             {{ getUrl(row) }}
           </template>
         </el-table-column>
-        <el-table-column prop="type" :label="$t('api_test.environment.condition_enable')" show-overflow-tooltip min-width="100px">
+        <el-table-column prop="type" :label="$t('api_test.environment.condition_enable')" show-overflow-tooltip
+                         min-width="100px">
           <template v-slot:default="{row}">
             {{ getName(row) }}
           </template>
@@ -67,6 +89,11 @@
             <span>{{ row.time | timestampFormatDate }}</span>
           </template>
         </el-table-column>
+        <el-table-column prop="description" show-overflow-tooltip min-width="120px" :label="$t('commons.description')">
+          <template v-slot:default="{row}">
+            {{ row.description }}
+          </template>
+        </el-table-column>
         <el-table-column :label="$t('commons.operating')" width="100px">
           <template v-slot:default="{row}">
             <div>
@@ -78,6 +105,7 @@
           </template>
         </el-table-column>
       </el-table>
+      <batch-add-parameter @batchSave="batchSave" ref="batchAdd"/>
     </div>
   </el-form>
 </template>
@@ -91,10 +119,11 @@ import MsTableOperatorButton from "@/business/components/common/components/MsTab
 import {getUUID} from "@/common/js/utils";
 import {KeyValue} from "../../../definition/model/ApiTestModel";
 import Vue from "vue";
+import BatchAddParameter from "@/business/components/api/definition/components/basis/BatchAddParameter";
 
 export default {
   name: "MsEnvironmentHttpConfig",
-  components: {MsApiKeyValue, MsSelectTree, MsTableOperatorButton},
+  components: {MsApiKeyValue, MsSelectTree, MsTableOperatorButton, BatchAddParameter},
   props: {
     httpConfig: new HttpConfig(),
     projectId: String,
@@ -128,7 +157,15 @@ export default {
       },
       loading: false,
       pathDetails: new KeyValue({name: "", value: "contains"}),
-      condition: {type: "NONE", details: [new KeyValue({name: "", value: "contains"})], protocol: "http", socket: "", domain: "", port: 0, headers: [new KeyValue()]},
+      condition: {
+        type: "NONE",
+        details: [new KeyValue({name: "", value: "contains"})],
+        protocol: "http",
+        socket: "",
+        domain: "",
+        port: 0,
+        headers: [new KeyValue()]
+      },
       beforeCondition: {}
     };
   },
@@ -146,9 +183,19 @@ export default {
         this.condition.domain = this.httpConfig.domain;
         this.condition.time = new Date().getTime();
         this.condition.headers = this.httpConfig.headers;
+        this.condition.description = this.httpConfig.description;
         this.add();
       }
-      this.condition = {id: undefined, type: "NONE", details: [new KeyValue({name: "", value: "contains"})], protocol: "http", socket: "", domain: "", port: 0, headers: [new KeyValue()]};
+      this.condition = {
+        id: undefined,
+        type: "NONE",
+        details: [new KeyValue({name: "", value: "contains"})],
+        protocol: "http",
+        socket: "",
+        domain: "",
+        port: 0,
+        headers: [new KeyValue()]
+      };
     },
   },
   methods: {
@@ -190,11 +237,20 @@ export default {
       }
     },
     selectRow(row) {
-      this.condition = {type: "NONE", details: [new KeyValue({name: "", value: "contains"})], protocol: "http", socket: "", domain: "", port: 0, headers: [new KeyValue()]};
+      this.condition = {
+        type: "NONE",
+        details: [new KeyValue({name: "", value: "contains"})],
+        protocol: "http",
+        socket: "",
+        domain: "",
+        port: 0,
+        headers: [new KeyValue()]
+      };
       if (row) {
         this.httpConfig.socket = row.socket;
         this.httpConfig.protocol = row.protocol;
         this.httpConfig.port = row.port;
+        this.httpConfig.description = row.description;
         this.condition = row;
         if (!this.condition.headers) {
           this.condition.headers = [new KeyValue()];
@@ -214,7 +270,7 @@ export default {
     typeChange() {
       if (this.condition.type === "NONE" && this.condition.id && this.checkNode(this.condition.id)) {
         this.condition.type = this.beforeCondition.type;
-        this.$warning("启用条件为 '无' 的域名已经存在！");
+        this.$warning(this.$t('api_test.environment.repeat_warning'));
         return;
       }
       switch (this.condition.type) {
@@ -247,30 +303,49 @@ export default {
         data.forEach((item) => {
           this.condition.details.push(new KeyValue({name: item.name, value: item.id}));
         });
-      } else {
-        this.condition.ids = [];
-        this.condition.details = [];
       }
     },
     update() {
       const index = this.httpConfig.conditions.findIndex((d) => d.id === this.condition.id);
       this.validateSocket(this.condition.socket);
       let obj = {
-        id: this.condition.id, type: this.condition.type, domain: this.condition.domain, socket: this.condition.socket, headers: this.condition.headers,
-        protocol: this.condition.protocol, details: this.condition.details, port: this.condition.port, time: this.condition.time
+        id: this.condition.id,
+        type: this.condition.type,
+        domain: this.condition.domain,
+        socket: this.condition.socket,
+        headers: this.condition.headers,
+        protocol: this.condition.protocol,
+        port: this.condition.port,
+        time: this.condition.time
       };
       if (obj.type === "PATH") {
         this.httpConfig.conditions[index].details = [this.pathDetails];
+      } else {
+        obj.details = this.condition.details ? JSON.parse(JSON.stringify(this.condition.details)) : this.condition.details;
       }
       if (index !== -1) {
         Vue.set(this.httpConfig.conditions[index], obj, 1);
-        this.condition = {type: "NONE", details: [new KeyValue({name: "", value: "contains"})], protocol: "http", socket: "", domain: "", headers: [new KeyValue()]};
+        this.condition = {
+          type: "NONE",
+          details: [new KeyValue({name: "", value: "contains"})],
+          protocol: "http",
+          socket: "",
+          domain: "",
+          headers: [new KeyValue()]
+        };
         this.reload();
       }
       this.$refs.envTable.setCurrentRow(0);
     },
     clear() {
-      this.condition = {type: "NONE", details: [new KeyValue({name: "", value: "contains"})], protocol: "http", socket: "", domain: "", headers: [new KeyValue()]};
+      this.condition = {
+        type: "NONE",
+        details: [new KeyValue({name: "", value: "contains"})],
+        protocol: "http",
+        socket: "",
+        domain: "",
+        headers: [new KeyValue()]
+      };
       this.$refs.envTable.setCurrentRow(0);
     },
     reload() {
@@ -292,13 +367,20 @@ export default {
     },
     add() {
       if (this.condition.type === "NONE" && this.checkNode()) {
-        this.$warning("启用条件为 '无' 的域名已经存在，请更新！");
+        this.$warning(this.$t('api_test.environment.repeat_warning'));
         return;
       }
       this.validateSocket();
       let obj = {
-        id: getUUID(), type: this.condition.type, socket: this.condition.socket, protocol: this.condition.protocol, headers: this.condition.headers,
-        domain: this.condition.domain, port: this.condition.port, time: new Date().getTime()
+        id: getUUID(),
+        type: this.condition.type,
+        socket: this.condition.socket,
+        protocol: this.condition.protocol,
+        headers: this.condition.headers,
+        domain: this.condition.domain,
+        port: this.condition.port,
+        time: new Date().getTime(),
+        description: this.condition.description
       };
       if (this.condition.type === "PATH") {
         obj.details = [JSON.parse(JSON.stringify(this.pathDetails))];
@@ -315,11 +397,20 @@ export default {
     },
     copy(row) {
       if (row.type === "NONE") {
-        this.$warning("启用条件为 '无' 的域名不支持复制！");
+        this.$warning(this.$t('api_test.environment.copy_warning'));
         return;
       }
       const index = this.httpConfig.conditions.findIndex((d) => d.id === row.id);
-      let obj = {id: getUUID(), type: row.type, socket: row.socket, details: row.details, protocol: row.protocol, headers: JSON.parse(JSON.stringify(this.condition.headers)), domain: row.domain, time: new Date().getTime()};
+      let obj = {
+        id: getUUID(),
+        type: row.type,
+        socket: row.socket,
+        details: row.details,
+        protocol: row.protocol,
+        headers: JSON.parse(JSON.stringify(row.headers)),
+        domain: row.domain,
+        time: new Date().getTime()
+      };
       if (index != -1) {
         this.httpConfig.conditions.splice(index, 0, obj);
       } else {
@@ -353,6 +444,51 @@ export default {
       });
       return isValidate;
     },
+    batchAdd() {
+      this.$refs.batchAdd.open();
+    },
+    _handleBatchVars(data) {
+      let params = data.split("\n");
+      let keyValues = [];
+      params.forEach(item => {
+        if (item) {
+          let line = item.split(/：|:/);
+          let values = item.split(line[0] + ":");
+          let required = false;
+          keyValues.push(new KeyValue({
+            name: line[0],
+            required: required,
+            value: values[1],
+            type: "text",
+            valid: false,
+            file: false,
+            encode: true,
+            enable: true,
+            contentType: "text/plain"
+          }));
+        }
+      });
+      return keyValues;
+    },
+    batchSave(data) {
+      if (data) {
+        let keyValues = this._handleBatchVars(data);
+        keyValues.forEach(keyValue => {
+          let isAdd = true;
+          for (let i in this.condition.headers) {
+            let item = this.condition.headers[i];
+            if (item.name === keyValue.name) {
+              item.value = keyValue.value;
+              isAdd = false;
+            }
+          }
+          if (isAdd) {
+            this.condition.headers.splice(this.condition.headers.indexOf(h => !h.name), 0, keyValue);
+          }
+        })
+      }
+    },
+
   },
 };
 </script>
@@ -373,4 +509,10 @@ export default {
 .ms-el-form-item__content >>> .el-form-item__content {
   line-height: 20px;
 }
+
+.ms-el-link {
+  float: right;
+  margin-right: 45px;
+}
+
 </style>

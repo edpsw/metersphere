@@ -16,8 +16,17 @@ public class QueryAPIReportRequest {
     private String name;
     private String workspaceId;
     private String userId;
-    private boolean recent = false;
+    private String reportType;
+    private boolean recent;
+    private Boolean isUi = false;
     private List<OrderRequest> orders;
     private Map<String, List<String>> filters;
     private Map<String, Object> combine;
+
+    /**
+     * 查询哪种用例的报告 SCENARIO/API
+     */
+    private String caseType;
+
+    private String limit;
 }

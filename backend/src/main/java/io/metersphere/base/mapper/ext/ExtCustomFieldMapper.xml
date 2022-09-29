@@ -21,6 +21,17 @@
         <include refid="queryWhereCondition"/>
     </select>
 
+    <insert id="batchInsert" parameterType="java.util.List">
+        INSERT INTO
+        custom_field
+        VALUES
+        <foreach collection="customFields" item="customField" separator="," >
+            (#{customField.id}, #{customField.name}, #{customField.scene}, #{customField.type},
+            #{customField.remark}, #{customField.options}, #{customField.system}, #{customField.global}, #{customField.createTime},
+            #{customField.updateTime}, #{customField.createUser}, #{customField.projectId}, #{customField.thirdPart})
+        </foreach>
+    </insert>
+
     <select id="listRelate" resultType="io.metersphere.base.domain.CustomField">
         select
         <include refid="io.metersphere.base.mapper.CustomFieldMapper.Base_Column_List"/>,
@@ -29,8 +40,15 @@
         <include refid="queryWhereCondition"/>
         <include refid="io.metersphere.base.mapper.ext.ExtBaseMapper.orders"/>
     </select>
+    <select id="getWorkspaceIdSystemFields" resultType="io.metersphere.base.domain.CustomField">
+        select cf.*
+        from custom_field cf
+        left join project p
+            on cf.project_id = p.id
+        where p.workspace_id = #{workspaceId} and cf.scene = #{scene}
+    </select>
 
-<!--  如果创建了工作空间的字段，就去除全局的该字段-->
+    <!--  如果创建了工作空间的字段，就去除全局的该字段-->
     <sql id="queryWhereCondition">
         <where>
             <if test="request.name != null">
@@ -45,9 +63,22 @@
                         not exists (
                             select id
                             from custom_field cf_child
-                            where cf_child.name = cf.name and cf_child.global != 1 and cf_child.workspace_id = #{request.workspaceId}
+                            where cf_child.name = cf.name and cf_child.scene = cf.scene and cf_child.global != 1 and cf_child.workspace_id = #{request.workspaceId}
                         )
                     )
+                )
+            </if>
+            <if test="request.projectId != null">
+                and (
+                cf.project_id = #{request.projectId}
+                or (
+                cf.global = 1 and
+                not exists (
+                select id
+                from custom_field cf_child
+                where cf_child.name = cf.name and cf_child.scene = cf.scene and cf_child.global != 1 and cf_child.project_id = #{request.projectId}
+                )
+                )
                 )
             </if>
 

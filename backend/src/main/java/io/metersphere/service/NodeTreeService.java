@@ -1,11 +1,16 @@
 package io.metersphere.service;
 
+import io.metersphere.base.domain.Project;
 import io.metersphere.commons.utils.BeanUtils;
+import io.metersphere.commons.utils.CommonBeanFactory;
+import io.metersphere.commons.utils.LogUtil;
 import io.metersphere.track.dto.TreeNodeDTO;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class NodeTreeService<T extends TreeNodeDTO> {
 
@@ -22,15 +27,25 @@ public class NodeTreeService<T extends TreeNodeDTO> {
         try {
             instance = (T) clazz.newInstance();
         } catch (InstantiationException e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         } catch (IllegalAccessException e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         }
         return instance;
     }
 
 
     public List<T> getNodeTrees(List<T> nodes) {
+        return getNodeTrees(nodes, null);
+    }
+
+    public Map<String, Integer> getCountMap(List<T> nodes) {
+        Map<String, Integer> countMap = nodes.stream()
+                .collect(Collectors.toMap(TreeNodeDTO::getId, TreeNodeDTO::getCaseNum));
+        return countMap;
+    }
+
+    public List<T> getNodeTrees(List<T> nodes, Map<String, Integer> countMap) {
         List<T> nodeTreeList = new ArrayList<>();
         Map<Integer, List<T>> nodeLevelMap = new HashMap<>();
         nodes.forEach(node -> {
@@ -44,40 +59,132 @@ public class NodeTreeService<T extends TreeNodeDTO> {
             }
         });
         List<T> rootNodes = Optional.ofNullable(nodeLevelMap.get(1)).orElse(new ArrayList<>());
-        rootNodes.forEach(rootNode -> {
-            nodeTreeList.add(buildNodeTree(nodeLevelMap, rootNode));
-        });
+        rootNodes.forEach(rootNode -> nodeTreeList.add(buildNodeTree(nodeLevelMap, rootNode, countMap)));
         return nodeTreeList;
     }
 
     /**
      * 递归构建节点树
+     * 并统计设置 CaseNum
      *
      * @param nodeLevelMap
      * @param rootNode
      * @return
      */
-    public T buildNodeTree(Map<Integer, List<T>> nodeLevelMap, T rootNode) {
+    public T buildNodeTree(Map<Integer, List<T>> nodeLevelMap, T rootNode, Map<String, Integer> countMap) {
 
         T nodeTree = getClassInstance();
-//        T nodeTree = (T) new TreeNodeDTO();
         BeanUtils.copyBean(nodeTree, rootNode);
         nodeTree.setLabel(rootNode.getName());
+        setCaseNum(countMap, nodeTree);
 
         List<T> lowerNodes = nodeLevelMap.get(rootNode.getLevel() + 1);
         if (lowerNodes == null) {
             return nodeTree;
         }
 
-        List<T> children = Optional.ofNullable(nodeTree.getChildren()).orElse(new ArrayList<>());
+        List<T> children = new ArrayList<>();
 
         lowerNodes.forEach(node -> {
             if (node.getParentId() != null && node.getParentId().equals(rootNode.getId())) {
-                children.add(buildNodeTree(nodeLevelMap, node));
+                children.add(buildNodeTree(nodeLevelMap, node, countMap));
                 nodeTree.setChildren(children);
             }
         });
+        if (countMap != null && CollectionUtils.isNotEmpty(children)) {
+            Integer childrenCount = children.stream().map(TreeNodeDTO::getCaseNum).reduce(Integer::sum).get();
+            nodeTree.setCaseNum(nodeTree.getCaseNum() + childrenCount);
+        }
         return nodeTree;
+    }
+
+    public T buildNodeTree(Map<Integer, List<T>> nodeLevelMap, T rootNode) {
+        return buildNodeTree(nodeLevelMap, rootNode, null);
+    }
+
+    private void setCaseNum(Map<String, Integer> countMap, T nodeTree) {
+        if (countMap != null) {
+            if (countMap.get(nodeTree.getId()) != null) {
+                nodeTree.setCaseNum(countMap.get(nodeTree.getId()));
+            } else {
+                nodeTree.setCaseNum(0);
+            }
+        }
+    }
+
+    /**
+     * 用户测试计划评审或者公共用例库查询多个项目的模块
+     * @param countModules 带有用例的节点的信息
+     * @param getProjectModulesFunc 根据 projectIds 获取多个项目下的模块
+     * @return
+     */
+    public List<T> getNodeTreeWithPruningTree(List<T> countModules,
+                                              Function<List<String>, List<T>> getProjectModulesFunc) {
+        if (org.springframework.util.CollectionUtils.isEmpty(countModules)) {
+            return new ArrayList<>();
+        }
+
+        List<T> list = new ArrayList<>();
+
+        Set<String> projectIdSet = new HashSet<>();
+        countModules.forEach(x -> projectIdSet.add(x.getProjectId()));
+        List<String> projectIds = new ArrayList<>(projectIdSet);
+
+        ProjectService projectService = CommonBeanFactory.getBean(ProjectService.class);
+        List<Project> projects = projectService.getProjectByIds(new ArrayList<>(projectIds));
+
+        // 项目->对应项目下的模块
+        Map<String, List<T>> projectModuleMap = getProjectModulesFunc.apply(projectIds)
+                .stream()
+                .collect(Collectors.groupingBy(TreeNodeDTO::getProjectId));
+
+        // 模块->用例数
+        Map<String, Integer> countMap = countModules.stream()
+                .collect(Collectors.toMap(TreeNodeDTO::getId, TreeNodeDTO::getCaseNum));
+
+        projects.forEach((project) -> {
+            if (project != null) {
+                List<T> testCaseNodes = projectModuleMap.get(project.getId());
+
+                testCaseNodes = testCaseNodes.stream().sorted(Comparator.comparingDouble(TreeNodeDTO::getPos))
+                        .collect(Collectors.toList());
+
+                testCaseNodes = getNodeTreeWithPruningTreeByCaseCount(testCaseNodes, countMap);
+
+                // 项目设置成根节点
+                T projectNode = getClassInstance();
+                projectNode.setId(project.getId());
+                projectNode.setName(project.getName());
+                projectNode.setLabel(project.getName());
+                projectNode.setChildren(testCaseNodes);
+                projectNode.setCaseNum(testCaseNodes.stream().mapToInt(TreeNodeDTO::getCaseNum).sum());
+                if (countMap.get(null) != null) {
+                    // 如果模块删除了, 回收站中的用例归到项目模块下
+                    projectNode.setCaseNum(projectNode.getCaseNum() + countMap.get(null));
+                }
+                if (!org.springframework.util.CollectionUtils.isEmpty(testCaseNodes)) {
+                    list.add(projectNode);
+                }
+            }
+        });
+        return list;
+    }
+
+    /**
+     * 生成模块树并剪枝
+     *
+     * @return
+     */
+    public List<T> getNodeTreeWithPruningTreeByCaseCount(List<T> testCaseNodes, Map<String, Integer> countMap) {
+        List<T> nodeTrees = getNodeTrees(testCaseNodes, countMap);
+        Iterator<T> iterator = nodeTrees.iterator();
+        while (iterator.hasNext()) {
+            T rootNode = iterator.next();
+            if (pruningTreeByCaseCount(rootNode)) {
+                iterator.remove();
+            }
+        }
+        return nodeTrees;
     }
 
     /**
@@ -112,6 +219,26 @@ public class NodeTreeService<T extends TreeNodeDTO> {
             }
         }
 
+        return false;
+    }
+
+    public boolean pruningTreeByCaseCount(T rootNode) {
+        List<T> children = rootNode.getChildren();
+
+        if (rootNode.getCaseNum() == null || rootNode.getCaseNum() < 1) {
+            // 没有用例的模块剪掉
+            return true;
+        }
+
+        if (children != null) {
+            Iterator<T> iterator = children.iterator();
+            while (iterator.hasNext()) {
+                T subNode = iterator.next();
+                if (pruningTreeByCaseCount(subNode)) {
+                    iterator.remove();
+                }
+            }
+        }
         return false;
     }
 
@@ -169,13 +296,13 @@ public class NodeTreeService<T extends TreeNodeDTO> {
 
         path.append("/" + nodeName);
 
-        String pid = null;
+        String pid;
         //创建过不创建
         if (pathMap.get(path.toString()) != null) {
             pid = pathMap.get(path.toString());
             level++;
         } else {
-            pid = insertNode(nodeName, pNode == null ? null : pNode.getId(), projectId, level);
+            pid = insertNode(nodeName, pNode == null ? null : pNode.getId(), projectId, level, path.toString());
             pathMap.put(path.toString(), pid);
             level++;
         }
@@ -187,7 +314,7 @@ public class NodeTreeService<T extends TreeNodeDTO> {
                 pid = pathMap.get(path.toString());
                 level++;
             } else {
-                pid = insertNode(nextNodeName, pid, projectId, level);
+                pid = insertNode(nextNodeName, pid, projectId, level, path.toString());
                 pathMap.put(path.toString(), pid);
                 level++;
             }
@@ -244,7 +371,7 @@ public class NodeTreeService<T extends TreeNodeDTO> {
     }
 
 
-    public String insertNode(String nodeName, String pId, String projectId, Integer level) {
+    public String insertNode(String nodeName, String pId, String projectId, Integer level, String path) {
         return "";
     }
 

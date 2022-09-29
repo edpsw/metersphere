@@ -2,6 +2,7 @@ package io.metersphere.performance.service;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import io.metersphere.api.exec.scenario.ApiScenarioEnvService;
 import io.metersphere.base.domain.*;
 import io.metersphere.base.mapper.*;
 import io.metersphere.base.mapper.ext.ExtFileContentMapper;
@@ -9,10 +10,12 @@ import io.metersphere.base.mapper.ext.ExtLoadTestReportMapper;
 import io.metersphere.commons.constants.PerformanceTestStatus;
 import io.metersphere.commons.constants.ReportKeys;
 import io.metersphere.commons.exception.MSException;
+import io.metersphere.commons.utils.BeanUtils;
 import io.metersphere.commons.utils.CommonBeanFactory;
 import io.metersphere.commons.utils.LogUtil;
 import io.metersphere.commons.utils.ServiceUtils;
 import io.metersphere.controller.request.OrderRequest;
+import io.metersphere.dto.LoadTestReportInfoDTO;
 import io.metersphere.dto.LogDetailDTO;
 import io.metersphere.dto.ReportDTO;
 import io.metersphere.i18n.Translator;
@@ -28,12 +31,17 @@ import io.metersphere.performance.dto.LoadTestExportJmx;
 import io.metersphere.performance.engine.Engine;
 import io.metersphere.performance.engine.EngineFactory;
 import io.metersphere.service.FileService;
+import io.metersphere.service.QuotaService;
 import io.metersphere.service.TestResourceService;
 import io.metersphere.track.service.TestPlanLoadCaseService;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,10 +50,9 @@ import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletResponse;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -76,6 +83,15 @@ public class PerformanceReportService {
     private SqlSessionFactory sqlSessionFactory;
     @Resource
     private TestResourcePoolMapper testResourcePoolMapper;
+    @Resource
+    private RedissonClient redissonClient;
+    @Resource
+    private ProjectMapper projectMapper;
+    @Resource
+    private LoadTestReportFileMapper loadTestReportFileMapper;
+    @Lazy
+    @Resource
+    private ApiScenarioEnvService apiScenarioEnvService;
 
     public List<ReportDTO> getRecentReportList(ReportRequest request) {
         List<OrderRequest> orders = new ArrayList<>();
@@ -113,9 +129,11 @@ public class PerformanceReportService {
                 boolean isRunning = StringUtils.equals(reportStatus, PerformanceTestStatus.Running.name());
                 boolean isStarting = StringUtils.equals(reportStatus, PerformanceTestStatus.Starting.name());
                 boolean isError = StringUtils.equals(reportStatus, PerformanceTestStatus.Error.name());
-                if (isRunning || isStarting || isError) {
+                if (isError) {
                     LogUtil.info("Start stop engine, report status: %s" + reportStatus);
                     stopEngine(loadTest, engine);
+                } else if (isRunning || isStarting) {
+                    stopEngineHandleVum(loadTestReport, engine);
                 }
             } catch (Exception e) {
                 LogUtil.error(e.getMessage(), e);
@@ -144,6 +162,16 @@ public class PerformanceReportService {
         example.createCriteria().andReportIdEqualTo(reportId);
         loadTestReportDetailMapper.deleteByExample(example);
 
+        // delete load_test_report_file
+        LoadTestReportFileExample loadTestReportFileExample = new LoadTestReportFileExample();
+        loadTestReportFileExample.createCriteria().andReportIdEqualTo(reportId);
+        loadTestReportFileMapper.deleteByExample(loadTestReportFileExample);
+
+        // delete load_test_report_log
+        LoadTestReportLogExample loadTestReportLogExample = new LoadTestReportLogExample();
+        loadTestReportLogExample.createCriteria().andReportIdEqualTo(reportId);
+        loadTestReportLogMapper.deleteByExample(loadTestReportLogExample);
+
         // delete jtl file
         fileService.deleteFileById(loadTestReport.getFileId());
 
@@ -159,8 +187,35 @@ public class PerformanceReportService {
         loadTestMapper.updateByPrimaryKeySelective(loadTest);
     }
 
+    public void stopEngineHandleVum(LoadTestReportWithBLOBs report, Engine engine) {
+        LoadTestWithBLOBs loadTest = loadTestMapper.selectByPrimaryKey(report.getTestId());
+        QuotaService quotaService = CommonBeanFactory.getBean(QuotaService.class);
+        String projectId = report.getProjectId();
+        Project project = projectMapper.selectByPrimaryKey(projectId);
+        if (project == null || StringUtils.isBlank(project.getWorkspaceId())) {
+            MSException.throwException("project is null or workspace_id of project is null. project id: " + projectId);
+        }
+        RLock lock = redissonClient.getLock(project.getWorkspaceId());
+        if (quotaService != null) {
+            try {
+                lock.lock();
+                BigDecimal toReduceVum = quotaService.getReduceVumUsed(report);
+                if (toReduceVum.compareTo(BigDecimal.ZERO) != 0) {
+                    quotaService.updateVumUsed(projectId, toReduceVum.negate());
+                }
+                engine.stop();
+                loadTest.setStatus(PerformanceTestStatus.Saved.name());
+                loadTestMapper.updateByPrimaryKeySelective(loadTest);
+            } finally {
+                lock.unlock();
+            }
+        }
+    }
+
     public ReportDTO getReportTestAndProInfo(String reportId) {
-        return extLoadTestReportMapper.getReportTestAndProInfo(reportId);
+        ReportDTO reportDTO = extLoadTestReportMapper.getReportTestAndProInfo(reportId);
+        this.parseRunEnvironment(reportDTO);
+        return reportDTO;
     }
 
     private String getContent(String id, ReportKeys reportKey) {
@@ -175,31 +230,56 @@ public class PerformanceReportService {
     }
 
     public List<Statistics> getReportStatistics(String id) {
-        checkReportStatus(id);
+        if (isReportError(id)) {
+            return Collections.emptyList();
+        }
         String reportValue = getContent(id, ReportKeys.RequestStatistics);
-        return JSON.parseArray(reportValue, Statistics.class);
+        // 确定顺序
+        List<Statistics> statistics = JSON.parseArray(reportValue, Statistics.class);
+        if (CollectionUtils.isEmpty(statistics)) {
+            return Collections.emptyList();
+        }
+        List<LoadTestExportJmx> jmxContent = getJmxContent(id);
+        String jmx = jmxContent.get(0).getJmx();
+        // 按照JMX顺序重新排序
+        statistics.sort(Comparator.comparingInt(a -> jmx.indexOf(a.getLabel())));
+        // 把 total 放到最后
+        List<Statistics> total = statistics.stream()
+                .filter(r -> StringUtils.equalsAnyIgnoreCase(r.getLabel(), "Total"))
+                .collect(Collectors.toList());
+        statistics.removeAll(total);
+        statistics.addAll(total);
+        return statistics;
     }
 
     public List<Errors> getReportErrors(String id) {
-        checkReportStatus(id);
+        if (isReportError(id)) {
+            return Collections.emptyList();
+        }
         String content = getContent(id, ReportKeys.Errors);
         return JSON.parseArray(content, Errors.class);
     }
 
     public List<ErrorsTop5> getReportErrorsTOP5(String id) {
-        checkReportStatus(id);
+        if (isReportError(id)) {
+            return Collections.emptyList();
+        }
         String content = getContent(id, ReportKeys.ErrorsTop5);
         return JSON.parseArray(content, ErrorsTop5.class);
     }
 
     public TestOverview getTestOverview(String id) {
-        checkReportStatus(id);
+        if (isReportError(id)) {
+            return new TestOverview();
+        }
         String content = getContent(id, ReportKeys.Overview);
         return JSON.parseObject(content, TestOverview.class);
     }
 
     public ReportTimeInfo getReportTimeInfo(String id) {
-        checkReportStatus(id);
+        if (isReportError(id)) {
+            return new ReportTimeInfo();
+        }
         String content = getContent(id, ReportKeys.TimeInfo);
         try {
             return JSON.parseObject(content, ReportTimeInfo.class);
@@ -223,30 +303,51 @@ public class PerformanceReportService {
     }
 
     public List<ChartsData> getLoadChartData(String id) {
-        checkReportStatus(id);
+        if (isReportError(id)) {
+            return Collections.emptyList();
+        }
         String content = getContent(id, ReportKeys.LoadChart);
         return JSON.parseArray(content, ChartsData.class);
     }
 
     public List<ChartsData> getResponseTimeChartData(String id) {
-        checkReportStatus(id);
+        if (isReportError(id)) {
+            return Collections.emptyList();
+        }
         String content = getContent(id, ReportKeys.ResponseTimeChart);
         return JSON.parseArray(content, ChartsData.class);
     }
 
-    public void checkReportStatus(String reportId) {
+    public boolean isReportError(String reportId) {
         LoadTestReport loadTestReport = loadTestReportMapper.selectByPrimaryKey(reportId);
         String reportStatus = "";
         if (loadTestReport != null) {
             reportStatus = loadTestReport.getStatus();
         }
-        if (StringUtils.equals(PerformanceTestStatus.Error.name(), reportStatus)) {
-            MSException.throwException("Report generation error!");
-        }
+        return StringUtils.equals(PerformanceTestStatus.Error.name(), reportStatus);
     }
 
-    public LoadTestReportWithBLOBs getLoadTestReport(String id) {
-        return loadTestReportMapper.selectByPrimaryKey(id);
+    public LoadTestReportInfoDTO getLoadTestReport(String id) {
+        LoadTestReportWithBLOBs loadTestReport = loadTestReportMapper.selectByPrimaryKey(id);
+        LoadTestReportInfoDTO returnDTO = new LoadTestReportInfoDTO();
+        BeanUtils.copyBean(returnDTO, loadTestReport);
+        this.parseRunEnvironment(returnDTO);
+        return returnDTO;
+    }
+
+    private void parseRunEnvironment(LoadTestReportInfoDTO loadTestReportInfoDTO) {
+        if (loadTestReportInfoDTO != null && StringUtils.isNotEmpty(loadTestReportInfoDTO.getEnvInfo())) {
+            Map<String, List<String>> projectEnvIdMap = new HashMap<>();
+            try {
+                projectEnvIdMap = JSONObject.parseObject(loadTestReportInfoDTO.getEnvInfo(), Map.class);
+                LinkedHashMap<String, List<String>> projectEnvNameMap = apiScenarioEnvService.selectProjectNameAndEnvName(projectEnvIdMap);
+                if (MapUtils.isNotEmpty(projectEnvNameMap)) {
+                    loadTestReportInfoDTO.setProjectEnvMap(projectEnvNameMap);
+                }
+            } catch (Exception e) {
+                LogUtil.error("性能测试报告解析运行环境信息失败!解析参数:" + loadTestReportInfoDTO.getEnvInfo(), e);
+            }
+        }
     }
 
     public List<LogDetailDTO> getReportLogResource(String reportId) {
@@ -325,19 +426,30 @@ public class PerformanceReportService {
         loadTestReportMapper.updateByPrimaryKeySelective(report);
     }
 
-    public void deleteReportBatch(DeleteReportRequest reportRequest) {
-        List<String> ids = reportRequest.getIds();
+    public void deleteReportBatch(DeleteReportRequest request) {
+        ServiceUtils.getSelectAllIds(request, request.getCondition(),
+                (query) -> getLoadTestReportIds(request.getCondition()));
+
+        List<String> ids = request.getIds();
         ids.forEach(this::deleteReport);
     }
 
+    private List<String> getLoadTestReportIds(ReportRequest request) {
+        return this.getReportList(request).stream().map(LoadTestReport::getId).collect(Collectors.toList());
+    }
+
     public List<ChartsData> getErrorChartData(String id) {
-        checkReportStatus(id);
+        if (isReportError(id)) {
+            return Collections.emptyList();
+        }
         String content = getContent(id, ReportKeys.ErrorsChart);
         return JSON.parseArray(content, ChartsData.class);
     }
 
     public List<ChartsData> getResponseCodeChartData(String id) {
-        checkReportStatus(id);
+        if (isReportError(id)) {
+            return Collections.emptyList();
+        }
         String content = getContent(id, ReportKeys.ResponseCodeChart);
         return JSON.parseArray(content, ChartsData.class);
     }
@@ -367,22 +479,13 @@ public class PerformanceReportService {
         }
     }
 
-    public String getPoolTypeByReportId(String reportId) {
-        LoadTestReportWithBLOBs report = getReport(reportId);
-        String poolId = report.getTestResourcePoolId();
-        TestResourcePool testResourcePool = testResourcePoolMapper.selectByPrimaryKey(poolId);
-        if (testResourcePool != null) {
-            return testResourcePool.getType();
-        }
-        return "";
-    }
-
-    public LoadTestExportJmx getJmxContent(String reportId) {
+    public List<LoadTestExportJmx> getJmxContent(String reportId) {
         LoadTestReportWithBLOBs loadTestReportWithBLOBs = loadTestReportMapper.selectByPrimaryKey(reportId);
         if (loadTestReportWithBLOBs == null) {
-            return null;
+            return new ArrayList<>();
         }
-        return new LoadTestExportJmx(loadTestReportWithBLOBs.getTestName(), loadTestReportWithBLOBs.getJmxContent());
+        LoadTestExportJmx loadTestExportJmx = new LoadTestExportJmx(loadTestReportWithBLOBs.getTestName(), loadTestReportWithBLOBs.getJmxContent());
+        return Collections.singletonList(loadTestExportJmx);
     }
 
     public void renameReport(RenameReportRequest request) {
@@ -424,12 +527,44 @@ public class PerformanceReportService {
     }
 
     public List<ChartsData> getReportChart(String reportKey, String reportId) {
-        checkReportStatus(reportId);
+        if (isReportError(reportId)) {
+            return Collections.emptyList();
+        }
         try {
             String content = getContent(reportId, ReportKeys.valueOf(reportKey));
             return JSON.parseArray(content, ChartsData.class);
         } catch (Exception e) {
             return new ArrayList<>();
         }
+    }
+
+    public String getLoadConfiguration(String reportId) {
+        LoadTestReportWithBLOBs loadTestReportWithBLOBs = loadTestReportMapper.selectByPrimaryKey(reportId);
+        if (loadTestReportWithBLOBs == null) {
+            return null;
+        }
+        return loadTestReportWithBLOBs.getLoadConfiguration();
+    }
+
+    public String getAdvancedConfiguration(String reportId) {
+        LoadTestReportWithBLOBs loadTestReportWithBLOBs = loadTestReportMapper.selectByPrimaryKey(reportId);
+        if (loadTestReportWithBLOBs == null) {
+            return null;
+        }
+        return loadTestReportWithBLOBs.getAdvancedConfiguration();
+    }
+
+    public void cleanUpReport(long time, String projectId) {
+        LoadTestReportExample example = new LoadTestReportExample();
+        example.createCriteria().andCreateTimeLessThan(time).andProjectIdEqualTo(projectId).andRelevanceTestPlanReportIdIsNull();
+        List<LoadTestReport> loadTestReports = loadTestReportMapper.selectByExample(example);
+        List<String> ids = loadTestReports.stream().map(LoadTestReport::getId).collect(Collectors.toList());
+        DeleteReportRequest request = new DeleteReportRequest();
+        request.setIds(ids);
+        deleteReportBatch(request);
+    }
+
+    public List<FileMetadata> getFileMetadataByReportId(String reportId) {
+        return extLoadTestReportMapper.getFileMetadataById(reportId);
     }
 }

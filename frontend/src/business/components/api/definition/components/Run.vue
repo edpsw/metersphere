@@ -11,7 +11,10 @@ export default {
   name: 'MsRun',
   components: {},
   props: {
-    environment: Object,
+    editCaseRequest: {
+      type: Boolean,
+      default: false
+    },
     debug: Boolean,
     reportId: String,
     runData: Array,
@@ -23,16 +26,16 @@ export default {
     return {
       result: {},
       loading: false,
-      runId: "",
+      requestResult: {responseResult: {}},
       reqNumber: 0,
       websocket: {}
     }
   },
 
   watch: {
-    // 初始化
     reportId() {
-      this.run()
+      // 开启链接
+      this.socketSync();
     },
     isStop() {
       if (!this.isStop && this.websocket && this.websocket.close instanceof Function) {
@@ -41,21 +44,37 @@ export default {
     }
   },
   methods: {
-    initWebSocket() {
+    socketSync() {
       let protocol = "ws://";
       if (window.location.protocol === 'https:') {
         protocol = "wss://";
       }
-      let runMode = this.debug ? "debug" : "run";
-      const uri = protocol + window.location.host + "/api/definition/run/report/" + this.runId + "/" + runMode;
+      const uri = protocol + window.location.host + "/ws/" + this.reportId;
       this.websocket = new WebSocket(uri);
-      this.websocket.onmessage = this.onMessage;
+      this.websocket.onmessage = this.onMessages;
+      this.websocket.onerror = this.onError;
     },
-    onMessage(e) {
-      if (e.data) {
-        let data = JSON.parse(e.data);
-        this.websocket.close();
-        this.$emit('runRefresh', data);
+    onError() {
+      this.$emit('runRefresh', "");
+      this.$error(this.$t('api_test.automation.rerun_warning'));
+    },
+    onMessages(e) {
+      // 确认连接建立成功，开始执行
+      if (e && e.data === "CONN_SUCCEEDED") {
+        this.run();
+      }
+
+      if (e.data && e.data.startsWith("result_")) {
+        try {
+          let data = e.data.substring(7);
+          this.websocket.close();
+          this.$emit('runRefresh', JSON.parse(data));
+        } catch (e) {
+          this.websocket.close();
+          this.$emit('runRefresh', "");
+        }
+      } else if (e.data === "MS_TEST_END") {
+        this.$emit('runRefresh', "");
       }
     },
     sort(stepArray) {
@@ -63,6 +82,12 @@ export default {
         for (let i in stepArray) {
           if (!stepArray[i].clazzName) {
             stepArray[i].clazzName = TYPE_TO_C.get(stepArray[i].type);
+          }
+          if (stepArray[i].type === "Assertions" && !stepArray[i].document) {
+            stepArray[i].document = {
+              type: "JSON",
+              data: {xmlFollowAPI: false, jsonFollowAPI: false, json: [], xml: []}
+            };
           }
           if (stepArray[i] && stepArray[i].authManager && !stepArray[i].authManager.clazzName) {
             stepArray[i].authManager.clazzName = TYPE_TO_C.get(stepArray[i].authManager.type);
@@ -99,23 +124,33 @@ export default {
         threadGroup.hashTree.push(item);
       })
       this.sort(testPlan.hashTree);
-      let reqObj = {id: this.reportId, testElement: testPlan, type: this.type, clazzName: this.clazzName ? this.clazzName : TYPE_TO_C.get(this.type), projectId: projectId, environmentMap: strMapToObj(this.envMap)};
+      this.requestResult.reportId = this.reportId;
+      let reqObj = {
+        id: this.reportId,
+        testElement: testPlan,
+        type: this.type,
+        clazzName: this.clazzName ? this.clazzName : TYPE_TO_C.get(this.type),
+        projectId: projectId,
+        environmentMap: strMapToObj(this.envMap)
+      };
       let bodyFiles = getBodyUploadFiles(reqObj, this.runData);
+      reqObj.editCaseRequest = this.editCaseRequest;
+      reqObj.debug = this.debug;
       if (this.runData[0].url) {
         reqObj.name = this.runData[0].url;
       } else {
         reqObj.name = this.runData[0].path;
       }
-      let url = "";
-      if (this.debug) {
-        reqObj.reportId = this.reportId;
-        url = "/api/definition/run/debug";
-      } else {
-        url = "/api/definition/run";
+      if (this.runData[0].useEnvironment) {
+        reqObj.environmentId = this.runData[0].useEnvironment;
+      }
+      reqObj.reportId = this.reportId;
+      let url = "/api/definition/run/debug";
+      if (!this.debug) {
+        reqObj.syncResult = true;
       }
       this.$fileUpload(url, null, bodyFiles, reqObj, response => {
-        this.runId = response.data;
-        this.initWebSocket();
+        this.requestResult = response.data;
         this.$emit('autoCheckStatus');  //   执行结束后，自动更新计划状态
       }, error => {
         this.$emit('errorRefresh', {});

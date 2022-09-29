@@ -16,7 +16,6 @@ import io.metersphere.api.dto.definition.request.extract.MsExtractRegex;
 import io.metersphere.api.dto.definition.request.extract.MsExtractXPath;
 import io.metersphere.api.dto.definition.request.processors.post.MsJSR223PostProcessor;
 import io.metersphere.api.dto.definition.request.processors.pre.MsJSR223PreProcessor;
-import io.metersphere.plugin.core.MsTestElement;
 import io.metersphere.api.dto.definition.request.sampler.MsDubboSampler;
 import io.metersphere.api.dto.definition.request.sampler.MsHTTPSamplerProxy;
 import io.metersphere.api.dto.definition.request.sampler.MsJDBCSampler;
@@ -34,11 +33,17 @@ import io.metersphere.api.dto.scenario.request.BodyFile;
 import io.metersphere.api.dto.scenario.request.RequestType;
 import io.metersphere.api.parse.ApiImportAbstractParser;
 import io.metersphere.api.service.ApiTestEnvironmentService;
-import io.metersphere.base.domain.*;
+import io.metersphere.base.domain.ApiDefinitionWithBLOBs;
+import io.metersphere.base.domain.ApiTestCaseWithBLOBs;
+import io.metersphere.base.domain.ApiTestEnvironmentExample;
+import io.metersphere.base.domain.ApiTestEnvironmentWithBLOBs;
+import io.metersphere.commons.constants.APITestStatus;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.BeanUtils;
 import io.metersphere.commons.utils.CommonBeanFactory;
+import io.metersphere.commons.utils.LogUtil;
 import io.metersphere.commons.utils.SessionUtils;
+import io.metersphere.plugin.core.MsTestElement;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.assertions.*;
@@ -50,6 +55,7 @@ import org.apache.jmeter.extractor.json.jsonpath.JSONPostProcessor;
 import org.apache.jmeter.modifiers.JSR223PreProcessor;
 import org.apache.jmeter.protocol.http.control.HeaderManager;
 import org.apache.jmeter.protocol.http.sampler.HTTPSamplerProxy;
+import org.apache.jmeter.protocol.http.util.HTTPArgument;
 import org.apache.jmeter.protocol.http.util.HTTPFileArg;
 import org.apache.jmeter.protocol.jdbc.config.DataSourceElement;
 import org.apache.jmeter.protocol.jdbc.sampler.JDBCSampler;
@@ -57,6 +63,8 @@ import org.apache.jmeter.protocol.tcp.sampler.TCPSampler;
 import org.apache.jmeter.save.SaveService;
 import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.testelement.TestPlan;
+import org.apache.jmeter.testelement.property.JMeterProperty;
+import org.apache.jmeter.threads.ThreadGroup;
 import org.apache.jmeter.timers.ConstantTimer;
 import org.apache.jorphan.collections.HashTree;
 
@@ -70,10 +78,10 @@ public class JmeterDefinitionParser extends ApiImportAbstractParser<ApiDefinitio
     private ImportPoolsDTO dataPools;
     private final String ENV_NAME = "导入数据环境";
 
-    private ApiModule selectModule;
-    private ApiModule apiModule;
-    private String selectModulePath;
+
     private String planName = "default";
+    private static final Integer GROUP_GLOBAL = 1;
+    private static final String ALWAYS_ENCODE = "HTTPArgument.always_encode";
 
     @Override
     public ApiDefinitionImport parse(InputStream inputSource, ApiTestImportRequest request) {
@@ -90,11 +98,11 @@ public class JmeterDefinitionParser extends ApiImportAbstractParser<ApiDefinitio
 
             jmeterHashTree(testPlan, scenario);
 
-            this.selectModule = ApiDefinitionImportUtil.getSelectModule(request.getModuleId());
+           /* this.selectModule = ApiDefinitionImportUtil.getSelectModule(request.getModuleId());
             if (this.selectModule != null) {
                 this.selectModulePath = ApiDefinitionImportUtil.getSelectModulePath(this.selectModule.getName(), this.selectModule.getParentId());
             }
-            this.apiModule = ApiDefinitionImportUtil.buildModule(this.selectModule, this.planName, this.projectId);
+            this.apiModule = ApiDefinitionImportUtil.buildModule(this.selectModule, this.planName, this.projectId);*/
 
             LinkedList<MsTestElement> elements = scenario.getHashTree();
             LinkedList<MsTestElement> results = new LinkedList<>();
@@ -103,20 +111,25 @@ public class JmeterDefinitionParser extends ApiImportAbstractParser<ApiDefinitio
             for (MsTestElement element : results) {
                 ApiDefinitionWithBLOBs apiDefinitionWithBLOBs = buildApiDefinition(element);
                 if (apiDefinitionWithBLOBs != null) {
-                    definitions.add(apiDefinitionWithBLOBs);
                     ApiTestCaseWithBLOBs apiTestCase = new ApiTestCaseWithBLOBs();
                     BeanUtils.copyBean(apiTestCase, apiDefinitionWithBLOBs);
                     apiTestCase.setApiDefinitionId(apiDefinitionWithBLOBs.getId());
-                    apiTestCase.setStatus("Prepare");
+                    apiTestCase.setCaseStatus(APITestStatus.Prepare.name());
                     apiTestCase.setPriority("P0");
                     definitionCases.add(apiTestCase);
+
+                    if (element.getHashTree() != null) {
+                        element.getHashTree().clear();
+                    }
+                    apiDefinitionWithBLOBs.setRequest(JSON.toJSONString(element));
+                    definitions.add(apiDefinitionWithBLOBs);
                 }
             }
             apiImport.setData(definitions);
             apiImport.setCases(definitionCases);
             return apiImport;
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
             MSException.throwException("当前JMX版本不兼容");
         }
         return null;
@@ -160,6 +173,30 @@ public class JmeterDefinitionParser extends ApiImportAbstractParser<ApiDefinitio
                         dataPools.setDataSources(new HashMap<>());
                     }
                     dataPools.getDataSources().put(dataSourceElement.getPropertyAsString("dataSource"), newConfig);
+                }
+            } else if (key instanceof ThreadGroup) {
+                HashTree group = tree.get(key);
+                if (group != null) {
+                    List<Object> nk = new ArrayList<>();
+                    for (Object groupNode : group.keySet()) {
+                        if (groupNode instanceof HeaderManager) {
+                            nk.add(groupNode);
+                        }
+                    }
+                    if (CollectionUtils.isNotEmpty(nk)) {
+                        for (Object gn : group.keySet()) {
+                            if (gn instanceof HTTPSamplerProxy) {
+                                if (headerMap.containsKey(gn.hashCode() + GROUP_GLOBAL)) {
+                                    headerMap.get(gn.hashCode()).addAll(nk);
+                                } else {
+                                    List<Object> objects = new LinkedList<Object>() {{
+                                        this.addAll(nk);
+                                    }};
+                                    headerMap.put(gn.hashCode() + GROUP_GLOBAL, objects);
+                                }
+                            }
+                        }
+                    }
                 }
             } else if (key instanceof HTTPSamplerProxy) {
                 // 把HTTP 请求下的HeaderManager 取出来
@@ -247,14 +284,15 @@ public class JmeterDefinitionParser extends ApiImportAbstractParser<ApiDefinitio
         apiDefinition.setName(element.getName());
         apiDefinition.setProjectId(this.projectId);
         apiDefinition.setRequest(JSON.toJSONString(element));
-        if (this.selectModule != null) {
+       /* if (this.apiModule != null) {
             apiDefinition.setModuleId(this.apiModule.getId());
             if (StringUtils.isNotBlank(this.selectModulePath)) {
                 apiDefinition.setModulePath(this.selectModulePath + "/" + this.apiModule.getName());
             } else {
                 apiDefinition.setModulePath("/" + this.apiModule.getName());
             }
-        }
+        }*/
+        apiDefinition.setModulePath("/" + this.planName);
         // todo 除HTTP协议外，其它协议设置默认模块
         apiDefinition.setStatus("Prepare");
         apiDefinition.setProtocol(protocol);
@@ -606,6 +644,9 @@ public class JmeterDefinitionParser extends ApiImportAbstractParser<ApiDefinitio
             });
         }
         elementNode.setAttachmentArgs(attachmentArgs);
+        if (StringUtils.isEmpty(elementNode.getMethod())) {
+            elementNode.setMethod(elementNode.getProtocol());
+        }
     }
 
     private void convertHttpSampler(MsHTTPSamplerProxy samplerProxy, Object key) {
@@ -629,6 +670,23 @@ public class JmeterDefinitionParser extends ApiImportAbstractParser<ApiDefinitio
                         }
                     }
                 });
+                samplerProxy.setHeaders(keyValues);
+            }
+            // 处理ThreadGroup组内请求头
+            if (headerMap.containsKey(key.hashCode() + GROUP_GLOBAL)) {
+                List<KeyValue> keyValues = new LinkedList<>();
+                headerMap.get(key.hashCode() + GROUP_GLOBAL).forEach(item -> {
+                    HeaderManager headerManager = (HeaderManager) item;
+                    if (headerManager.getHeaders() != null) {
+                        for (int i = 0; i < headerManager.getHeaders().size(); i++) {
+                            keyValues.add(new KeyValue(headerManager.getHeader(i).getName(), headerManager.getHeader(i).getValue()));
+                        }
+                    }
+                });
+                // 合并Header
+                if (CollectionUtils.isNotEmpty(samplerProxy.getHeaders())) {
+                    keyValues.addAll(samplerProxy.getHeaders());
+                }
                 samplerProxy.setHeaders(keyValues);
             }
             // 初始化body
@@ -666,28 +724,43 @@ public class JmeterDefinitionParser extends ApiImportAbstractParser<ApiDefinitio
             samplerProxy.setConnectTimeout(source.getConnectTimeout() + "");
             samplerProxy.setResponseTimeout(source.getResponseTimeout() + "");
             samplerProxy.setPort(source.getPropertyAsString("HTTPSampler.port"));
-            samplerProxy.setDomain(source.getDomain());
             String bodyType = this.getBodyType(samplerProxy.getHeaders());
             if (source.getArguments() != null) {
                 if (source.getPostBodyRaw()) {
-                    samplerProxy.getBody().setType(Body.RAW);
+                    List<KeyValue> headers = samplerProxy.getHeaders();
+                    boolean jsonType = false;
+                    if (CollectionUtils.isNotEmpty(headers)) {
+                        for (KeyValue header : headers) {
+                            if (StringUtils.equals(header.getName(), "Content-Type") && StringUtils.equals(header.getValue(), "application/json")) {
+                                samplerProxy.getBody().setType(Body.JSON_STR);
+                                jsonType = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!jsonType) {
+                        samplerProxy.getBody().setType(Body.RAW);
+                    }
                     source.getArguments().getArgumentsAsMap().forEach((k, v) -> samplerProxy.getBody().setRaw(v));
                     samplerProxy.getBody().initKvs();
                 } else if (StringUtils.isNotEmpty(bodyType) || ("POST".equalsIgnoreCase(source.getMethod()) && source.getArguments().getArgumentsAsMap().size() > 0)) {
                     samplerProxy.getBody().setType(Body.WWW_FROM);
-                    source.getArguments().getArgumentsAsMap().forEach((k, v) -> {
-                        KeyValue keyValue = new KeyValue(k, v);
+                    source.getArguments().getArguments().forEach(params -> {
+                        KeyValue keyValue = new KeyValue();
+                        parseParams(params, keyValue);
                         samplerProxy.getBody().getKvs().add(keyValue);
                     });
                 } else if (samplerProxy.getBody() != null && samplerProxy.getBody().getType().equals(Body.FORM_DATA)) {
-                    source.getArguments().getArgumentsAsMap().forEach((k, v) -> {
-                        KeyValue keyValue = new KeyValue(k, v);
+                    source.getArguments().getArguments().forEach(params -> {
+                        KeyValue keyValue = new KeyValue();
+                        parseParams(params, keyValue);
                         samplerProxy.getBody().getKvs().add(keyValue);
                     });
                 } else {
                     List<KeyValue> keyValues = new LinkedList<>();
-                    source.getArguments().getArgumentsAsMap().forEach((k, v) -> {
-                        KeyValue keyValue = new KeyValue(k, v);
+                    source.getArguments().getArguments().forEach(params -> {
+                        KeyValue keyValue = new KeyValue();
+                        parseParams(params, keyValue);
                         keyValues.add(keyValue);
                     });
                     if (CollectionUtils.isNotEmpty(keyValues)) {
@@ -698,17 +771,27 @@ public class JmeterDefinitionParser extends ApiImportAbstractParser<ApiDefinitio
             }
             samplerProxy.setPath(source.getPath());
             samplerProxy.setMethod(source.getMethod());
-            MsJmeterParser jmeterParser = new MsJmeterParser();
-            if (jmeterParser.getUrl(source) != null) {
-                samplerProxy.setUrl(jmeterParser.getUrl(source));
-            }
             samplerProxy.setId(UUID.randomUUID().toString());
             samplerProxy.setType("HTTPSamplerProxy");
             body.getKvs().add(new KeyValue());
             body.getBinary().add(new KeyValue());
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
+        }
+    }
+
+    private void parseParams(JMeterProperty params, KeyValue keyValue) {
+        if (params == null || keyValue == null) {
+            return;
+        }
+        Object objValue = params.getObjectValue();
+        if (objValue instanceof HTTPArgument) {
+            HTTPArgument argument = (HTTPArgument) objValue;
+            boolean propertyAsBoolean = argument.getPropertyAsBoolean(ALWAYS_ENCODE);
+            keyValue.setUrlEncode(propertyAsBoolean);
+            keyValue.setName(argument.getName());
+            keyValue.setValue(argument.getValue());
         }
     }
 

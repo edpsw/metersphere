@@ -10,7 +10,10 @@
                 <i class="el-icon-edit project-edit" @click="edit" v-permission="['PROJECT_MANAGER:READ+EDIT']"></i>
                 <el-row class="project-item">
                   <span class="project-item-title">{{ $t('project.desc') }}：</span>
-                  <span class="project-item-desc">{{ project.description }}</span>
+                  <el-tooltip effect="light" placement="top" :enterable="false">
+                    <div slot="content">{{ project.description }}</div>
+                    <span class="project-item-desc project-desc">{{ project.description }}</span>
+                  </el-tooltip>
                 </el-row>
                 <el-row class="project-item">
                   <span class="project-item-title">{{ $t('project.manage_people') }}：</span>
@@ -50,11 +53,11 @@
                 <div class="div-item">
                   <div style="float: left">
                     <i class="el-icon-user icon-color"
-                       @click="click('/project/usergroup', ['PROJECT_USER:READ'])">
+                       @click="click('/project/usergroup', ['PROJECT_GROUP:READ'])">
                     </i>
                   </div>
                   <div style="float: left">
-                    <span class="title" @click="click('/project/usergroup', ['PROJECT_USER:READ'])">
+                    <span class="title" @click="click('/project/usergroup', ['PROJECT_GROUP:READ'])">
                       {{ $t('group.group_permission') }}
                     </span><br/>
                     <span class="desc">{{ $t('project.group_desc') }}</span>
@@ -76,12 +79,12 @@
                 <div class="div-item">
                   <div style="float: left">
                     <i class="el-icon-s-cooperation icon-color"
-                       @click="click('/project/file/manage', ['PROJECT_FILE:READ+JAR', 'PROJECT_FILE:READ+FILE'])">
+                       @click="click('/project/file/manage', ['PROJECT_FILE:READ', 'PROJECT_FILE:READ+FILE'])">
                     </i>
                   </div>
                   <div style="float: left">
                     <span class="title"
-                          @click="click('/project/file/manage', ['PROJECT_FILE:READ+JAR', 'PROJECT_FILE:READ+FILE'])">
+                          @click="click('/project/file/manage', ['PROJECT_FILE:READ', 'PROJECT_FILE:READ+FILE'])">
                       {{ $t('project.file_manage') }}
                     </span><br/>
                     <span class="desc">{{ $t('project.file_desc') }}</span>
@@ -114,13 +117,26 @@
                     <span class="desc">{{ $t('project.log_desc') }}</span>
                   </div>
                 </div>
+                <div class="div-item">
+                  <div style="float: left">
+                    <i class="el-icon-mobile-phone icon-color"
+                       @click="click('/project/app', ['PROJECT_APP_MANAGER:READ+EDIT'])">
+                    </i>
+                  </div>
+                  <div style="float: left">
+                    <span class="title" @click="click('/project/app', ['PROJECT_APP_MANAGER:READ+EDIT'])">
+                      {{ $t('project.app_manage') }}
+                    </span><br/>
+                    <span class="desc">{{ $t('project.app_manage_desc') }}</span>
+                  </div>
+                </div>
               </div>
             </el-card>
           </el-col>
         </el-row>
       </el-card>
 
-      <edit-project ref="editProject"/>
+      <edit-project ref="editProject" :is-show-app="isShowApp"/>
     </ms-main-container>
   </ms-container>
 
@@ -144,7 +160,8 @@ export default {
         createUser: ''
       },
       memberSize: 0,
-      result: {}
+      result: {},
+      isShowApp: false
     }
   },
   methods: {
@@ -269,5 +286,14 @@ export default {
 
 .desc {
   color: #989292;
+}
+
+.project-desc {
+  display: inline-block;
+  width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 14px;
 }
 </style>

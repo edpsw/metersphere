@@ -1,5 +1,16 @@
 import {ELEMENT_TYPE} from "@/business/components/api/automation/scenario/Setting";
-import {Assertions, ConstantTimer, Extract, IfController, JSR223Processor, JDBCProcessor, LoopController, TransactionController, PluginController} from "@/business/components/api/definition/model/ApiTestModel";
+import {
+  Assertions,
+  ConstantTimer,
+  Extract,
+  IfController,
+  JDBCProcessor,
+  JSR223Processor,
+  LoopController,
+  PluginController,
+  TransactionController
+} from "@/business/components/api/definition/model/ApiTestModel";
+import {getUUID} from "@/common/js/utils";
 
 export function buttons(this_) {
   let buttons = [
@@ -84,9 +95,9 @@ export function buttons(this_) {
       }
     },
     {
-      title: this_.$t('api_test.automation.transcation_controller'),
+      title: this_.$t('api_test.automation.transaction_controller'),
       show: this_.showButton("TransactionController"),
-      titleColor: "#6D317C",
+      titleColor: "#783887",
       titleBgColor: "#F4F4F5",
       icon: "alt_route",
       click: () => {
@@ -104,7 +115,7 @@ export function buttons(this_) {
       }
     },
     {
-      title: this_.$t('api_test.definition.request.assertions_rule'),
+      title: this_.$t('api_test.definition.request.scenario_assertions'),
       show: this_.showButton("Assertions"),
       titleColor: "#A30014",
       titleBgColor: "#F7E6E9",
@@ -145,66 +156,115 @@ export function buttons(this_) {
   return buttons.filter(btn => btn.show);
 }
 
+export function scenarioAssertion(data, node) {
+  node.active = false;
+  node.scenarioAss = true;
+  let needAdd = true;
+  data.forEach(data => {
+    if (data.type === "Assertions") {
+      data.active = true;
+      data.scenarioAss = true;
+      needAdd = false;
+      return;
+    }
+  })
+  if (needAdd) {
+    data.splice(0, 0, node);
+  }
+}
+
+export function setNode(_this, node) {
+  if (_this.selectedTreeNode !== undefined) {
+    if (_this.stepFilter.get("SpecialSteps").indexOf(_this.selectedTreeNode.type) !== -1) {
+      if (_this.selectedNode.parent.data.hashTree) {
+        //同级请求添加断言，添加到父级
+        if (node.type === 'Assertions') {
+          scenarioAssertion(_this.selectedNode.parent.data.hashTree, node);
+        } else {
+          _this.selectedNode.parent.data.hashTree.splice(_this.selectedTreeNode.index, 0, node);
+        }
+      } else {
+        //没有父级的直接加到当前的置顶
+        if (node.type === 'Assertions') {
+          scenarioAssertion(_this.scenarioDefinition, node);
+        } else {
+          _this.scenarioDefinition.splice(_this.selectedTreeNode.index, 0, node);
+        }
+      }
+      _this.$store.state.forceRerenderIndex = getUUID();
+    } else {
+      //选择场景时，直接添加到当前场景
+      if (node.type === 'Assertions' && _this.selectedTreeNode.type === 'scenario' && _this.selectedTreeNode.referenced === 'Copy') {
+        scenarioAssertion(_this.selectedTreeNode.hashTree, node);
+      } else {
+        _this.selectedTreeNode.hashTree.push(node);
+      }
+    }
+  } else {
+    if (node.type === 'Assertions') {
+      scenarioAssertion(_this.scenarioDefinition, node);
+    } else {
+      _this.scenarioDefinition.push(node);
+    }
+  }
+}
+
 export function setComponent(type, _this, plugin) {
   switch (type) {
     case ELEMENT_TYPE.IfController:
-      _this.selectedTreeNode !== undefined ? _this.selectedTreeNode.hashTree.push(new IfController()) :
-        _this.scenarioDefinition.push(new IfController());
+      setNode(_this, new IfController());
       break;
     case ELEMENT_TYPE.ConstantTimer:
-      _this.selectedTreeNode !== undefined ? _this.selectedTreeNode.hashTree.push(new ConstantTimer({label: "SCENARIO-REF-STEP"})) :
-        _this.scenarioDefinition.push(new ConstantTimer());
+      setNode(_this, new ConstantTimer({label: "SCENARIO-REF-STEP"}));
       break;
     case ELEMENT_TYPE.JSR223Processor:
-      _this.selectedTreeNode !== undefined ? _this.selectedTreeNode.hashTree.push(new JSR223Processor({label: "SCENARIO-REF-STEP"})) :
-        _this.scenarioDefinition.push(new JSR223Processor());
+      setNode(_this, new JSR223Processor({label: "SCENARIO-REF-STEP"}));
       break;
     case ELEMENT_TYPE.JSR223PreProcessor:
-      _this.selectedTreeNode !== undefined ? _this.selectedTreeNode.hashTree.push(new JSR223Processor({type: "JSR223PreProcessor",label: "SCENARIO-REF-STEP"})) :
-        _this.scenarioDefinition.push(new JSR223Processor({type: "JSR223PreProcessor"}));
+      setNode(_this, new JSR223Processor({type: "JSR223PreProcessor", label: "SCENARIO-REF-STEP"}));
       break;
     case ELEMENT_TYPE.JSR223PostProcessor:
-      _this.selectedTreeNode !== undefined ? _this.selectedTreeNode.hashTree.push(new JSR223Processor({type: "JSR223PostProcessor",label: "SCENARIO-REF-STEP"})) :
-        _this.scenarioDefinition.push(new JSR223Processor({type: "JSR223PostProcessor"}));
+      setNode(_this, new JSR223Processor({type: "JSR223PostProcessor", label: "SCENARIO-REF-STEP"}));
       break;
     case ELEMENT_TYPE.JDBCPreProcessor:
-      _this.selectedTreeNode !== undefined ? _this.selectedTreeNode.hashTree.push(new JDBCProcessor({type: "JDBCPreProcessor",label: "SCENARIO-REF-STEP"})) :
-        _this.scenarioDefinition.push(new JDBCProcessor({type: "JDBCPreProcessor"}));
+      setNode(_this, new JDBCProcessor({type: "JDBCPreProcessor", label: "SCENARIO-REF-STEP"}));
       break;
     case ELEMENT_TYPE.JDBCPostProcessor:
-      _this.selectedTreeNode !== undefined ? _this.selectedTreeNode.hashTree.push(new JDBCProcessor({type: "JDBCPostProcessor",label: "SCENARIO-REF-STEP"})) :
-        _this.scenarioDefinition.push(new JDBCProcessor({type: "JDBCPostProcessor"}));
+      setNode(_this, new JDBCProcessor({type: "JDBCPostProcessor", label: "SCENARIO-REF-STEP"}));
       break;
     case ELEMENT_TYPE.Assertions:
-      _this.selectedTreeNode !== undefined ? _this.selectedTreeNode.hashTree.push(new Assertions({label: "SCENARIO-REF-STEP"})) :
-        _this.scenarioDefinition.push(new Assertions());
+      setNode(_this, new Assertions({label: "SCENARIO-REF-STEP", id: getUUID()}));
       break;
     case ELEMENT_TYPE.Extract:
-      _this.selectedTreeNode !== undefined ? _this.selectedTreeNode.hashTree.push(new Extract({label: "SCENARIO-REF-STEP"})) :
-        _this.scenarioDefinition.push(new Extract());
+      setNode(_this, new Extract({label: "SCENARIO-REF-STEP", id: getUUID()}));
       break;
     case ELEMENT_TYPE.CustomizeReq:
       _this.customizeRequest = {protocol: "HTTP", type: "API", hashTree: [], referenced: 'Created', active: false};
       _this.customizeVisible = true;
       break;
     case  ELEMENT_TYPE.LoopController:
-      _this.selectedTreeNode !== undefined ? _this.selectedTreeNode.hashTree.push(new LoopController()) :
-        _this.scenarioDefinition.push(new LoopController());
+      setNode(_this, new LoopController());
       break;
     case ELEMENT_TYPE.TransactionController:
-      _this.selectedTreeNode !== undefined ? _this.selectedTreeNode.hashTree.push(new TransactionController()) :
-        _this.scenarioDefinition.push(new TransactionController());
+      setNode(_this, new TransactionController());
       break;
     case ELEMENT_TYPE.scenario:
       _this.isBtnHide = true;
       _this.$refs.scenarioRelevance.open();
       break;
     default:
-      _this.scenarioDefinition.push(new PluginController({type: plugin.jmeterClazz,stepName:plugin.name, pluginId: plugin.scriptId}));
+      setNode(_this, new PluginController({
+        type: plugin.jmeterClazz,
+        stepName: plugin.name,
+        pluginId: plugin.scriptId
+      }));
       break;
   }
   if (_this.selectedNode) {
     _this.selectedNode.expanded = true;
   }
   _this.sort();
+  _this.$nextTick(() => {
+    _this.cancelBatchProcessing();
+  });
 }

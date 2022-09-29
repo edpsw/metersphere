@@ -2,7 +2,9 @@ package io.metersphere.api.jmeter;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.parser.Feature;
 import io.metersphere.commons.constants.DelimiterConstants;
+import io.metersphere.dto.RequestResult;
 import lombok.Data;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -13,6 +15,8 @@ import java.util.*;
 public class TestResult {
 
     private String testId;
+
+    private String setReportId;
 
     private int scenarioTotal;
 
@@ -132,7 +136,7 @@ public class TestResult {
                 String itemAndScenarioName = "";
                 if (StringUtils.isNotEmpty(item.getScenario())) {
                     //第1个：当前场景， 第all_id_names个：最后一层场景
-                    List<String> all_id_names = JSON.parseObject(item.getScenario(), List.class);
+                    List<String> all_id_names = JSON.parseObject(item.getScenario(), List.class, Feature.DisableSpecialKeyDetect);
                     if (all_id_names.size() > 1) {
                         StringBuffer scenarioNames = new StringBuffer();
                         //因为要进行步骤统计，第一层级下的场景算作步骤，所以统计视角只按照第一级别场景来计算
@@ -199,7 +203,7 @@ public class TestResult {
         }
 
         if (StringUtils.isNotEmpty(item.getScenario())) {
-            List<String> id_names = JSON.parseObject(item.getScenario(), List.class);
+            List<String> id_names = JSON.parseObject(item.getScenario(), List.class, Feature.DisableSpecialKeyDetect);
             this.setStatus(id_names, item.getError() > 0);
             return item.getScenario();
         } else {

@@ -1,12 +1,22 @@
 <template>
   <el-card class="scenario-results">
+    <div v-if="errorReport > 0">
+      <el-tooltip :content="$t('api_test.automation.open_expansion')" placement="top" effect="light">
+        <i class="el-icon-circle-plus-outline  ms-open-btn ms-open-btn-left" v-prevent-re-click @click="openExpansion"/>
+      </el-tooltip>
+      <el-tooltip :content="$t('api_test.automation.close_expansion')" placement="top" effect="light">
+        <i class="el-icon-remove-outline ms-open-btn" size="mini" @click="closeExpansion"/>
+      </el-tooltip>
+    </div>
     <el-tree :data="treeData"
              :expand-on-click-node="false"
              :default-expand-all="defaultExpand"
+             :filter-node-method="filterNode"
              highlight-current
              class="ms-tree ms-report-tree" ref="resultsTree">
           <span slot-scope="{ node, data}" style="width: 99%" @click="nodeClick(node)">
-            <ms-scenario-result :node="data" :console="console" v-on:requestResult="requestResult"/>
+            <ms-scenario-result :node="data" :tree-node="node" :console="console" v-on:requestResult="requestResult"
+                                :isActive="isActive" :is-share="isShare" :share-id="shareId"/>
           </span>
     </el-tree>
   </el-card>
@@ -22,9 +32,18 @@ export default {
     scenarios: Array,
     treeData: Array,
     console: String,
+    errorReport: Number,
+    report: Object,
     defaultExpand: {
       default: false,
       type: Boolean,
+    },
+    isShare: Boolean,
+    shareId: String,
+  },
+  data() {
+    return {
+      isActive: false
     }
   },
   created() {
@@ -32,13 +51,70 @@ export default {
       this.$refs.resultsTree.root.expanded = true;
     }
   },
+  computed: {
+    isUi() {
+      return this.report && this.report.reportType && this.report.reportType.startsWith("UI");
+    },
+  },
   methods: {
+    filterNode(value, data) {
+      if (!data.value && (!data.children || data.children.length === 0)) {
+        return false;
+      }
+      if (!value) return true;
+      if (data.value) {
+        if (value === 'errorReport') {
+          if (data.errorCode && data.errorCode !== "" && data.value.status === "errorReportResult") {
+            return true;
+          }
+        } else if (value === 'unexecute') {
+          if (data.value.status === 'unexecute') {
+            return true;
+          }
+        } else {
+          if (this.isUi) {
+            return data.value.success === false && data.value.startTime > 0;
+          } else {
+            return data.totalStatus !== 'errorReportResult' && data.value.error > 0;
+          }
+        }
+      }
+      return false;
+    },
+    filter(val) {
+      this.$nextTick(() => {
+        this.$refs.resultsTree.filter(val);
+      });
+    },
     requestResult(requestResult) {
       this.$emit("requestResult", requestResult);
     },
     nodeClick(node) {
       node.expanded = !node.expanded;
-    }
+    },
+    // 改变节点的状态
+    changeTreeNodeStatus(node, expandCount) {
+      node.expanded = this.expandAll
+      for (let i = 0; i < node.childNodes.length; i++) {
+        // 改变节点的自身expanded状态
+        node.childNodes[i].expanded = this.expandAll
+        // 遍历子节点
+        if (node.childNodes[i].childNodes.length > 0) {
+          this.changeTreeNodeStatus(node.childNodes[i])
+        }
+      }
+    },
+    closeExpansion() {
+      this.isActive = false;
+      this.expandAll = false;
+      this.changeTreeNodeStatus(this.$refs.resultsTree.store.root, 0);
+    },
+    openExpansion() {
+      this.isActive = true;
+      this.expandAll = true;
+      // 改变每个节点的状态
+      this.changeTreeNodeStatus(this.$refs.resultsTree.store.root, 0)
+    },
   }
 }
 </script>
@@ -82,6 +158,22 @@ export default {
 
 .ms-sc-variable-header >>> .el-dialog__body {
   padding: 0px 20px;
+}
+
+.ms-open-btn {
+  margin: 5px 5px 0px;
+  color: #783887;
+  font-size: 20px;
+}
+
+.ms-open-btn:hover {
+  background-color: #F2F9EE;
+  cursor: pointer;
+  color: #67C23A;
+}
+
+.ms-open-btn-left {
+  margin-left: 30px;
 }
 
 </style>

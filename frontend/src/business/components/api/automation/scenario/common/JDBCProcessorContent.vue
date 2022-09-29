@@ -1,70 +1,77 @@
 <template>
-  <div v-loading="isReloadData">
-    <el-row>
-      <el-col :span="21" style="padding-bottom: 20px">
-        <div style="border:1px #DCDFE6 solid; height: 100%;border-radius: 4px ;width: 100% ;margin: 20px">
-          <el-form :model="request" :rules="rules" ref="request" label-width="100px" :disabled="isReadOnly" style="margin: 10px">
-            <el-row>
-              <el-col :span="8">
-                <el-form-item prop="environmentId" :label="$t('api_test.definition.request.run_env')">
-                  <el-select v-model="request.environmentId" size="small" class="ms-htt-width"
-                             :placeholder="$t('api_test.definition.request.run_env')"
-                             @change="environmentChange" clearable>
-                    <el-option v-for="(environment, index) in environments" :key="index"
-                               :label="environment.name"
-                               :value="environment.id"/>
-                    <el-button class="environment-button" size="small" type="primary" @click="openEnvironmentConfig">
+  <div v-loading="isReloadData || result.loading">
+    <div class="jdbc-class">
+      <el-form :model="request" :rules="rules" ref="request" label-width="100px" :disabled="request.disabled"
+               style="margin: 10px">
+        <el-row>
+          <el-col :span="8">
+            <el-form-item prop="environmentId" :label="$t('api_test.definition.request.run_env')">
+              <el-select v-model="request.environmentId" size="small" class="ms-htt-width"
+                         :placeholder="$t('api_test.definition.request.run_env')"
+                         @change="environmentChange" clearable :disabled="isReadOnly">
+                <el-option v-for="(environment, index) in environments" :key="index"
+                           :label="environment.name"
+                           :value="environment.id"/>
+                <el-button class="environment-button" size="small" type="primary" @click="openEnvironmentConfig">
+                  {{ $t('api_test.environment.environment_config') }}
+                </el-button>
+                <template v-slot:empty>
+                  <div class="empty-environment">
+                    <el-button class="environment-button" size="small" type="primary"
+                               @click="openEnvironmentConfig">
                       {{ $t('api_test.environment.environment_config') }}
                     </el-button>
-                    <template v-slot:empty>
-                      <div class="empty-environment">
-                        <el-button class="environment-button" size="small" type="primary" @click="openEnvironmentConfig">
-                          {{ $t('api_test.environment.environment_config') }}
-                        </el-button>
-                      </div>
-                    </template>
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              <el-col :span="8">
-                <el-form-item :label="$t('api_test.request.sql.dataSource')" prop="dataSourceId" style="margin-left: 10px">
-                  <el-select v-model="request.dataSourceId" size="small" @change="reload">
-                    <el-option v-for="(item, index) in databaseConfigsOptions" :key="index" :value="item.id" :label="item.name"/>
-                  </el-select>
-                </el-form-item>
-
-              </el-col>
-              <el-col :span="8">
-                <el-form-item :label="$t('api_test.request.sql.timeout')" prop="queryTimeout" style="margin-left: 10px">
-                  <el-input-number :disabled="isReadOnly" size="small" v-model="request.queryTimeout" :placeholder="$t('commons.millisecond')" :max="1000*10000000" :min="0"/>
-                </el-form-item>
-              </el-col>
-            </el-row>
-
-
-            <el-form-item :label="$t('api_test.request.sql.result_variable')" prop="resultVariable">
-              <el-input v-model="request.resultVariable" maxlength="500" show-word-limit size="small"/>
+                  </div>
+                </template>
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item :label="$t('api_test.request.sql.dataSource')" prop="dataSourceId"
+                          style="margin-left: 10px">
+              <el-select v-model="request.dataSourceId" size="small" @change="reload" :disabled="request.disabled">
+                <el-option v-for="(item, index) in databaseConfigsOptions" :key="index" :value="item.id"
+                           :label="item.name"/>
+              </el-select>
             </el-form-item>
 
-            <el-form-item :label="$t('api_test.request.sql.variable_names')" prop="variableNames">
-              <el-input v-model="request.variableNames" maxlength="500" show-word-limit size="small"/>
+          </el-col>
+          <el-col :span="8">
+            <el-form-item :label="$t('api_test.request.sql.timeout')" prop="queryTimeout" style="margin-left: 10px">
+              <el-input-number :disabled="request.disabled" size="small" v-model="request.queryTimeout"
+                               :placeholder="$t('commons.millisecond')" :max="1000*10000000" :min="0"/>
             </el-form-item>
+          </el-col>
+        </el-row>
 
-            <el-tabs v-model="activeName">
-              <el-tab-pane :label="$t('api_test.scenario.variables')" name="variables">
-                <ms-api-scenario-variables :is-read-only="isReadOnly" :items="request.variables"
-                                           :description="$t('api_test.scenario.kv_description')"/>
-              </el-tab-pane>
-              <el-tab-pane :label="$t('api_test.request.sql.sql_script')" name="sql">
-                <div class="sql-content">
-                  <ms-code-edit mode="sql" :read-only="isReadOnly" :modes="['sql']" :data.sync="request.query" theme="eclipse" ref="codeEdit"/>
-                </div>
-              </el-tab-pane>
-            </el-tabs>
-          </el-form>
-        </div>
-      </el-col>
-    </el-row>
+
+        <el-form-item :label="$t('api_test.request.sql.result_variable')" prop="resultVariable">
+          <el-input v-model="request.resultVariable" maxlength="500" show-word-limit size="small"/>
+        </el-form-item>
+
+        <el-form-item :label="$t('api_test.request.sql.variable_names')" prop="variableNames">
+          <el-input v-model="request.variableNames" maxlength="500" show-word-limit size="small"/>
+        </el-form-item>
+
+        <el-tabs v-model="activeName" class="ms-sql-tabs">
+          <el-tab-pane :label="$t('api_test.scenario.variables')" name="variables">
+            <ms-api-scenario-variables :is-read-only="isReadOnly" :items="request.variables"
+                                       :description="$t('api_test.scenario.kv_description')"/>
+          </el-tab-pane>
+          <el-tab-pane :label="$t('api_test.request.sql.sql_script')" name="sql">
+            <ms-code-edit
+              :height="120"
+              :read-only="isReadOnly"
+              :modes="['sql']"
+              :data.sync="request.query"
+              theme="eclipse"
+              mode="sql"
+              ref="codeEdit"/>
+          </el-tab-pane>
+        </el-tabs>
+      </el-form>
+    </div>
+
 
     <!-- 环境 -->
     <api-environment-config ref="environmentConfig" @close="environmentConfigClose"/>
@@ -73,17 +80,13 @@
 
 <script>
 import MsApiKeyValue from "@/business/components/api/definition/components/ApiKeyValue";
-import ApiAssertions from "@/business/components/api/definition/components/assertion/ApiAssertions";
 import MsApiExtract from "@/business/components/api/definition/components/extract/ApiExtract";
 import ApiRequestMethodSelect from "@/business/components/api/definition/components/collapse/ApiRequestMethodSelect";
 import MsCodeEdit from "@/business/components/common/components/MsCodeEdit";
 import MsApiScenarioVariables from "@/business/components/api/definition/components/ApiScenarioVariables";
-import {createComponent} from "@/business/components/api/definition/components/jmeter/components";
-import {Assertions, Extract} from "@/business/components/api/definition/model/ApiTestModel";
 import {parseEnvironment} from "@/business/components/api/definition/model/EnvironmentModel";
 import ApiEnvironmentConfig from "@/business/components/api/test/components/ApiEnvironmentConfig";
-import {getCurrentProjectID} from "@/common/js/utils";
-import {getUUID} from "@/common/js/utils";
+import {getCurrentProjectID, getUUID, objToStrMap} from "@/common/js/utils";
 import MsJsr233Processor from "@/business/components/api/automation/scenario/component/Jsr233Processor";
 
 export default {
@@ -102,6 +105,7 @@ export default {
       type: Boolean,
       default: true,
     },
+    scenarioId: String,
     isReadOnly: {
       type: Boolean,
       default: false
@@ -109,6 +113,7 @@ export default {
   },
   data() {
     return {
+      result: {},
       environments: [],
       currentEnvironment: {},
       databaseConfigsOptions: [],
@@ -117,17 +122,33 @@ export default {
       rules: {},
     }
   },
-  watch: {
-    'request.dataSourceId'() {
-      this.setDataSource();
-    },
-  },
   created() {
     this.getEnvironments();
   },
   computed: {
     projectId() {
       return getCurrentProjectID();
+    },
+  },
+  watch: {
+    // 场景环境监听
+    '$store.state.scenarioEnvMap': {
+      handler(v) {
+        this.getEnvironments();
+      },
+      deep: true
+    },
+    // 接口/用例 右上角公共环境监听
+    '$store.state.useEnvironment': function () {
+      if (!this.scenarioId) {
+        this.getEnvironments(this.$store.state.useEnvironment);
+      }
+    },
+    // 接口/用例 自身环境监听
+    'request.environmentId': function () {
+      if (!this.scenarioId) {
+        this.initDataSource(undefined, undefined, this.request.targetDataSourceName);
+      }
     },
   },
   methods: {
@@ -162,51 +183,114 @@ export default {
     runTest() {
 
     },
-    getEnvironments() {
-      this.environments = [];
+    itselfEnvironment(environmentId) {
       let id = this.request.projectId ? this.request.projectId : this.projectId;
-      this.$get('/api/environment/list/' + id, response => {
+      this.result = this.$get('/api/environment/list/' + id, response => {
+        this.environments = response.data;
+        let targetDataSourceName = undefined;
+        this.environments.forEach(environment => {
+          parseEnvironment(environment);
+          // 找到原始环境和数据源名称
+          if (environment.id === this.request.environmentId) {
+            if (environment.config && environment.config.databaseConfigs) {
+              environment.config.databaseConfigs.forEach(item => {
+                if (item.id === this.request.dataSourceId) {
+                  targetDataSourceName = item.name;
+                }
+              });
+            }
+          }
+        })
+        if (environmentId) {
+          this.request.environmentId = environmentId;
+        }
+        this.initDataSource(undefined, undefined, targetDataSourceName);
+      });
+    },
+    getEnvironments(environmentId) {
+      let envId = "";
+      let id = this.request.projectId ? this.request.projectId : this.projectId;
+      let scenarioEnvId = this.scenarioId !== "" ? (this.scenarioId + "_" + id) : id;
+      if (this.$store.state.scenarioEnvMap && this.$store.state.scenarioEnvMap instanceof Map
+        && this.$store.state.scenarioEnvMap.has(scenarioEnvId)) {
+        envId = this.$store.state.scenarioEnvMap.get(scenarioEnvId);
+      }
+      if (!this.scenarioId && !this.request.customizeReq) {
+        this.itselfEnvironment(environmentId);
+        return;
+      }
+      this.environments = [];
+      // 场景开启自身环境
+      if (this.request.environmentEnable && this.request.refEevMap) {
+        let obj = Object.prototype.toString.call(this.request.refEevMap).match(/\[object (\w+)\]/)[1].toLowerCase();
+        if (obj !== 'object' && obj !== "map") {
+          this.request.refEevMap = objToStrMap(JSON.parse(this.request.refEevMap));
+        } else if (obj === 'object' && obj !== "map") {
+          this.request.refEevMap = objToStrMap(this.request.refEevMap);
+        }
+        if (this.request.refEevMap instanceof Map && this.request.refEevMap.has(id)) {
+          envId = this.request.refEevMap.get(id);
+        }
+      }
+      if (envId === this.request.originalEnvironmentId && this.request.originalDataSourceId) {
+        this.request.dataSourceId = this.request.originalDataSourceId;
+      }
+      let targetDataSourceName = "";
+      let currentEnvironment = {};
+      this.result = this.$get('/api/environment/list/' + id, response => {
         this.environments = response.data;
         this.environments.forEach(environment => {
           parseEnvironment(environment);
-        });
-        let hasEnvironment = false;
-        for (let i in this.environments) {
-          if (this.environments[i].id === this.request.environmentId) {
-            hasEnvironment = true;
-            break;
+          // 找到原始环境和数据源名称
+          if (environment.id === this.request.environmentId && environment.id !== envId) {
+            if (environment.config && environment.config.databaseConfigs) {
+              environment.config.databaseConfigs.forEach(item => {
+                if (item.id === this.request.dataSourceId) {
+                  targetDataSourceName = item.name;
+                }
+              });
+            }
           }
-        }
-        if (!hasEnvironment) {
-          this.request.environmentId = undefined;
-        }
-        if (!this.request.environmentId) {
-          this.request.dataSourceId = undefined;
-        }
-        this.initDataSource();
+          if (envId && environment.id === envId) {
+            currentEnvironment = environment;
+            this.environments = [currentEnvironment];
+          }
+        });
+        this.initDataSource(envId, currentEnvironment, targetDataSourceName);
       });
     },
     openEnvironmentConfig() {
       this.$refs.environmentConfig.open(getCurrentProjectID());
     },
-    initDataSource() {
-      let flag = false;
-      let environment = {};
-      for (let i in this.environments) {
-        if (this.environments[i].id === this.request.environmentId) {
-          environment = this.environments[i];
-          break;
+    initDataSource(envId, currentEnvironment, targetDataSourceName) {
+      this.databaseConfigsOptions = [];
+      if (envId) {
+        this.request.environmentId = envId;
+      } else {
+        for (let i in this.environments) {
+          if (this.environments[i].id === this.request.environmentId) {
+            currentEnvironment = this.environments[i];
+            break;
+          }
         }
       }
-
-      this.databaseConfigsOptions = [];
-      if(environment.config&&environment.config.databaseConfigs){
-        environment.config.databaseConfigs.forEach(item => {
+      let flag = false;
+      if (currentEnvironment && currentEnvironment.config && currentEnvironment.config.databaseConfigs) {
+        currentEnvironment.config.databaseConfigs.forEach(item => {
           if (item.id === this.request.dataSourceId) {
+            flag = true;
+          }
+          // 按照名称匹配
+          else if (targetDataSourceName && item.name === targetDataSourceName) {
+            this.request.dataSourceId = item.id;
             flag = true;
           }
           this.databaseConfigsOptions.push(item);
         });
+        if (!flag && currentEnvironment.config.databaseConfigs.length > 0) {
+          this.request.dataSourceId = currentEnvironment.config.databaseConfigs[0].id;
+          flag = true;
+        }
       }
       if (!flag) {
         this.request.dataSourceId = "";
@@ -232,11 +316,12 @@ export default {
           break;
         }
       }
-
       this.databaseConfigsOptions = [];
-      environment.config.databaseConfigs.forEach(item => {
-        this.databaseConfigsOptions.push(item);
-      })
+      if (environment.config && environment.config.databaseConfigs) {
+        environment.config.databaseConfigs.forEach(item => {
+          this.databaseConfigsOptions.push(item);
+        })
+      }
     },
     environmentConfigClose() {
       this.getEnvironments();
@@ -247,8 +332,9 @@ export default {
 </script>
 
 <style scoped>
-.sql-content {
-  height: calc(100vh - 570px);
+
+.ms-sql-tabs {
+  min-height: 160px;
 }
 
 .one-row .el-form-item {
@@ -267,7 +353,19 @@ export default {
   margin: 6px 0px 8px 30px;
 }
 
+.environment-button {
+  margin-left: 20px;
+  padding: 7px;
+}
+
 /deep/ .el-form-item {
   margin-bottom: 15px;
+}
+
+.jdbc-class {
+  border: 1px #DCDFE6 solid;
+  height: 100%;
+  border-radius: 4px;
+  width: 100%
 }
 </style>

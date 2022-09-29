@@ -6,6 +6,7 @@ import io.metersphere.api.dto.automation.EsbDataStruct;
 import io.metersphere.api.dto.automation.SaveApiScenarioRequest;
 import io.metersphere.api.dto.automation.parse.EsbDataParser;
 import io.metersphere.api.dto.definition.*;
+import io.metersphere.commons.utils.LogUtil;
 import io.metersphere.plugin.core.MsTestElement;
 import io.metersphere.api.dto.definition.request.MsTestPlan;
 import io.metersphere.api.dto.definition.request.sampler.MsTCPSampler;
@@ -120,26 +121,6 @@ public class EsbApiParamService {
             }
 
         }
-
-//        try {
-//            if (StringUtils.isNotEmpty(res.getRequest())) {
-//                JSONObject jsonObj = JSONObject.parseObject(res.getRequest());
-//
-//                JSONArray esbDataArray = JSONArray.parseArray(esbParamBlobs.getDataStruct());
-//                jsonObj.put("esbDataStruct", esbDataArray);
-//
-//                JSONArray responseDataArray = JSONArray.parseArray(esbParamBlobs.getResponseDataStruct());
-//                jsonObj.put("backEsbDataStruct", responseDataArray);
-//
-//                JSONObject backedScriptObj = JSONObject.parseObject(esbParamBlobs.getBackedScript());
-//                jsonObj.put("backScript", backedScriptObj);
-//
-//                jsonObj.put("esbFrontedScript", esbParamBlobs.getFrontedScript());
-//
-//                res.setRequest(jsonObj.toJSONString());
-//            }
-//        } catch (Exception e) {
-//        }
     }
 
     public void handleApiEsbParams(ApiTestCaseWithBLOBs res) {
@@ -220,7 +201,7 @@ public class EsbApiParamService {
             //更新EsbApiParams类
 //            EsbApiParamsWithBLOBs esbApiParams = this.createEsbApiParam(request.getId(), request.getEsbDataStruct(), request.getBackEsbDataStruct(), request.getBackScript());
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         }
         return request;
     }
@@ -239,7 +220,7 @@ public class EsbApiParamService {
             //更新EsbApiParams类
             EsbApiParamsWithBLOBs esbApiParams = this.createEsbApiParam(request.getId(), request.getEsbDataStruct(), request.getBackEsbDataStruct(), request.getBackScript());
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         }
         return request;
     }
@@ -276,7 +257,7 @@ public class EsbApiParamService {
 //            //更新EsbApiParams类
 //            EsbApiParamsWithBLOBs esbApiParams = this.createEsbApiParam(request.getId(), request.getEsbDataStruct(), request.getBackEsbDataStruct(), request.getBackScript());
 //        } catch (Exception e) {
-//            e.printStackTrace();
+//            LogUtil.error(e);
 //        }
 //        return request;
 //    }
@@ -307,12 +288,12 @@ public class EsbApiParamService {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         }
         return keyValueList;
     }
 
-    private List<KeyValue> genKeyValueListByDataStruct(MsTCPSampler tcpSampler, List<EsbDataStruct> dataStructRequestList) {
+    public List<KeyValue> genKeyValueListByDataStruct(MsTCPSampler tcpSampler, List<EsbDataStruct> dataStructRequestList) {
         List<KeyValue> keyValueList = new ArrayList<>();
         String sendRequest = tcpSampler.getRequest();
           String paramRegexStr = "\\$\\{([^}]*)\\}";
@@ -336,7 +317,7 @@ public class EsbApiParamService {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         }
         return keyValueList;
     }
@@ -364,7 +345,7 @@ public class EsbApiParamService {
             //更新EsbApiParams类
             EsbApiParamsWithBLOBs esbApiParams = this.createEsbApiParam(request.getId(), request.getEsbDataStruct(), request.getBackEsbDataStruct(), request.getBackEsbDataStruct());
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         }
         return request;
     }
@@ -377,7 +358,7 @@ public class EsbApiParamService {
                 tcpSampler.setParameters(keyValueList);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         }
     }
 
@@ -422,7 +403,7 @@ public class EsbApiParamService {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         }
         return request;
     }

@@ -88,10 +88,11 @@ public interface ParamConstants {
         }
     }
 
-    enum MAIL implements ParamConstants{
+    enum MAIL implements ParamConstants {
         SERVER("smtp.host"),
         PORT("smtp.port"),
         ACCOUNT("smtp.account"),
+        FROM("smtp.from"),
         PASSWORD("smtp.password"),
         SSL("smtp.ssl"),
         TLS("smtp.tls"),
@@ -112,7 +113,8 @@ public interface ParamConstants {
     enum BASE implements ParamConstants {
         URL("base.url"),
         CONCURRENCY("base.concurrency"),
-        PROMETHEUS_HOST("base.prometheus.host");
+        PROMETHEUS_HOST("base.prometheus.host"),
+        SELENIUM_DOCKER_URL("base.selenium.docker.url");
 
         private String value;
 

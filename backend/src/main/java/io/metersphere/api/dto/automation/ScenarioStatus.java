@@ -1,5 +1,5 @@
 package io.metersphere.api.dto.automation;
 
 public enum ScenarioStatus {
-    Saved, Success, Fail, Trash,Underway
+    Saved, Success, Error, Timeout, Fail, Trash, Underway
 }

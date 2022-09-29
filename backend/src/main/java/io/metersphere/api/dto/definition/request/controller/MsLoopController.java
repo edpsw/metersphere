@@ -7,6 +7,8 @@ import io.metersphere.api.dto.definition.request.ParameterConfig;
 import io.metersphere.api.dto.definition.request.controller.loop.CountController;
 import io.metersphere.api.dto.definition.request.controller.loop.MsForEachController;
 import io.metersphere.api.dto.definition.request.controller.loop.MsWhileController;
+import io.metersphere.api.dto.definition.request.variable.ScenarioVariable;
+import io.metersphere.api.dto.shell.filter.ScriptFilter;
 import io.metersphere.commons.constants.LoopConstants;
 import io.metersphere.plugin.core.MsParameter;
 import io.metersphere.plugin.core.MsTestElement;
@@ -24,15 +26,18 @@ import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.timers.ConstantTimer;
 import org.apache.jorphan.collections.HashTree;
 
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
 @JSONType(typeName = "LoopController")
 public class MsLoopController extends MsTestElement {
     private String type = "LoopController";
-    private String clazzName = "io.metersphere.api.dto.definition.request.controller.MsLoopController";
+    private String clazzName = MsLoopController.class.getCanonicalName();
 
     @JSONField(ordinal = 20)
     private String loopType;
@@ -58,12 +63,33 @@ public class MsLoopController extends MsTestElement {
             return;
         }
         final HashTree groupTree = controller(tree);
+        // 自身场景
         if (CollectionUtils.isNotEmpty(config.getVariables())) {
             ElementUtil.addCsvDataSet(groupTree, config.getVariables(), config, "shareMode.thread");
-            ElementUtil.addCounter(groupTree, config.getVariables());
+            ElementUtil.addCounter(groupTree, config.getVariables(), true);
             ElementUtil.addRandom(groupTree, config.getVariables());
         }
+        // 当前引用场景
+        if (CollectionUtils.isNotEmpty(config.getTransferVariables())) {
+            final List<ScenarioVariable> variables = new LinkedList<>();
+            if (CollectionUtils.isEmpty(config.getVariables())) {
+                variables.addAll(config.getTransferVariables());
+            } else {
+                // 合并处理
+                Map<String, ScenarioVariable> variableMap = config.getVariables().stream().collect(Collectors.toMap(ScenarioVariable::getId, a -> a, (k1, k2) -> k1));
+                config.getTransferVariables().forEach(item -> {
+                    if (!variableMap.containsKey(item.getId())) {
+                        variables.add(item);
+                    }
+                });
+            }
 
+            if (CollectionUtils.isNotEmpty(variables)) {
+                ElementUtil.addCsvDataSet(groupTree, variables, config, "shareMode.thread");
+                ElementUtil.addCounter(groupTree, variables, true);
+                ElementUtil.addRandom(groupTree, variables);
+            }
+        }
         // 循环下都增加一个计数器，用于结果统计
         groupTree.add(addCounterConfig());
         // 不打开执行成功后轮询功能，则成功后就停止循环
@@ -109,7 +135,7 @@ public class MsLoopController extends MsTestElement {
         loopController.setProperty(TestElement.TEST_CLASS, LoopController.class.getName());
         loopController.setProperty(TestElement.GUI_CLASS, SaveService.aliasToClass("LoopControlPanel"));
         loopController.setLoops(countController.getLoops());
-        if (countController.getLoops() > 0) {
+        if (StringUtils.isNotEmpty(countController.getLoops())) {
             loopController.setContinueForever(true);
         }
         return loopController;
@@ -147,7 +173,7 @@ public class MsLoopController extends MsTestElement {
     private IfController ifController(String condition) {
         IfController ifController = new IfController();
         ifController.setEnabled(this.isEnable());
-        ifController.setName("while ifController");
+        ifController.setName("Loop ifController");
         ifController.setProperty(TestElement.TEST_CLASS, IfController.class.getName());
         ifController.setProperty(TestElement.GUI_CLASS, SaveService.aliasToClass("IfControllerPanel"));
         ifController.setCondition(condition);
@@ -207,6 +233,17 @@ public class MsLoopController extends MsTestElement {
         return script;
     }
 
+    private void addPreProc(HashTree hashTree) {
+        JSR223Sampler sampler = new JSR223Sampler();
+        sampler.setName("MS_CLEAR_LOOPS_VAR_" + ms_current_timer);
+        sampler.setProperty(TestElement.TEST_CLASS, JSR223Sampler.class.getName());
+        sampler.setProperty(TestElement.GUI_CLASS, SaveService.aliasToClass("TestBeanGUI"));
+        sampler.setProperty("scriptLanguage", "beanshell");
+        ScriptFilter.verify("beanshell", this.getName(), script());
+        sampler.setProperty("script", "vars.put(\"" + ms_current_timer + "\", null);");
+        hashTree.add(sampler);
+    }
+
     private HashTree controller(HashTree tree) {
         if (StringUtils.equals(this.loopType, LoopConstants.WHILE.name()) && this.whileController != null) {
             RunTime runTime = new RunTime();
@@ -223,6 +260,8 @@ public class MsLoopController extends MsTestElement {
             String ifCondition = "${__jexl3(" + condition + ")}";
             String whileCondition = "${__jexl3(" + condition + " && \"${" + ms_current_timer + "}\" !=\"stop\")}";
             HashTree ifHashTree = tree.add(ifController(ifCondition));
+            addPreProc(ifHashTree);
+
             HashTree hashTree = ifHashTree.add(initWhileController(whileCondition));
             // 添加超时处理，防止死循环
             JSR223PreProcessor jsr223PreProcessor = new JSR223PreProcessor();
@@ -231,6 +270,9 @@ public class MsLoopController extends MsTestElement {
             jsr223PreProcessor.setProperty(TestElement.GUI_CLASS, SaveService.aliasToClass("TestBeanGUI"));
             /*jsr223PreProcessor.setProperty("cacheKey", "true");*/
             jsr223PreProcessor.setProperty("scriptLanguage", "beanshell");
+
+            ScriptFilter.verify("beanshell", this.getName(), script());
+
             jsr223PreProcessor.setProperty("script", script());
             hashTree.add(jsr223PreProcessor);
             return hashTree;
@@ -239,7 +281,9 @@ public class MsLoopController extends MsTestElement {
             return tree.add(initForeachController());
         }
         if (StringUtils.equals(this.loopType, LoopConstants.LOOP_COUNT.name()) && this.countController != null) {
-            return tree.add(initLoopController());
+            String ifCondition = StringUtils.join("${__jexl3(", countController.getLoops(), " > 0 ", ")}");
+            HashTree ifHashTree = tree.add(ifController(ifCondition));
+            return ifHashTree.add(initLoopController());
         }
         return null;
     }

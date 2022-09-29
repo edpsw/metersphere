@@ -33,9 +33,6 @@ export default {
       }
     };
   },
-  props: {
-    color: String
-  },
   created() {
     let lang = this.currentUser().language;
     this.currentUserInfo = this.currentUser();
@@ -86,7 +83,6 @@ export default {
 .dropdown-link {
   cursor: pointer;
   font-size: 12px;
-  color: rgb(245, 245, 245);
   line-height: 40px;
   padding-right: 20px;
 }
@@ -106,7 +102,7 @@ export default {
 }
 
 .global {
-  color: #fff;
+  color: var(--color);
 }
 
 /deep/ .el-submenu__title {

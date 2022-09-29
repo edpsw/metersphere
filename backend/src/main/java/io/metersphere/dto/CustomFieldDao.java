@@ -11,7 +11,13 @@ public class CustomFieldDao extends CustomField {
 
     private String defaultValue;
 
+    private String textValue;
+
+    private String value;
+
     private String customData;
+
+    private String originGlobalId;
 
     private String key;
 }

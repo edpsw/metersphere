@@ -1373,6 +1373,196 @@ public class ApiTestCaseExample {
             addCriterion("case_status not between", value1, value2, "caseStatus");
             return (Criteria) this;
         }
+
+        public Criteria andVersionIdIsNull() {
+            addCriterion("version_id is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdIsNotNull() {
+            addCriterion("version_id is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdEqualTo(String value) {
+            addCriterion("version_id =", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdNotEqualTo(String value) {
+            addCriterion("version_id <>", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdGreaterThan(String value) {
+            addCriterion("version_id >", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdGreaterThanOrEqualTo(String value) {
+            addCriterion("version_id >=", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdLessThan(String value) {
+            addCriterion("version_id <", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdLessThanOrEqualTo(String value) {
+            addCriterion("version_id <=", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdLike(String value) {
+            addCriterion("version_id like", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdNotLike(String value) {
+            addCriterion("version_id not like", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdIn(List<String> values) {
+            addCriterion("version_id in", values, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdNotIn(List<String> values) {
+            addCriterion("version_id not in", values, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdBetween(String value1, String value2) {
+            addCriterion("version_id between", value1, value2, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdNotBetween(String value1, String value2) {
+            addCriterion("version_id not between", value1, value2, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdatedIsNull() {
+            addCriterion("to_be_updated is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdatedIsNotNull() {
+            addCriterion("to_be_updated is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdatedEqualTo(Boolean value) {
+            addCriterion("to_be_updated =", value, "toBeUpdated");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdatedNotEqualTo(Boolean value) {
+            addCriterion("to_be_updated <>", value, "toBeUpdated");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdatedGreaterThan(Boolean value) {
+            addCriterion("to_be_updated >", value, "toBeUpdated");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdatedGreaterThanOrEqualTo(Boolean value) {
+            addCriterion("to_be_updated >=", value, "toBeUpdated");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdatedLessThan(Boolean value) {
+            addCriterion("to_be_updated <", value, "toBeUpdated");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdatedLessThanOrEqualTo(Boolean value) {
+            addCriterion("to_be_updated <=", value, "toBeUpdated");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdatedIn(List<Boolean> values) {
+            addCriterion("to_be_updated in", values, "toBeUpdated");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdatedNotIn(List<Boolean> values) {
+            addCriterion("to_be_updated not in", values, "toBeUpdated");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdatedBetween(Boolean value1, Boolean value2) {
+            addCriterion("to_be_updated between", value1, value2, "toBeUpdated");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdatedNotBetween(Boolean value1, Boolean value2) {
+            addCriterion("to_be_updated not between", value1, value2, "toBeUpdated");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdateTimeIsNull() {
+            addCriterion("to_be_update_Time is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdateTimeIsNotNull() {
+            addCriterion("to_be_update_Time is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdateTimeEqualTo(Long value) {
+            addCriterion("to_be_update_Time =", value, "toBeUpdateTime");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdateTimeNotEqualTo(Long value) {
+            addCriterion("to_be_update_Time <>", value, "toBeUpdateTime");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdateTimeGreaterThan(Long value) {
+            addCriterion("to_be_update_Time >", value, "toBeUpdateTime");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdateTimeGreaterThanOrEqualTo(Long value) {
+            addCriterion("to_be_update_Time >=", value, "toBeUpdateTime");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdateTimeLessThan(Long value) {
+            addCriterion("to_be_update_Time <", value, "toBeUpdateTime");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdateTimeLessThanOrEqualTo(Long value) {
+            addCriterion("to_be_update_Time <=", value, "toBeUpdateTime");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdateTimeIn(List<Long> values) {
+            addCriterion("to_be_update_Time in", values, "toBeUpdateTime");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdateTimeNotIn(List<Long> values) {
+            addCriterion("to_be_update_Time not in", values, "toBeUpdateTime");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdateTimeBetween(Long value1, Long value2) {
+            addCriterion("to_be_update_Time between", value1, value2, "toBeUpdateTime");
+            return (Criteria) this;
+        }
+
+        public Criteria andToBeUpdateTimeNotBetween(Long value1, Long value2) {
+            addCriterion("to_be_update_Time not between", value1, value2, "toBeUpdateTime");
+            return (Criteria) this;
+        }
     }
 
     public static class Criteria extends GeneratedCriteria {

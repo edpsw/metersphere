@@ -14,18 +14,47 @@
                  class="el-menu-demo header-menu" mode="horizontal" @select="handleSelect">
           <el-menu-item index="functional">{{ $t('test_track.functional_test_case') }}</el-menu-item>
           <el-menu-item index="api" v-modules="['api']">{{ $t('test_track.api_test_case') }}</el-menu-item>
+          <el-menu-item index="ui" v-modules="['ui']">{{ $t('test_track.ui_test_case') }}</el-menu-item>
           <el-menu-item index="load" v-modules="['performance']">{{ $t('test_track.performance_test_case') }}</el-menu-item>
           <el-menu-item index="report">{{ $t('test_track.report_statistics') }}</el-menu-item>
         </el-menu>
       </template>
     </ms-test-plan-header-bar>
+
     <test-plan-functional v-if="activeIndex === 'functional'" :redirectCharType="redirectCharType"
-                          :clickType="clickType" :plan-id="planId"/>
-    <test-plan-api v-if="activeIndex === 'api'" :redirectCharType="redirectCharType" :clickType="clickType"
-                   :plan-id="planId"/>
-    <test-plan-load v-if="activeIndex === 'load'" :redirectCharType="redirectCharType" :clickType="clickType"
-                    :plan-id="planId"/>
-    <test-plan-report-content v-if="activeIndex === 'report'" :plan-id="planId"/>
+                          :clickType="clickType" :plan-id="planId" :version-enable="versionEnable" :plan-status="currentPlan.status"
+                          ref="testPlanFunctional"/>
+    <test-plan-api
+      v-if="activeIndex === 'api'"
+      :redirectCharType="redirectCharType"
+      :clickType="clickType"
+      :plan-id="planId"
+      :version-enable="versionEnable"
+      :plan-status="currentPlan.status"/>
+    <test-plan-ui
+      v-if="activeIndex === 'ui'"
+      :redirectCharType="redirectCharType"
+      :clickType="clickType"
+      :plan-id="planId"
+      :version-enable="versionEnable"
+      :plan-status="currentPlan.status"/>
+    <test-plan-load
+      v-if="activeIndex === 'load'"
+      :redirectCharType="redirectCharType"
+      :clickType="clickType"
+      :plan-id="planId"
+      :version-enable="versionEnable"
+      :plan-status="currentPlan.status"/>
+    <test-plan-report-content
+      class="plan-report"
+      v-if="activeIndex === 'report'"
+      :need-move-bar="true"
+      :plan-id="planId"
+      :version-enable="versionEnable"/>
+
+    <is-change-confirm
+      @confirm="changeConfirm"
+      ref="isChangeConfirm"/>
 
   </div>
 
@@ -34,7 +63,6 @@
 <script>
 
 import NodeTree from "../../common/NodeTree";
-import TestPlanTestCaseList from "./comonents/functional/FunctionalTestCaseList";
 import SelectMenu from "../../common/SelectMenu";
 import MsContainer from "../../../common/components/MsContainer";
 import MsAsideContainer from "../../../common/components/MsAsideContainer";
@@ -42,19 +70,28 @@ import MsMainContainer from "../../../common/components/MsMainContainer";
 import MsTestPlanHeaderBar from "./comonents/head/TestPlanHeaderBar";
 import TestPlanFunctional from "./comonents/functional/TestPlanFunctional";
 import TestPlanApi from "./comonents/api/TestPlanApi";
+import TestPlanUi from "./comonents/api/TestPlanUi";
 import TestPlanLoad from "@/business/components/track/plan/view/comonents/load/TestPlanLoad";
-import {getCurrentProjectID} from "@/common/js/utils";
+import {getCurrentProjectID, hasLicense} from "@/common/js/utils";
 import TestPlanReportContent from "@/business/components/track/plan/view/comonents/report/detail/TestPlanReportContent";
+import IsChangeConfirm from "@/business/components/common/components/IsChangeConfirm";
+import {PROJECT_ID, WORKSPACE_ID} from "@/common/js/constants";
 
 export default {
   name: "TestPlanView",
   components: {
+    IsChangeConfirm,
     TestPlanReportContent,
     TestPlanApi,
     TestPlanFunctional,
     MsTestPlanHeaderBar,
     MsMainContainer,
-    MsAsideContainer, MsContainer, NodeTree, TestPlanTestCaseList, SelectMenu, TestPlanLoad
+    MsAsideContainer,
+    MsContainer,
+    NodeTree,
+    SelectMenu,
+    TestPlanLoad,
+    TestPlanUi
   },
   data() {
     return {
@@ -66,6 +103,9 @@ export default {
       redirectCharType: '',
       //报表跳转过来的参数-通过哪种数据跳转的
       clickType: '',
+      tmpActiveIndex: '',
+      versionEnable: false,
+      projectId: null
     };
   },
   computed: {
@@ -77,17 +117,52 @@ export default {
     }
   },
   watch: {
+    '$route.query.projectId'() {
+      let projectId = this.$route.query.projectId;
+      if (projectId && projectId !== getCurrentProjectID()) {
+        sessionStorage.setItem(PROJECT_ID, projectId);
+      }
+    },
     '$route.params.planId'() {
       this.genRedirectParam();
       this.getTestPlans();
+    },
+  },
+  beforeRouteLeave(to, from, next) {
+    if (!this.$refs.testPlanFunctional) {
+      next();
+    } else if (this.$refs.testPlanFunctional.handleBeforeRouteLeave(to)) {
+      next();
     }
   },
   created() {
-    this.$EventBus.$on('projectChange', () => {
-      if (this.$route.name === 'planView') {
-        this.$router.push('/track/plan/all');
+    let workspaceId = this.$route.params.workspaceId;
+    if (workspaceId) {
+      sessionStorage.setItem(WORKSPACE_ID, workspaceId);
+    }else {
+      if(this.$route.query.workspaceId){
+        workspaceId = this.$route.query.workspaceId;
+        sessionStorage.setItem(WORKSPACE_ID, workspaceId);
       }
-    });
+    }
+    let projectId = this.$route.params.projectId;
+    if (projectId) {
+      sessionStorage.setItem(PROJECT_ID, projectId);
+      this.projectId  = projectId;
+    }else {
+      if (this.$route.query.projectId) {
+        projectId = this.$route.query.projectId;
+        sessionStorage.setItem(PROJECT_ID, this.$route.query.projectId);
+        this.projectId  = projectId;
+      } else {
+        this.projectId = getCurrentProjectID();
+      }
+    }
+    this.$EventBus.$on('projectChange', this.handleProjectChange);
+    this.checkVersionEnable();
+  },
+  destroyed () {
+    this.$EventBus.$off('projectChange', this.handleProjectChange);
   },
   mounted() {
     this.getTestPlans();
@@ -96,10 +171,19 @@ export default {
     this.genRedirectParam();
   },
   methods: {
+    handleProjectChange() {
+      if (this.$route.name === 'planView') {
+        this.$router.push('/track/plan/all');
+      }
+    },
     genRedirectParam() {
-      this.redirectCharType = this.$route.params.charType;
+      if (this.$route.params.charType) {
+        this.redirectCharType = this.$route.params.charType;
+      } else {
+        this.redirectCharType = this.$route.query.charType;
+      }
       this.clickType = this.$route.params.clickType;
-      if (this.redirectCharType != "") {
+      if (this.redirectCharType) {
         if (this.redirectCharType == 'scenario') {
           this.activeIndex = 'api';
         } else if (this.redirectCharType != null && this.redirectCharType != '') {
@@ -124,14 +208,46 @@ export default {
       this.$router.push('/track/plan/view/' + plan.id);
     },
     handleSelect(key) {
+      let isTestCaseMinderChanged = this.$store.state.isTestCaseMinderChanged;
+      if (key !== 'functional' && isTestCaseMinderChanged) {
+        if (this.currentPlan.status === 'Archived') {
+          this.activeIndex = key;
+        } else {
+          this.$refs.isChangeConfirm.open();
+          this.tmpActiveIndex = key;
+          return;
+        }
+      }
       this.activeIndex = key;
+    },
+    changeConfirm(isSave) {
+      if (isSave) {
+        this.$refs.testPlanFunctional.$refs.minder.save(window.minder.exportJson());
+      }
+      this.$store.commit('setIsTestCaseMinderChanged', false);
+      this.$nextTick(() => {
+        if (this.tmpActiveIndex) {
+          this.activeIndex = this.tmpActiveIndex;
+          this.tmpActiveIndex = null;
+        }
+      });
     },
     reloadMenu() {
       this.isMenuShow = false;
       this.$nextTick(() => {
         this.isMenuShow = true;
       });
-    }
+    },
+    checkVersionEnable() {
+      if (!this.projectId) {
+        return;
+      }
+      if (hasLicense()) {
+        this.$get('/project/version/enable/' + this.projectId, response => {
+          this.versionEnable = response.data;
+        });
+      }
+    },
   },
 };
 </script>
@@ -142,20 +258,17 @@ export default {
   display: inline-block;
 }
 
-/deep/ .ms-main-container {
-  height: calc(100vh - 80px - 53px);
-}
-
-/deep/ .ms-aside-container {
-  height: calc(100vh - 80px - 53px);
-  margin-top: 1px;
-}
-
 .header-menu.el-menu--horizontal > li {
   height: 49px;
   line-height: 50px;
   color: dimgray;
 }
 
+.plan-report >>> .report-content {
+  height: calc(100vh - 140px);
+}
 
+.el-menu-item {
+  padding: 0 10px;
+}
 </style>

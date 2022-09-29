@@ -3,16 +3,19 @@ package io.metersphere.track.issue;
 import com.alibaba.fastjson.JSONObject;
 import io.metersphere.base.domain.IssuesDao;
 import io.metersphere.base.domain.IssuesWithBLOBs;
+import io.metersphere.commons.constants.AttachmentSyncType;
 import io.metersphere.commons.constants.IssuesManagePlatform;
 import io.metersphere.commons.user.SessionUser;
 import io.metersphere.commons.utils.BeanUtils;
 import io.metersphere.commons.utils.SessionUtils;
+import io.metersphere.dto.CustomFieldItemDTO;
 import io.metersphere.track.dto.DemandDTO;
 import io.metersphere.track.request.testcase.IssuesRequest;
 import io.metersphere.track.request.testcase.IssuesUpdateRequest;
 import io.metersphere.track.request.testcase.TestCaseBatchRequest;
 import org.apache.commons.lang3.StringUtils;
 
+import java.io.File;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,10 +43,12 @@ public class LocalPlatform extends LocalAbstractPlatform {
     }
 
     @Override
-    public void addIssue(IssuesUpdateRequest issuesRequest) {
+    public IssuesWithBLOBs addIssue(IssuesUpdateRequest issuesRequest) {
         String issueStatus = "new";
         if (StringUtils.isNotBlank(issuesRequest.getCustomFields())) {
-            List<TestCaseBatchRequest.CustomFiledRequest> fields = JSONObject.parseArray(issuesRequest.getCustomFields(), TestCaseBatchRequest.CustomFiledRequest.class);
+            List<CustomFieldItemDTO> customFields = issuesRequest.getRequestFields();
+            String customFieldStr = JSONObject.toJSONString(customFields);
+            List<TestCaseBatchRequest.CustomFiledRequest> fields = JSONObject.parseArray(customFieldStr, TestCaseBatchRequest.CustomFiledRequest.class);
             for (TestCaseBatchRequest.CustomFiledRequest field : fields) {
                 if (StringUtils.equals("状态", field.getName())) {
                     issueStatus = (String) field.getValue();
@@ -67,10 +72,18 @@ public class LocalPlatform extends LocalAbstractPlatform {
 
         issuesRequest.setId(id);
         handleTestCaseIssues(issuesRequest);
+
+        return issues;
     }
 
     @Override
     public void updateIssue(IssuesUpdateRequest request) {
         handleIssueUpdate(request);
     }
+
+    @Override
+    public void syncIssuesAttachment(IssuesUpdateRequest issuesRequest, File file, AttachmentSyncType syncType) {
+        // 不需要同步
+    }
+
 }

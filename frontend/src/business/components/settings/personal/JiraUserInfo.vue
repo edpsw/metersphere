@@ -1,12 +1,12 @@
 <template>
-  <el-form label-position="right" label-width="100px" size="small">
-    <el-form-item :label="'Jira 信息'">
-      <ms-instructions-icon size="10" :content="'该信息为通过Jira提交缺陷的用户认证信息，若未填写，则使用组织中配置的默认信息'"/>
+  <el-form label-position="right" label-width="115px" size="small">
+    <el-form-item :label="'Jira '+ $t('commons.information')">
+      <ms-instructions-icon size="10" :content="$t('organization.integration.jira_prompt_information')"/>
     </el-form-item>
     <el-form-item :label="'Jira ' + $t('organization.integration.account')" prop="account">
       <el-input v-model="data.jiraAccount" :placeholder="$t('organization.integration.input_api_account')"/>
     </el-form-item>
-    <el-form-item :label="'Jira ' + $t('organization.integration.password')" prop="password">
+    <el-form-item label="Token" prop="password">
       <el-input v-model="data.jiraPassword" auto-complete="new-password"
                 :placeholder="$t('organization.integration.input_api_password')" show-password/>
     </el-form-item>

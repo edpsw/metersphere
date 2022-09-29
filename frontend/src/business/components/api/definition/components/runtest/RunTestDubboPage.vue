@@ -1,10 +1,14 @@
 <template>
 
   <div class="card-container">
+    <div class="ms-opt-btn" v-if="versionEnable">
+      {{ $t('project.version.name') }}: {{ apiData.versionName }}
+    </div>
     <el-card class="card-content">
       <!-- 操作按钮 -->
       <el-dropdown split-button type="primary" class="ms-api-buttion" @click="handleCommand('add')"
-                   @command="handleCommand" size="small" style="float: right;margin-right: 20px" v-if="!runLoading">
+                   @command="handleCommand" size="small" style="float: right;margin-right: 20px" v-if="!runLoading"
+                   v-permission="['PROJECT_API_DEFINITION:READ+EDIT_API']">
         {{ $t('commons.test') }}
         <el-dropdown-menu slot="dropdown">
           <el-dropdown-item command="load_case">{{ $t('api_test.definition.request.load_case') }}
@@ -15,39 +19,39 @@
           <el-dropdown-item command="save_as_api">{{ $t('api_test.definition.request.save_as') }}</el-dropdown-item>
         </el-dropdown-menu>
       </el-dropdown>
-      <el-button size="small" type="primary" v-else @click.once="stop" style="float: right;margin-right: 20px">{{ $t('report.stop_btn') }}</el-button>
+      <el-button size="small" type="primary" v-else @click.once="stop" style="float: right;margin-right: 20px">
+        {{ $t('report.stop_btn') }}
+      </el-button>
 
       <p class="tip">{{ $t('api_test.definition.request.req_param') }} </p>
       <div v-loading="loading">
         <!-- TCP 请求参数 -->
-        <ms-basis-parameters :request="api.request" ref="requestForm"/>
+        <ms-basis-parameters :request="api.request" ref="requestForm" :response="responseData"/>
 
         <!--返回结果-->
         <!-- HTTP 请求返回数据 -->
         <p class="tip">{{ $t('api_test.definition.request.res_param') }} </p>
         <ms-request-result-tail :response="responseData" ref="runResult"/>
       </div>
-
-
-      <ms-jmx-step :request="api.request" :response="responseData"/>
     </el-card>
 
     <!-- 加载用例 -->
     <ms-api-case-list @apiCaseClose="apiCaseClose" @refresh="refresh" @selectTestCase="selectTestCase" :currentApi="api"
                       :loaded="loaded" :refreshSign="refreshSign" :createCase="createCase"
+                      :save-button-text="loadCaseConfirmButton"
                       ref="caseList"/>
 
     <!-- 环境 -->
     <api-environment-config ref="environmentConfig" @close="environmentConfigClose"/>
     <!-- 执行组件 -->
-    <ms-run :debug="false" :environment="api.environment" :reportId="reportId" :run-data="runData"
+    <ms-run :debug="false" :reportId="reportId" :run-data="runData"
             @runRefresh="runRefresh" @errorRefresh="errorRefresh" ref="runTest"/>
 
   </div>
 </template>
 
 <script>
-import {getUUID} from "@/common/js/utils";
+import {getUUID, hasLicense} from "@/common/js/utils";
 import MsApiCaseList from "../case/ApiCaseList";
 import MsContainer from "../../../../common/components/MsContainer";
 import MsBottomContainer from "../BottomContainer";
@@ -57,8 +61,8 @@ import MsRequestResultTail from "../response/RequestResultTail";
 import MsRun from "../Run";
 import MsBasisParameters from "../request/dubbo/BasisParameters";
 import {REQ_METHOD} from "../../model/JsonData";
-import MsJmxStep from "../step/JmxStep";
 import {TYPE_TO_C} from "@/business/components/api/automation/scenario/Setting";
+import {mergeRequestDocumentData} from "@/business/components/api/definition/api-definition";
 
 export default {
   name: "RunTestDubboPage",
@@ -69,8 +73,7 @@ export default {
     MsRequestResultTail,
     ApiEnvironmentConfig,
     MsRun,
-    MsBasisParameters,
-    MsJmxStep
+    MsBasisParameters
   },
   data() {
     return {
@@ -79,6 +82,7 @@ export default {
       loaded: false,
       loading: false,
       currentRequest: {},
+      loadCaseConfirmButton: this.$t("commons.confirm"),
       createCase: "",
       refreshSign: "",
       responseData: {type: 'HTTP', responseResult: {}, subRequestResults: []},
@@ -91,12 +95,14 @@ export default {
       },
       runData: [],
       reportId: "",
-      runLoading: false
+      runLoading: false,
+      versionEnable: false,
     }
   },
   props: {apiData: {}, currentProtocol: String, syncTabs: Array, projectId: String},
   methods: {
     handleCommand(e) {
+      mergeRequestDocumentData(this.request);
       switch (e) {
         case "load_case":
           return this.loadCase();
@@ -137,6 +143,7 @@ export default {
     },
     loadCase() {
       this.refreshSign = getUUID();
+      this.loaded = true;
       this.$refs.caseList.open();
       this.visible = true;
     },
@@ -274,6 +281,16 @@ export default {
         this.$success(this.$t('report.test_stop_success'));
       });
     },
+    checkVersionEnable() {
+      if (!this.projectId) {
+        return;
+      }
+      if (hasLicense()) {
+        this.$get('/project/version/enable/' + this.projectId, response => {
+          this.versionEnable = response.data;
+        });
+      }
+    }
   },
   created() {
     // 深度复制
@@ -283,6 +300,7 @@ export default {
     this.runLoading = false;
     this.getEnvironments();
     this.getResult();
+    this.checkVersionEnable();
   }
 }
 </script>

@@ -2,22 +2,18 @@ import {
   COUNT_NUMBER,
   COUNT_NUMBER_SHALLOW,
   LicenseKey,
-  ORGANIZATION_ID,
   ORIGIN_COLOR,
   ORIGIN_COLOR_SHALLOW,
   PRIMARY_COLOR,
   PROJECT_ID,
-  ROLE_ADMIN,
-  ROLE_ORG_ADMIN,
-  ROLE_TEST_MANAGER,
-  ROLE_TEST_USER,
-  ROLE_TEST_VIEWER,
   TokenKey,
   WORKSPACE_ID
 } from "./constants";
-import axios from "axios";
 import {jsPDF} from "jspdf";
 import JSEncrypt from 'jsencrypt';
+import i18n from "@/i18n/i18n";
+import calcTextareaHeight from "element-ui/packages/input/src/calcTextareaHeight";
+import {MessageBox} from "element-ui";
 
 export function hasRole(role) {
   let user = getCurrentUser();
@@ -40,16 +36,12 @@ export function hasPermission(permission) {
   // todo 权限验证
   let currentProjectPermissions = user.userGroups.filter(ug => ug.group && ug.group.type === 'PROJECT')
     .filter(ug => ug.sourceId === getCurrentProjectID())
-    .map(ug => ug.userGroupPermissions)
-    .reduce((total, current) => {
-      return total.concat(current);
-    }, [])
+    .flatMap(ug => ug.userGroupPermissions)
     .map(g => g.permissionId)
     .reduce((total, current) => {
       total.add(current);
       return total;
     }, new Set);
-
   for (const p of currentProjectPermissions) {
     if (p === permission) {
       return true;
@@ -58,10 +50,7 @@ export function hasPermission(permission) {
 
   let currentWorkspacePermissions = user.userGroups.filter(ug => ug.group && ug.group.type === 'WORKSPACE')
     .filter(ug => ug.sourceId === getCurrentWorkspaceId())
-    .map(ug => ug.userGroupPermissions)
-    .reduce((total, current) => {
-      return total.concat(current);
-    }, [])
+    .flatMap(ug => ug.userGroupPermissions)
     .map(g => g.permissionId)
     .reduce((total, current) => {
       total.add(current);
@@ -76,10 +65,7 @@ export function hasPermission(permission) {
 
   let systemPermissions = user.userGroups.filter(gp => gp.group && gp.group.type === 'SYSTEM')
     .filter(ug => ug.sourceId === 'system' || ug.sourceId === 'adminSourceId')
-    .map(ug => ug.userGroupPermissions)
-    .reduce((total, current) => {
-      return total.concat(current);
-    }, [])
+    .flatMap(ug => ug.userGroupPermissions)
     .map(g => g.permissionId)
     .reduce((total, current) => {
       total.add(current);
@@ -110,11 +96,19 @@ export function hasPermissions(...permissions) {
 }
 
 export function getCurrentWorkspaceId() {
-  return sessionStorage.getItem(WORKSPACE_ID);
+  let workspaceId = sessionStorage.getItem(WORKSPACE_ID);
+  if (workspaceId) {
+    return workspaceId;
+  }
+  return getCurrentUser().lastWorkspaceId;
 }
 
 export function getCurrentProjectID() {
-  return sessionStorage.getItem(PROJECT_ID);
+  let projectId = sessionStorage.getItem(PROJECT_ID);
+  if (projectId) {
+    return projectId;
+  }
+  return getCurrentUser().lastProjectId;
 }
 
 export function getCurrentUser() {
@@ -138,18 +132,40 @@ export function enableModules(...modules) {
 
 export function saveLocalStorage(response) {
   // 登录信息保存 cookie
-  localStorage.setItem(TokenKey, JSON.stringify(response.data));
-  if (!sessionStorage.getItem(PROJECT_ID)) {
-    sessionStorage.setItem(PROJECT_ID, response.data.lastProjectId);
+  let user = response.data;
+  localStorage.setItem(TokenKey, JSON.stringify(user));
+  // 校验权限
+  user.userGroups.forEach(ug => {
+    user.groupPermissions.forEach(gp => {
+      if (gp.group.id === ug.groupId) {
+        ug.userGroupPermissions = gp.userGroupPermissions;
+        ug.group = gp.group;
+      }
+    });
+  });
+  // 检查当前项目有没有权限
+  let currentProjectId = sessionStorage.getItem(PROJECT_ID);
+  if (!currentProjectId) {
+    sessionStorage.setItem(PROJECT_ID, user.lastProjectId);
+  } else {
+    let v = user.userGroups.filter(ug => ug.group && ug.group.type === 'PROJECT')
+      .filter(ug => ug.sourceId === currentProjectId);
+    if (v.length === 0) {
+      sessionStorage.setItem(PROJECT_ID, user.lastProjectId);
+    }
   }
   if (!sessionStorage.getItem(WORKSPACE_ID)) {
-    sessionStorage.setItem(WORKSPACE_ID, response.data.lastWorkspaceId);
+    sessionStorage.setItem(WORKSPACE_ID, user.lastWorkspaceId);
   }
 }
 
 export function saveLicense(data) {
   // 保存License
   localStorage.setItem(LicenseKey, data);
+}
+
+export function removeLicense() {
+  localStorage.removeItem(LicenseKey);
 }
 
 export function jsonToMap(jsonStr) {
@@ -181,14 +197,6 @@ export function lineToHump(name) {
   });
 }
 
-// 查找字符出现的次数
-export function getCharCountInStr(str, char) {
-  if (!str) return 0;
-  let regex = new RegExp(char, 'g'); // 使用g表示整个字符串都要匹配
-  let result = str.match(regex);
-  let count = !result ? 0 : result.length;
-  return count;
-}
 
 export function downloadFile(name, content) {
   const blob = new Blob([content]);
@@ -272,7 +280,7 @@ export function exportPdf(name, canvasList) {
       let blankHeight = a4Height - currentHeight;
 
       if (leftHeight > blankHeight) {
-        if (blankHeight < 200) {
+        if (blankHeight < 300) {
           pdf.addPage();
           currentHeight = 0;
         }
@@ -286,10 +294,10 @@ export function exportPdf(name, canvasList) {
           leftHeight -= occupation;
           position -= occupation;
           //避免添加空白页
-          // if (leftHeight > 0) {
-          // pdf.addPage();
-          // currentHeight = 0;
-          // }
+          if (leftHeight > 0) {
+            pdf.addPage();
+            currentHeight = 0;
+          }
         }
       } else {
         pdf.addImage(pageData, 'JPEG', 0, currentHeight, imgWidth, imgHeight);
@@ -373,7 +381,6 @@ export function _getBodyUploadFiles(request, bodyUploadFiles, obj) {
 
 export function handleCtrlSEvent(event, func) {
   if (event.keyCode === 83 && event.ctrlKey) {
-    // console.log('拦截到 ctrl + s');//ctrl+s
     func();
     event.preventDefault();
     event.returnValue = false;
@@ -420,6 +427,27 @@ export function setColor(a, b, c, d, e) {
   document.body.style.setProperty('--primary_color', e);
 }
 
+export function setAsideColor() {
+  // 自定义主题风格
+  document.body.style.setProperty('--aside_color', "#783887");
+  document.body.style.setProperty('--font_light_color', "#fff");
+  document.body.style.setProperty('--font_color', "#fff");
+}
+
+export function setLightColor() {
+  // 自定义主题风格
+  document.body.style.setProperty('--aside_color', "#fff");
+  document.body.style.setProperty('--font_color', "#505266");
+  document.body.style.setProperty('--font_light_color', "#783887");
+}
+
+export function setCustomizeColor(color) {
+  // 自定义主题风格
+  document.body.style.setProperty('--aside_color', color || '#783887');
+  document.body.style.setProperty('--font_color', "#fff");
+  document.body.style.setProperty('--font_light_color', "#fff");
+}
+
 export function setDefaultTheme() {
   setColor(ORIGIN_COLOR, ORIGIN_COLOR_SHALLOW, COUNT_NUMBER, COUNT_NUMBER_SHALLOW, PRIMARY_COLOR);
 }
@@ -443,7 +471,7 @@ export function getNodePath(id, moduleOptions) {
 }
 
 export function getDefaultTableHeight() {
-  return document.documentElement.clientHeight - 200;
+  return document.documentElement.clientHeight - 160;
 }
 
 export function fullScreenLoading(component) {
@@ -488,3 +516,120 @@ export function getShareId() {
   }
   return "";
 }
+
+export function setCurTabId(vueObj, tab, ref) {
+  vueObj.$nextTick(() => {
+    if (vueObj.$refs && vueObj.$refs[ref]) {
+      let index = tab.index ? Number.parseInt(tab.index) : vueObj.tabs.length;
+      let cutEditTab = vueObj.$refs[ref][index - 1];
+      let curTabId = cutEditTab ? cutEditTab.tabId : null;
+      vueObj.$store.commit('setCurTabId', curTabId);
+    }
+  });
+}
+
+export function getTranslateOptions(data) {
+  let options = [];
+  data.forEach(i => {
+    let option = {};
+    Object.assign(option, i);
+    option.text = i18n.t(option.text);
+    options.push(option);
+  });
+  return options;
+}
+
+export function parseTag(data) {
+  data.forEach(item => {
+    try {
+      let tags = JSON.parse(item.tags);
+      if (tags instanceof Array) {
+        item.tags = tags ? tags : [];
+      } else {
+        item.tags = tags ? [tags + ''] : [];
+      }
+    } catch (e) {
+      item.tags = [];
+    }
+  });
+}
+
+/**
+ * 同一行的多个文本框高度保持一致
+ * 同时支持 autosize 的功能
+ * @param size 同一行中文本框的个数
+ * @param index 编辑行的下标
+ * 如果编辑某一行，则只调整某一行，提升效率
+ */
+export function resizeTextarea(size = 2, index) {
+  let textareaList = document.querySelectorAll('.sync-textarea .el-textarea__inner');
+  if (index || index === 0) {
+    _resizeTextarea(index * size, size, textareaList);
+  } else {
+    for (let i = 0; i < textareaList.length; i += size) {
+      _resizeTextarea(i, size, textareaList);
+    }
+  }
+}
+
+function _resizeTextarea(i, size, textareaList) {
+  // 查询同一行中文本框的最大高度
+  let maxHeight = 0;
+  for (let j = 0; j < size; j++) {
+    let cur = textareaList[i + j];
+    let curHeight = parseFloat(calcTextareaHeight(cur).height);
+    maxHeight = Math.max(curHeight, maxHeight);
+  }
+
+  // 将同一行中的文本框设置为最大高度
+  for (let k = 0; k < size; k++) {
+    let cur = textareaList[i + k];
+    if (cur.clientHeight !== maxHeight) {
+      cur.style.height = maxHeight + 'px';
+    }
+  }
+}
+
+export function byteToSize(bytes) {
+  if (bytes === 0) {
+    return '0 B';
+  }
+  let k = 1024,
+    sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'],
+    i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return (bytes / Math.pow(k, i)).toPrecision(3) + ' ' + sizes[i];
+}
+
+export function getTypeByFileName(filename) {
+  if (filename === '') {
+    return '';
+  }
+  let type = filename.substr(filename.lastIndexOf('.') + 1);
+  return type.toUpperCase();
+}
+
+let confirm = MessageBox.confirm;
+
+export function operationConfirm(tip, success, cancel) {
+  if (tip[tip.length - 1] !== '?' && tip[tip.length - 1] !== '？') {
+    tip += '?';
+  }
+  return confirm(tip, '', {
+    confirmButtonText: i18n.t('commons.confirm'),
+    cancelButtonText: i18n.t('commons.cancel'),
+    type: 'warning',
+    center: false
+  }).then(() => {
+    if (success) {
+      success();
+    }
+  }).catch(() => {
+    if (cancel) {
+      cancel();
+    }
+  });
+}
+
+
+

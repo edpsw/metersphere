@@ -25,3 +25,4 @@ INNER JOIN (
 	SET tt.last_result_id = tc.result_id
 WHERE
 	tt.id = tc.id;
+

@@ -8,45 +8,53 @@
            @select="handleSelect"
            :key="menuKey"
            router>
-    <el-menu-item index="/workstation" v-xpack onselectstart="return false"
-                  v-permission="['PROJECT_API_DEFINITION:READ','PROJECT_API_SCENARIO:READ','PROJECT_API_REPORT:READ']">
+    <el-menu-item index="/workstation" v-xpack v-if="check('workstation')">
       {{ $t('commons.my_workstation') }}
     </el-menu-item>
     <el-menu-item index="/track" v-if="check('testTrack')" onselectstart="return false"
-                  v-permission="['PROJECT_TRACK_CASE:READ','PROJECT_TRACK_PLAN:READ','PROJECT_TRACK_REVIEW:READ', 'PROJECT_TRACK_ISSUE:READ', 'PROJECT_TRACK_REPORT:READ']">
+                  v-permission="['PROJECT_TRACK_HOME:READ', 'PROJECT_TRACK_CASE:READ','PROJECT_TRACK_PLAN:READ','PROJECT_TRACK_REVIEW:READ', 'PROJECT_TRACK_ISSUE:READ', 'PROJECT_TRACK_REPORT:READ']">
       {{ $t('test_track.test_track') }}
     </el-menu-item>
     <el-menu-item index="/api" @click="active()" v-if="check('api')" onselectstart="return false"
-                  v-permission="['PROJECT_API_DEFINITION:READ','PROJECT_API_SCENARIO:READ','PROJECT_API_REPORT:READ']">
+                  v-permission="['PROJECT_API_HOME:READ', 'PROJECT_API_DEFINITION:READ','PROJECT_API_SCENARIO:READ','PROJECT_API_REPORT:READ']">
       {{ $t('commons.api') }}
+    </el-menu-item>
+    <el-menu-item index="/ui" @click="active()" v-if="hasLicense() && check('ui')" onselectstart="return false"
+                  v-permission="['PROJECT_UI_SCENARIO:READ','PROJECT_UI_REPORT:READ']">
+      {{ $t('commons.ui') }}
+    </el-menu-item>
+    <el-menu-item v-if="!hasLicense()" @click="clickPlanMenu">
+      {{ $t('commons.ui') }}
     </el-menu-item>
     <el-menu-item index="/performance" v-if="check('performance')"
                   onselectstart="return false"
-                  v-permission="['PROJECT_PERFORMANCE_TEST:READ','PROJECT_PERFORMANCE_REPORT:READ']">
+                  v-permission="['PROJECT_PERFORMANCE_HOME:READ', 'PROJECT_PERFORMANCE_TEST:READ','PROJECT_PERFORMANCE_REPORT:READ']">
       {{ $t('commons.performance') }}
     </el-menu-item>
     <el-menu-item index="/report" v-if="check('reportStat')" onselectstart="return false"
-                  v-permission="['PROJECT_TRACK_CASE:READ','PROJECT_TRACK_PLAN:READ','PROJECT_TRACK_REVIEW:READ']">
+                  v-permission="['PROJECT_REPORT_ANALYSIS:READ']">
       {{ $t('commons.report_statistics.title') }}
     </el-menu-item>
 
     <el-menu-item index="/project" onselectstart="return false"
-                  v-permission="['PROJECT_USER:READ', 'PROJECT_ENVIRONMENT:READ', 'PROJECT_OPERATING_LOG:READ', 'PROJECT_FILE:READ+JAR', 'PROJECT_FILE:READ+FILE', 'PROJECT_CUSTOM_CODE:READ']">
+                  v-permission="['PROJECT_USER:READ', 'PROJECT_ENVIRONMENT:READ', 'PROJECT_OPERATING_LOG:READ', 'PROJECT_FILE:READ+JAR', 'PROJECT_FILE:READ+FILE',
+                  'PROJECT_CUSTOM_CODE:READ','PROJECT_ERROR_REPORT_LIBRARY:READ', 'PROJECT_TEMPLATE:READ', 'PROJECT_MESSAGE:READ']">
       {{ $t('commons.project_setting') }}
     </el-menu-item>
 
     <el-menu-item index="/setting" onselectstart="return false"
                   v-permission="['SYSTEM_USER:READ', 'SYSTEM_WORKSPACE:READ', 'SYSTEM_GROUP:READ', 'SYSTEM_TEST_POOL:READ', 'SYSTEM_SETTING:READ', 'SYSTEM_AUTH:READ', 'SYSTEM_QUOTA:READ','SYSTEM_OPERATING_LOG:READ',
-                  'WORKSPACE_SERVICE:READ', 'WORKSPACE_MESSAGE:READ', 'WORKSPACE_USER:READ', 'WORKSPACE_PROJECT_MANAGER:READ', 'WORKSPACE_PROJECT_ENVIRONMENT:READ', 'WORKSPACE_OPERATING_LOG:READ', 'WORKSPACE_TEMPLATE:READ']">
+                  'WORKSPACE_SERVICE:READ', 'WORKSPACE_USER:READ', 'WORKSPACE_PROJECT_MANAGER:READ', 'WORKSPACE_PROJECT_ENVIRONMENT:READ', 'WORKSPACE_OPERATING_LOG:READ']">
       {{ $t('commons.system_setting') }}
     </el-menu-item>
   </el-menu>
 </template>
 
 <script>
-import {LicenseKey} from '@/common/js/constants';
 import {hasLicense} from "@/common/js/utils";
 import {MODULE_CHANGE, ModuleEvent} from "@/business/components/common/head/ListEvent";
+import {validateAndSetLicense} from "@/business/permission";
+import axios from "axios";
 
 // const requireContext = require.context('@/business/components/xpack/', true, /router\.js$/);
 // const report = requireContext.keys().map(key => requireContext(key).report);
@@ -76,24 +84,35 @@ export default {
       this.handleSelect(this.activeIndex);
     }
   },
+  created() {
+
+  },
   mounted() {
     if (this.$route.matched.length > 0) {
       this.activeIndex = this.$route.matched[0].path;
     }
-    let license = localStorage.getItem(LicenseKey);
-    if (license != "valid") {
-      this.isReport = false;
-    } else {
-      if (module.default) {
-        module.default.listModules(this);
+
+    axios.get('/license/validate').then(response => {
+      validateAndSetLicense(response.data.data); // 在调用 listModules 之前删除校验失败的 license, axios 失败不弹框
+      if (!hasLicense()) {
+        this.isReport = false;
+      } else {
+        if (module.default) {
+          module.default.listModules(this);
+        }
       }
-    }
+    }).catch(error => {
+      window.console.error(error.response || error.message);
+    });
 
     this.registerEvents();
   },
   methods: {
+    hasLicense,
     handleSelect(index) {
-      this.activeIndex = index;
+      if (index) {
+        this.activeIndex = index;
+      }
     },
     active() {
       if (this.activeIndex === '/api') {
@@ -114,7 +133,15 @@ export default {
           });
         }
       });
-    }
+    },
+    clickPlanMenu() {
+      this.$message({
+        dangerouslyUseHTMLString: true,
+        showClose: true,
+        message: this.$t('commons.ui_edition_tips'),
+      });
+      return false;
+    },
   }
 };
 </script>
@@ -123,6 +150,10 @@ export default {
 .el-menu >>> .el-menu-item {
   box-sizing: border-box;
   height: 40px;
+}
+
+.el-menu-item {
+  padding: 0 10px;
 }
 
 </style>

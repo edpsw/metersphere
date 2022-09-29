@@ -1,6 +1,7 @@
 <template>
   <div>
-    <el-form :model="editData" label-position="right" label-width="80px" size="small" ref="form" :rules="rules">
+    <el-form :model="editData" label-position="right" label-width="80px" size="small" ref="form" :rules="rules"
+             :key="isActive">
       <el-form-item :label="$t('api_test.variable_name')" prop="name">
         <el-input v-model="editData.name" :placeholder="$t('api_test.variable_name')" ref="nameInput"/>
       </el-form-item>
@@ -24,12 +25,12 @@
             value-key="name"
             :fetch-suggestions="funcSearch"
             highlight-first-item>
-            <i slot="suffix" class="el-input__icon el-icon-edit pointer" @click="advanced"></i>
+            <i slot="suffix" class="el-input__icon el-icon-edit pointer" @click="advanced(editData.value)"></i>
           </el-autocomplete>
         </el-col>
       </el-form-item>
     </el-form>
-    <ms-api-variable-advance ref="variableAdvance"/>
+    <ms-api-variable-advance ref="variableAdvance" :current-item.sync="editData" @advancedRefresh="reload"/>
   </div>
 </template>
 
@@ -45,11 +46,13 @@
     },
     data() {
       return {
+        currentItem: null,
         rules: {
           name: [
             {required: true, message: this.$t('test_track.case.input_name'), trigger: 'blur'},
           ],
         },
+        isActive: true
       }
     },
     computed:{
@@ -58,8 +61,9 @@
       }
     },
     methods: {
-      advanced() {
-        this.$refs.variableAdvance.open();
+      advanced(item) {
+        this.editData.value = item;
+        this.$refs.variableAdvance.open()
       },
       createFilter(queryString) {
         return (variable) => {
@@ -76,6 +80,12 @@
         let results = queryString ? func.filter(this.funcFilter(queryString)) : func;
         // 调用 callback 返回建议列表的数据
         cb(results);
+      },
+      reload() {
+        this.isActive = false;
+        this.$nextTick(() => {
+          this.isActive = true;
+        });
       },
     },
     created() {

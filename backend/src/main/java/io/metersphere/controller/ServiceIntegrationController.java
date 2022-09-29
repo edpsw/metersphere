@@ -2,6 +2,8 @@ package io.metersphere.controller;
 
 import io.metersphere.base.domain.ServiceIntegration;
 import io.metersphere.commons.constants.OperLogConstants;
+import io.metersphere.commons.constants.OperLogModule;
+import io.metersphere.commons.utils.SessionUtils;
 import io.metersphere.controller.request.IntegrationRequest;
 import io.metersphere.log.annotation.MsAuditLog;
 import io.metersphere.service.IntegrationService;
@@ -18,7 +20,7 @@ public class ServiceIntegrationController {
     private IntegrationService integrationService;
 
     @PostMapping("/save")
-    @MsAuditLog(module = "workspace_service_integration", type = OperLogConstants.CREATE, content = "#msClass.getLogDetails(#service.id)", msClass = IntegrationService.class)
+    @MsAuditLog(module = OperLogModule.WORKSPACE_SERVICE_INTEGRATION, type = OperLogConstants.CREATE, content = "#msClass.getLogDetails(#service.id)", msClass = IntegrationService.class)
     public ServiceIntegration save(@RequestBody ServiceIntegration service) {
         return integrationService.save(service);
     }
@@ -29,14 +31,14 @@ public class ServiceIntegrationController {
     }
 
     @PostMapping("/delete")
-    @MsAuditLog(module = "workspace_service_integration", type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#request.id)", msClass = IntegrationService.class)
+    @MsAuditLog(module = OperLogModule.WORKSPACE_SERVICE_INTEGRATION, type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#request.id)", msClass = IntegrationService.class)
     public void delete(@RequestBody IntegrationRequest request) {
         integrationService.delete(request);
     }
 
-    @GetMapping("/all/{workspaceId}")
-    public List<ServiceIntegration> getAll(@PathVariable String workspaceId) {
-        return integrationService.getAll(workspaceId);
+    @GetMapping("/all")
+    public List<ServiceIntegration> getAll() {
+        return integrationService.getAll(SessionUtils.getCurrentWorkspaceId());
     }
 
 }

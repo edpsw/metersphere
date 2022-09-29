@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 @JSONType(typeName = "IfController")
 public class MsIfController extends MsTestElement {
     private String type = "IfController";
-    private String clazzName = "io.metersphere.api.dto.definition.request.controller.MsIfController";
+    private String clazzName = MsIfController.class.getCanonicalName();
 
     private String id;
     private String variable;
@@ -103,7 +103,8 @@ public class MsIfController extends MsTestElement {
 
     public String getCondition() {
         String key = getContentValue();
-        String variable = (StringUtils.isEmpty(key) || key.equals(this.variable)) ? "\"" + this.variable + "\"" : "vars.get('" + key + "')";
+        String variable = (StringUtils.isEmpty(key) || key.equals(this.variable)) || key.startsWith("__V") ?
+                StringUtils.join("\"", this.variable, "\"") : StringUtils.join("vars.get('", key, "')");
         String operator = this.operator;
         String value;
         if (StringUtils.equals(operator, "<") || StringUtils.equals(operator, ">")) {

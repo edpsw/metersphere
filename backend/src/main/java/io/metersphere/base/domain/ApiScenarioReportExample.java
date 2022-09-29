@@ -1053,6 +1053,276 @@ public class ApiScenarioReportExample {
             addCriterion("end_time not between", value1, value2, "endTime");
             return (Criteria) this;
         }
+
+        public Criteria andReportVersionIsNull() {
+            addCriterion("report_version is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportVersionIsNotNull() {
+            addCriterion("report_version is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportVersionEqualTo(Integer value) {
+            addCriterion("report_version =", value, "reportVersion");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportVersionNotEqualTo(Integer value) {
+            addCriterion("report_version <>", value, "reportVersion");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportVersionGreaterThan(Integer value) {
+            addCriterion("report_version >", value, "reportVersion");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportVersionGreaterThanOrEqualTo(Integer value) {
+            addCriterion("report_version >=", value, "reportVersion");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportVersionLessThan(Integer value) {
+            addCriterion("report_version <", value, "reportVersion");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportVersionLessThanOrEqualTo(Integer value) {
+            addCriterion("report_version <=", value, "reportVersion");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportVersionIn(List<Integer> values) {
+            addCriterion("report_version in", values, "reportVersion");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportVersionNotIn(List<Integer> values) {
+            addCriterion("report_version not in", values, "reportVersion");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportVersionBetween(Integer value1, Integer value2) {
+            addCriterion("report_version between", value1, value2, "reportVersion");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportVersionNotBetween(Integer value1, Integer value2) {
+            addCriterion("report_version not between", value1, value2, "reportVersion");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdIsNull() {
+            addCriterion("version_id is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdIsNotNull() {
+            addCriterion("version_id is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdEqualTo(String value) {
+            addCriterion("version_id =", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdNotEqualTo(String value) {
+            addCriterion("version_id <>", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdGreaterThan(String value) {
+            addCriterion("version_id >", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdGreaterThanOrEqualTo(String value) {
+            addCriterion("version_id >=", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdLessThan(String value) {
+            addCriterion("version_id <", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdLessThanOrEqualTo(String value) {
+            addCriterion("version_id <=", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdLike(String value) {
+            addCriterion("version_id like", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdNotLike(String value) {
+            addCriterion("version_id not like", value, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdIn(List<String> values) {
+            addCriterion("version_id in", values, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdNotIn(List<String> values) {
+            addCriterion("version_id not in", values, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdBetween(String value1, String value2) {
+            addCriterion("version_id between", value1, value2, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionIdNotBetween(String value1, String value2) {
+            addCriterion("version_id not between", value1, value2, "versionId");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeIsNull() {
+            addCriterion("report_type is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeIsNotNull() {
+            addCriterion("report_type is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeEqualTo(String value) {
+            addCriterion("report_type =", value, "reportType");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeNotEqualTo(String value) {
+            addCriterion("report_type <>", value, "reportType");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeGreaterThan(String value) {
+            addCriterion("report_type >", value, "reportType");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeGreaterThanOrEqualTo(String value) {
+            addCriterion("report_type >=", value, "reportType");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeLessThan(String value) {
+            addCriterion("report_type <", value, "reportType");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeLessThanOrEqualTo(String value) {
+            addCriterion("report_type <=", value, "reportType");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeLike(String value) {
+            addCriterion("report_type like", value, "reportType");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeNotLike(String value) {
+            addCriterion("report_type not like", value, "reportType");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeIn(List<String> values) {
+            addCriterion("report_type in", values, "reportType");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeNotIn(List<String> values) {
+            addCriterion("report_type not in", values, "reportType");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeBetween(String value1, String value2) {
+            addCriterion("report_type between", value1, value2, "reportType");
+            return (Criteria) this;
+        }
+
+        public Criteria andReportTypeNotBetween(String value1, String value2) {
+            addCriterion("report_type not between", value1, value2, "reportType");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdIsNull() {
+            addCriterion("relevance_test_plan_report_id is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdIsNotNull() {
+            addCriterion("relevance_test_plan_report_id is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdEqualTo(String value) {
+            addCriterion("relevance_test_plan_report_id =", value, "relevanceTestPlanReportId");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdNotEqualTo(String value) {
+            addCriterion("relevance_test_plan_report_id <>", value, "relevanceTestPlanReportId");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdGreaterThan(String value) {
+            addCriterion("relevance_test_plan_report_id >", value, "relevanceTestPlanReportId");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdGreaterThanOrEqualTo(String value) {
+            addCriterion("relevance_test_plan_report_id >=", value, "relevanceTestPlanReportId");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdLessThan(String value) {
+            addCriterion("relevance_test_plan_report_id <", value, "relevanceTestPlanReportId");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdLessThanOrEqualTo(String value) {
+            addCriterion("relevance_test_plan_report_id <=", value, "relevanceTestPlanReportId");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdLike(String value) {
+            addCriterion("relevance_test_plan_report_id like", value, "relevanceTestPlanReportId");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdNotLike(String value) {
+            addCriterion("relevance_test_plan_report_id not like", value, "relevanceTestPlanReportId");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdIn(List<String> values) {
+            addCriterion("relevance_test_plan_report_id in", values, "relevanceTestPlanReportId");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdNotIn(List<String> values) {
+            addCriterion("relevance_test_plan_report_id not in", values, "relevanceTestPlanReportId");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdBetween(String value1, String value2) {
+            addCriterion("relevance_test_plan_report_id between", value1, value2, "relevanceTestPlanReportId");
+            return (Criteria) this;
+        }
+
+        public Criteria andRelevanceTestPlanReportIdNotBetween(String value1, String value2) {
+            addCriterion("relevance_test_plan_report_id not between", value1, value2, "relevanceTestPlanReportId");
+            return (Criteria) this;
+        }
     }
 
     public static class Criteria extends GeneratedCriteria {

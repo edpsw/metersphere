@@ -1,26 +1,80 @@
 <template>
-  <test-plan-report-container id="functional" :title="'功能用例统计分析'">
+  <test-plan-report-container id="functional" :title="$t('test_track.report.analysis_functional')">
     <el-tabs v-model="activeName" @tab-click="handleClick">
-      <el-tab-pane v-if="resultEnable" label="测试结果" name="first">
+      <el-tab-pane v-if="resultEnable" :label="$t('test_track.report.test_result')" name="first">
         <functional-result :function-result="report.functionResult"/>
       </el-tab-pane>
-      <el-tab-pane v-if="failureEnable" name="second">
+      <el-tab-pane v-if="issueEnable && (isTemplate || isShare || hasPermission('PROJECT_TRACK_ISSUE:READ'))" name="second">
         <template v-slot:label>
-          <tab-pane-count title="失败用例"  :count="failureSize"/>
+          <tab-pane-count :title="$t('test_track.report.issue_list')" :count="issueSize"/>
         </template>
-        <functional-cases :is-db="isDb" :share-id="shareId" :is-share="isShare" :is-template="isTemplate" :report="report" :plan-id="planId" @setSize="setFailureSize"/>
+        <functional-issue-list
+          :is-db="isDb"
+          :share-id="shareId"
+          :is-share="isShare"
+          :is-template="isTemplate"
+          :report="report"
+          :plan-id="planId"
+          @setSize="setIssueSize"/>
       </el-tab-pane>
-      <el-tab-pane v-if="issueEnable" name="third">
+      <el-tab-pane name="third" v-if="allEnable">
         <template v-slot:label>
-          <tab-pane-count title="缺陷列表" :count="issueSize"/>
+          <tab-pane-count :title="$t('test_track.report.all_case')" :count="allSize"/>
         </template>
-        <functional-issue-list :is-db="isDb" :share-id="shareId" :is-share="isShare" :is-template="isTemplate" :report="report" :plan-id="planId" @setSize="setIssueSize"/>
+        <functional-cases
+          :is-db="isDb"
+          :share-id="shareId"
+          :is-share="isShare"
+          :is-template="isTemplate"
+          :report="report"
+          :plan-id="planId"
+          :all-test-case="allTestCase"
+          @setSize="setAllSize"/>
       </el-tab-pane>
-      <el-tab-pane name="fourth" v-if="allEnable">
+      <el-tab-pane v-if="failureEnable" name="fourth">
         <template v-slot:label>
-          <tab-pane-count title="所有用例" :count="allSize"/>
+          <tab-pane-count :title="$t('test_track.report.fail_case')" :count="failureSize"/>
         </template>
-        <functional-cases :is-db="isDb" :is-all="true" :share-id="shareId" :is-share="isShare" :is-template="isTemplate" :report="report" :plan-id="planId" @setSize="setAllSize"/>
+        <functional-cases
+          filter-status="Failure"
+          :is-db="isDb"
+          :share-id="shareId"
+          :is-share="isShare"
+          :is-template="isTemplate"
+          :report="report"
+          :plan-id="planId"
+          :all-test-case="allTestCase"
+          @setSize="setFailureSize"/>
+      </el-tab-pane>
+      <el-tab-pane v-if="blockingEnable" name="fifth">
+        <template v-slot:label>
+          <tab-pane-count :title="$t('test_track.plan_view.blocking') + $t('commons.track')" :count="blockingSize"/>
+        </template>
+        <functional-cases
+          filter-status="Blocking"
+          :is-db="isDb"
+          :share-id="shareId"
+          :is-share="isShare"
+          :is-template="isTemplate"
+          :report="report"
+          :plan-id="planId"
+          :all-test-case="allTestCase"
+          @setSize="setBlockingSize"/>
+      </el-tab-pane>
+      <el-tab-pane v-if="skipEnable" name="sixth">
+        <template v-slot:label>
+          <tab-pane-count :title="$t('test_track.plan_view.skip') + $t('commons.track')" :count="skipSize"/>
+        </template>
+        <functional-cases
+          filter-status="Skip"
+          :is-db="isDb"
+          :share-id="shareId"
+          :is-share="isShare"
+          :is-template="isTemplate"
+          :report="report"
+          :plan-id="planId"
+          :all-test-case="allTestCase"
+          @setSize="setSkipSize"/>
       </el-tab-pane>
     </el-tabs>
   </test-plan-report-container>
@@ -36,6 +90,11 @@ import FunctionalIssueList
 import TestPlanReportContainer
   from "@/business/components/track/plan/view/comonents/report/detail/TestPlanReportContainer";
 import TabPaneCount from "@/business/components/track/plan/view/comonents/report/detail/component/TabPaneCount";
+import {hasPermission} from "@/common/js/utils";
+import {
+  getPlanFunctionAllCase,
+  getSharePlanFunctionAllCase,
+} from "@/network/test-plan";
 export default {
   name: "TestPlanFunctionalReport",
   components: {
@@ -46,7 +105,10 @@ export default {
       activeName: 'first',
       failureSize: 0,
       issueSize: 0,
+      skipSize: 0,
+      blockingSize: 0,
       allSize: 0,
+      allTestCase: []
     };
   },
   props: [
@@ -57,10 +119,6 @@ export default {
       let disable = this.report.config && this.report.config.functional.children.result.enable === false;
       return !disable;
     },
-    failureEnable() {
-      let disable = this.report.config && this.report.config.functional.children.failure.enable === false;
-      return !disable;
-    },
     issueEnable() {
       let disable = this.report.config && this.report.config.functional.children.issue.enable === false;
       return !disable;
@@ -69,9 +127,22 @@ export default {
       let disable = this.report.config && this.report.config.functional.children.all.enable === false;
       return !disable;
     },
+    failureEnable() {
+      let disable = this.report.config && this.report.config.functional.children.failure.enable === false;
+      return !disable;
+    },
+    blockingEnable() {
+      let disable = this.report.config && this.report.config.functional.children.blocking.enable === false;
+      return !disable;
+    },
+    skipEnable() {
+      let disable = this.report.config && this.report.config.functional.children.skip.enable === false;
+      return !disable;
+    },
   },
   mounted() {
     this.initActiveName();
+    this.getAllFunctionalTestCase();
   },
   watch: {
     resultEnable() {
@@ -86,21 +157,34 @@ export default {
     allEnable() {
       this.initActiveName();
     },
+    'report.config'() {
+      this.getAllFunctionalTestCase();
+    }
   },
   methods: {
     initActiveName() {
       if (this.resultEnable) {
         this.activeName = 'first';
-      } else if (this.failureEnable) {
+      }else if (this.issueEnable) {
         this.activeName = 'second';
-      } else if (this.issueEnable) {
-        this.activeName = 'third';
       } else if (this.allEnable) {
+        this.activeName = 'third';
+      } else if (this.failureEnable) {
         this.activeName = 'fourth';
+      } else if (this.blockingEnable) {
+        this.activeName = 'fifth';
+      } else if (this.skipEnable) {
+        this.activeName = 'sixth';
       }
     },
     setFailureSize(size) {
       this.failureSize = size;
+    },
+    setBlockingSize(size) {
+      this.blockingSize = size;
+    },
+    setSkipSize(size) {
+      this.skipSize = size;
     },
     setIssueSize(size) {
       this.issueSize = size;
@@ -109,9 +193,44 @@ export default {
       this.allSize = size;
     },
     handleClick(tab, event) {
+    },
+    hasPermission,
+    getAllFunctionalTestCase() {
+      if (this.isTemplate || this.isDb) {
+        this.allTestCase = this.report.functionAllCases ? this.report.functionAllCases : [];
+      } else if (this.isShare) {
+        let param = this.getStatusList();
+        if (param) {
+          getSharePlanFunctionAllCase(this.shareId, this.planId, param, (data) => {
+            this.allTestCase = data;
+          });
+        }
+      } else {
+        let param = this.getStatusList();
+        if (param) {
+          getPlanFunctionAllCase(this.planId, param, (data) => {
+            this.allTestCase = data;
+          });
+        }
+      }
+    },
+    getStatusList() {
+      let statusList = [];
+      if (this.allEnable) {
+        return statusList;
+      }
+      if (this.failureEnable) {
+        statusList.push('Failure');
+      }
+      if (this.blockingEnable) {
+        statusList.push('Blocking');
+      }
+      if (this.skipEnable) {
+        statusList.push('Skip');
+      }
+      return statusList.length > 0 ? statusList : null;
     }
   }
-
 }
 </script>
 

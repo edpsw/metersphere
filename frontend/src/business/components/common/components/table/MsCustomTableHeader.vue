@@ -52,19 +52,29 @@ export default {
           it.label = SYSTEM_FIELD_NAME_MAP[it.id] ? this.$t(SYSTEM_FIELD_NAME_MAP[it.id]) : it.label;
         }
       })
+      let hasRemoveField = undefined;
+      if (this.customFields) {
+        let index = this.customFields.findIndex(c => c.remove === true);
+        if (index > -1) {
+          hasRemoveField = this.customFields[index];
+        }
+      }
       let fields = getAllFieldWithCustomFields(this.type, this.customFields);
       this.selectedKeys = [];
       this.fromFields = [];
       this.selectedKeys = items.map(item => item.key);
       this.selectedFields = items;
-      fields.forEach(field => {
+      for (let field of fields) {
         if (this.selectedKeys.indexOf(field.key) < 0) {
           if (field.isCustom) {
             field.label = SYSTEM_FIELD_NAME_MAP[field.id] ? this.$t(SYSTEM_FIELD_NAME_MAP[field.id]) : field.label
           }
+          if (hasRemoveField && field.id === hasRemoveField.id) {
+            continue;
+          }
           this.fromFields.push(field);
         }
-      });
+      }
       this.visible = true;
     },
     saveHeader() {
@@ -79,31 +89,6 @@ export default {
     close() {
       this.visible = false
     },
-
-    // 切换模式 现有树形穿梭框模式transfer 和通讯录模式addressList
-    // changeMode() {
-    //   if (this.mode == "transfer") {
-    //     this.mode = "addressList";
-    //   } else {
-    //     this.mode = "transfer";
-    //   }
-    // },
-    // // 监听穿梭框组件添加
-    // add(fromData, toData, obj){
-    //   // 树形穿梭框模式transfer时，返回参数为左侧树移动后数据、右侧树移动后数据、移动的{keys,nodes,halfKeys,halfNodes}对象
-    //   // 通讯录模式addressList时，返回参数为右侧收件人列表、右侧抄送人列表、右侧密送人列表
-    //   console.log("fromData:", fromData);
-    //   console.log("toData:", toData);
-    //   console.log("obj:", obj);
-    // },
-    // // 监听穿梭框组件移除
-    // remove(fromData, toData, obj){
-    //   // 树形穿梭框模式transfer时，返回参数为左侧树移动后数据、右侧树移动后数据、移动的{keys,nodes,halfKeys,halfNodes}对象
-    //   // 通讯录模式addressList时，返回参数为右侧收件人列表、右侧抄送人列表、右侧密送人列表
-    //   console.log("fromData:", fromData);
-    //   console.log("toData:", toData);
-    //   console.log("obj:", obj);
-    // }
   }
 }
 </script>

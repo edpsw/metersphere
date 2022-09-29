@@ -12,9 +12,13 @@ import io.metersphere.base.mapper.ext.ExtWorkspaceMapper;
 import io.metersphere.commons.constants.UserGroupConstants;
 import io.metersphere.commons.constants.UserGroupType;
 import io.metersphere.commons.exception.MSException;
+import io.metersphere.commons.utils.CommonBeanFactory;
 import io.metersphere.commons.utils.SessionUtils;
 import io.metersphere.controller.request.WorkspaceRequest;
-import io.metersphere.dto.*;
+import io.metersphere.dto.RelatedSource;
+import io.metersphere.dto.WorkspaceDTO;
+import io.metersphere.dto.WorkspaceMemberDTO;
+import io.metersphere.dto.WorkspaceResource;
 import io.metersphere.i18n.Translator;
 import io.metersphere.log.utils.ReflexObjectUtil;
 import io.metersphere.log.vo.DetailColumn;
@@ -26,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 import javax.annotation.Resource;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.UUID;
@@ -52,6 +57,10 @@ public class WorkspaceService {
     private ExtUserMapper extUserMapper;
     @Resource
     private ScheduleService scheduleService;
+    @Resource
+    private EnvironmentGroupService environmentGroupService;
+
+    private static final String GLOBAL = "global";
 
     public Workspace saveWorkspace(Workspace workspace) {
         if (StringUtils.isBlank(workspace.getName())) {
@@ -79,8 +88,6 @@ public class WorkspaceService {
             userGroupMapper.insert(userGroup);
             // 新项目创建新工作空间时设置
             extUserMapper.updateLastWorkspaceIdIfNull(workspace.getId(), SessionUtils.getUserId());
-            // 设置默认的通知
-            extWorkspaceMapper.setDefaultMessageTask(workspace.getId());
         } else {
             workspace.setUpdateTime(currentTime);
             workspaceMapper.updateByPrimaryKeySelective(workspace);
@@ -120,6 +127,8 @@ public class WorkspaceService {
         userGroupExample.createCriteria().andSourceIdEqualTo(workspaceId);
         userGroupMapper.deleteByExample(userGroupExample);
 
+        environmentGroupService.deleteByWorkspaceId(workspaceId);
+
         // delete workspace
         workspaceMapper.deleteByPrimaryKey(workspaceId);
 
@@ -144,6 +153,9 @@ public class WorkspaceService {
                 .map(RelatedSource::getWorkspaceId)
                 .distinct()
                 .collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(wsIds)) {
+            return new ArrayList<>();
+        }
         WorkspaceExample workspaceExample = new WorkspaceExample();
         workspaceExample.createCriteria().andIdIn(wsIds);
         return workspaceMapper.selectByExample(workspaceExample);
@@ -193,11 +205,18 @@ public class WorkspaceService {
 
     public Workspace addWorkspaceByAdmin(Workspace workspace) {
         checkWorkspace(workspace);
-        workspace.setId(UUID.randomUUID().toString());
+        String wsId = UUID.randomUUID().toString();
+        workspace.setId(wsId);
         workspace.setCreateTime(System.currentTimeMillis());
         workspace.setUpdateTime(System.currentTimeMillis());
         workspace.setCreateUser(SessionUtils.getUserId());
         workspaceMapper.insertSelective(workspace);
+
+
+        QuotaService quotaService = CommonBeanFactory.getBean(QuotaService.class);
+        if (quotaService != null) {
+            quotaService.workspaceUseDefaultQuota(wsId);
+        }
 
         // 创建工作空间为当前用户添加用户组
         UserGroup userGroup = new UserGroup();
@@ -208,8 +227,6 @@ public class WorkspaceService {
         userGroup.setGroupId(UserGroupConstants.WS_ADMIN);
         userGroup.setSourceId(workspace.getId());
         userGroupMapper.insert(userGroup);
-        // 设置默认的通知
-        extWorkspaceMapper.setDefaultMessageTask(workspace.getId());
         return workspace;
     }
 
@@ -284,34 +301,48 @@ public class WorkspaceService {
 
     public WorkspaceResource listResource(String groupId, String type) {
         Group group = groupMapper.selectByPrimaryKey(groupId);
-        String workspaceId = group.getScopeId();
         WorkspaceResource resource = new WorkspaceResource();
-
+        if (group == null) {
+            return resource;
+        }
         if (StringUtils.equals(UserGroupType.WORKSPACE, type)) {
-            WorkspaceExample workspaceExample = new WorkspaceExample();
-            WorkspaceExample.Criteria criteria = workspaceExample.createCriteria();
-            if (!StringUtils.equals(workspaceId, "global")) {
-                criteria.andIdEqualTo(workspaceId);
-            }
-            List<Workspace> workspaces = workspaceMapper.selectByExample(workspaceExample);
-            resource.setWorkspaces(workspaces);
+            resource.setWorkspaces(getWorkspaceGroupResource(group.getScopeId()));
         }
-
         if (StringUtils.equals(UserGroupType.PROJECT, type)) {
-            ProjectExample projectExample = new ProjectExample();
-            ProjectExample.Criteria pc = projectExample.createCriteria();
-            WorkspaceExample workspaceExample = new WorkspaceExample();
-            WorkspaceExample.Criteria criteria = workspaceExample.createCriteria();
-            if (!StringUtils.equals(workspaceId, "global")) {
-                criteria.andIdEqualTo(workspaceId);
-                List<Workspace> workspaces = workspaceMapper.selectByExample(workspaceExample);
-                List<String> list = workspaces.stream().map(Workspace::getId).collect(Collectors.toList());
-                pc.andWorkspaceIdIn(list);
-            }
-            List<Project> projects = projectMapper.selectByExample(projectExample);
-            resource.setProjects(projects);
+            resource.setProjects(getProjectGroupResource(group.getScopeId()));
         }
-
         return resource;
+    }
+
+    public List<Workspace> getWorkspaceGroupResource(String scopeId) {
+        WorkspaceExample workspaceExample = new WorkspaceExample();
+        WorkspaceExample.Criteria criteria = workspaceExample.createCriteria();
+        if (!StringUtils.equals(scopeId, GLOBAL)) {
+            criteria.andIdEqualTo(scopeId);
+        }
+        return workspaceMapper.selectByExample(workspaceExample);
+    }
+
+    public List<Project> getProjectGroupResource(String scopeId) {
+        ProjectExample projectExample = new ProjectExample();
+        ProjectExample.Criteria criteria = projectExample.createCriteria();
+        if (StringUtils.equals(scopeId, GLOBAL)) {
+            return projectMapper.selectByExample(projectExample);
+        }
+        Workspace workspace = workspaceMapper.selectByPrimaryKey(scopeId);
+        if (workspace != null) {
+            criteria.andWorkspaceIdEqualTo(workspace.getId());
+            return projectMapper.selectByExample(projectExample);
+        }
+        Project project = projectMapper.selectByPrimaryKey(scopeId);
+        List<Project> list = new ArrayList<>();
+        if (project != null) {
+            list.add(project);
+        }
+        return list;
+    }
+
+    public List<String> getWorkspaceIds() {
+        return extWorkspaceMapper.getWorkspaceIds();
     }
 }

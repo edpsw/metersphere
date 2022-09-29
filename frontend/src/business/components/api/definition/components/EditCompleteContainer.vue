@@ -1,107 +1,131 @@
 <template>
-  <el-card class="card-content" v-if="isShow && !loading">
-    <el-button-group v-if="currentApi.id">
-      <el-tooltip class="item" effect="dark" :content="$t('api_test.definition.api_title')" placement="left">
-        <el-button plain :class="{active: showApiList}" @click="changeTab('api')" size="small">API</el-button>
-      </el-tooltip>
-      <el-tooltip class="item" effect="dark" :content="$t('commons.test')" placement="top">
-        <el-button plain :class="{active: showTest}" @click="changeTab('test')" size="small">TEST</el-button>
-      </el-tooltip>
-      <el-tooltip class="item" effect="dark" :content="$t('api_test.definition.case_title')" placement="top">
-        <el-button plain :class="{active: showTestCaseList}" @click="changeTab('testCase')" size="small">CASE</el-button>
-      </el-tooltip>
+  <el-card v-if="isShow && !loading" class="ms-api-card">
+    <ms-container v-loading="loading">
+      <ms-aside-container :height="leftHeight">
+        <api-base-info
+          ref="apiBaseInfo"
+          :api-template="apiTemplate"
+          :currentProtocol="currentProtocol"
+          :custom-field-form="customFieldForm"
+          :custom-field-rules="customFieldRules"
+          :form="currentApi"
+          :is-form-alive="isFormAlive"
+          :isloading="loading"
+          :maintainer-options="maintainerOptions"
+          :module-options="moduleOptions"
+        />
+      </ms-aside-container>
+      <ms-main-container class="ms-api-main-container">
+        <el-button-group v-if="currentApi.id" style="z-index: 10; position: fixed;">
+          <el-button :class="{active: showApiList}" class="item" plain size="small" @click="changeTab('api')">
+            API
+          </el-button>
+          <el-button :class="{active: showTest}" class="item" plain size="small" @click="changeTab('test')">
+            TEST
+          </el-button>
+          <el-button :class="{active: showTestCaseList}" class="item" plain size="small" @click="changeTab('testCase')">
+            CASE
+          </el-button>
+          <el-button v-if="currentProtocol === 'HTTP' || currentProtocol === 'TCP'" :class="{active: showMock}"
+                     class="item" plain size="small"
+                     @click="changeTab('mock')">
+            MOCK
+          </el-button>
 
-      <el-tooltip class="item" effect="dark" content="Mock设置" placement="right" v-if="currentProtocol === 'HTTP' || currentProtocol === 'TCP'">
-        <el-button plain :class="{active: showMock}" @click="changeTab('mock')" size="small"> Mock</el-button>
-      </el-tooltip>
+        </el-button-group>
+        <div v-if='currentApi.id' style="height: 40px"></div>
+        <template v-slot:header>
+          <slot name="header"></slot>
+        </template>
+        <slot></slot>
+        <div v-if="showApiList">
+          <ms-api-config
+            ref="apiConfig" :api-template="apiTemplate"
+            :current-api="currentApi"
+            :currentProtocol="currentProtocol"
+            :moduleOptions="moduleOptions"
+            :project-id="projectId"
+            :syncTabs="syncTabs"
+            :validateTrue.sync="validateTrue"
+            @changeTab="changeTab"
+            @checkout="checkout"
+            @createRootModel="createRootModel"
+            @runTest="runTest"
+            @saveApi="saveApi"
+            @validateBasic="validateBasic"
+          />
+        </div>
+        <div v-else-if="showTest">
+          <ms-run-test-http-page
+            v-if="currentProtocol==='HTTP'"
+            ref="httpTestPage"
+            :api-data="currentApi"
+            :currentProtocol="currentProtocol"
+            :project-id="projectId"
+            :syncTabs="syncTabs"
+            @refresh="refresh"
+            @saveAsApi="editApi"
+            @saveAsCase="saveAsCase"
+          />
+          <ms-run-test-tcp-page
+            v-if="currentProtocol==='TCP'"
+            ref="tcpTestPage"
+            :api-data="currentApi"
+            :currentProtocol="currentProtocol"
+            :project-id="projectId"
+            :syncTabs="syncTabs"
+            @refresh="refresh"
+            @saveAsApi="editApi"
+            @saveAsCase="saveAsCase"
+          />
+          <ms-run-test-sql-page
+            v-if="currentProtocol==='SQL'"
+            :api-data="currentApi"
+            :currentProtocol="currentProtocol"
+            :project-id="projectId"
+            :syncTabs="syncTabs"
+            @refresh="refresh"
+            @saveAsApi="editApi"
+            @saveAsCase="saveAsCase"
+          />
+          <ms-run-test-dubbo-page
+            v-if="currentProtocol==='DUBBO'"
+            :api-data="currentApi"
+            :currentProtocol="currentProtocol"
+            :project-id="projectId"
+            :syncTabs="syncTabs"
+            @refresh="refresh"
+            @saveAsApi="editApi"
+            @saveAsCase="saveAsCase"
+          />
+        </div>
 
-    </el-button-group>
-
-    <template v-slot:header>
-      <slot name="header"></slot>
-    </template>
-    <slot></slot>
-    <div v-if="showApiList">
-      <ms-api-config
-        :syncTabs="syncTabs" ref="apiConfig"
-        :current-api="currentApi"
-        :project-id="projectId"
-        :currentProtocol="currentProtocol"
-        :moduleOptions="moduleOptions"
-        @runTest="runTest"
-        @saveApi="saveApi"
-        @changeTab="changeTab"
-        @createRootModel="createRootModel"
-      />
-    </div>
-    <div v-else-if="showTest" class="ms-api-div">
-      <ms-run-test-http-page
-        :syncTabs="syncTabs"
-        :currentProtocol="currentProtocol"
-        :api-data="currentApi"
-        :project-id="projectId"
-        @saveAsApi="editApi"
-        @saveAsCase="saveAsCase"
-        @refresh="refresh"
-        v-if="currentProtocol==='HTTP'"
-      />
-      <ms-run-test-tcp-page
-        :syncTabs="syncTabs"
-        :currentProtocol="currentProtocol"
-        :api-data="currentApi"
-        :project-id="projectId"
-        @saveAsApi="editApi"
-        @saveAsCase="saveAsCase"
-        @refresh="refresh"
-        v-if="currentProtocol==='TCP'"
-      />
-      <ms-run-test-sql-page
-        :syncTabs="syncTabs"
-        :currentProtocol="currentProtocol"
-        :api-data="currentApi"
-        :project-id="projectId"
-        @saveAsApi="editApi"
-        @saveAsCase="saveAsCase"
-        @refresh="refresh"
-        v-if="currentProtocol==='SQL'"
-      />
-      <ms-run-test-dubbo-page
-        :syncTabs="syncTabs"
-        :currentProtocol="currentProtocol"
-        :api-data="currentApi"
-        :project-id="projectId"
-        @saveAsApi="editApi"
-        @saveAsCase="saveAsCase"
-        @refresh="refresh"
-        v-if="currentProtocol==='DUBBO'"
-      />
-    </div>
-
-    <div v-if="showMock && (currentProtocol === 'HTTP')" class="ms-api-div">
-      <!--      <mock-config :base-mock-config-data="baseMockConfigData" type="http"/>-->
-      <mock-tab :base-mock-config-data="baseMockConfigData" :is-tcp="false"/>
-    </div>
-    <div v-if="showMock && (currentProtocol === 'TCP')" class="ms-api-div">
-      <mock-tab :base-mock-config-data="baseMockConfigData" :is-tcp="true"/>
-      <!--      <tcp-mock-config :base-mock-config-data="baseMockConfigData" type="tcp"/>-->
-    </div>
-    <div v-if="showTestCaseList">
-      <!--测试用例列表-->
-      <api-case-simple-list
-        :apiDefinitionId="currentApi.id"
-        :trash-enable="false"
-        @changeSelectDataRangeAll="changeSelectDataRangeAll"
-        @handleCase="handleCase"
-        @refreshTable="refresh"
-        @showExecResult="showExecResult"
-        ref="trashCaseList"/>
-    </div>
-    <!-- 加载用例 -->
-    <ms-api-case-list
-      :createCase="createCase"
-      :currentApi="api"
-      @reLoadCase="reLoadCase"
-      ref="caseList"/>
+        <div v-if="showMock && (currentProtocol === 'HTTP' || currentProtocol === 'TCP')">
+          <mock-tab :base-mock-config-data="baseMockConfigData" :form="currentApi"
+                    :is-tcp="currentProtocol === 'TCP'"
+                    :version-name="currentApi.versionName" @redirectToTest="redirectToTest"/>
+        </div>
+        <div v-if="showTestCaseList">
+          <!--测试用例列表-->
+          <api-case-simple-list
+            ref="trashCaseList"
+            :apiDefinition="currentApi"
+            :apiDefinitionId="currentApi.id"
+            :current-version="currentApi.versionId"
+            :trash-enable="false"
+            @changeSelectDataRangeAll="changeSelectDataRangeAll"
+            @handleCase="handleCase"
+            @refreshTable="refresh"
+            @showExecResult="showExecResult"/>
+        </div>
+        <!-- 加载用例 -->
+        <ms-api-case-list
+          ref="caseList"
+          :createCase="createCase"
+          :currentApi="api"
+          @reLoadCase="reLoadCase"/>
+      </ms-main-container>
+    </ms-container>
   </el-card>
 </template>
 
@@ -117,6 +141,12 @@ import ApiCaseSimpleList from "./list/ApiCaseSimpleList";
 import MsApiCaseList from "./case/ApiCaseList";
 import {getUUID} from "@/common/js/utils";
 import {TYPE_TO_C} from "@/business/components/api/automation/scenario/Setting";
+import MsContainer from "@/business/components/common/components/MsContainer";
+import MsAsideContainer from "@/business/components/common/components/MsAsideContainer";
+import MsMainContainer from "@/business/components/common/components/MsMainContainer";
+import ApiBaseInfo from "@/business/components/api/definition/components/complete/ApiBaseInfo";
+import {getProjectMemberOption} from "@/network/user";
+import {buildCustomFields, getApiFieldTemplate, parseCustomField} from "@/common/js/custom_field";
 
 export default {
   name: "EditCompleteContainer",
@@ -129,7 +159,9 @@ export default {
     MockTab,
     TcpMockConfig,
     ApiCaseSimpleList,
-    MsApiCaseList
+    MsApiCaseList,
+    MsContainer, MsAsideContainer, MsMainContainer,
+    ApiBaseInfo
   },
   data() {
     return {
@@ -140,9 +172,16 @@ export default {
       showTestCaseList: false,
       baseMockConfigData: {},
       loading: false,
-      createCase: "",
+      createCase: '',
       api: {},
-    }
+      maintainerOptions: [],
+      isFormAlive: true,
+      validateTrue: '',
+      apiTemplate: {},
+      customFieldRules: {},
+      customFieldForm: null,
+      currentValidateName: '',
+    };
   },
   props: {
     activeDom: String,
@@ -161,12 +200,24 @@ export default {
       default: false,
     },
   },
+  computed: {
+    leftHeight() {
+      return 'calc(100vh - 100px)';
+    }
+  },
   created() {
     this.refreshButtonActiveClass(this.activeDom);
+    getApiFieldTemplate(this)
+      .then((template) => {
+        this.apiTemplate = template;
+        this.$store.commit('setApiTemplate', this.apiTemplate);
+        this.customFieldForm = parseCustomField(this.currentApi, this.apiTemplate, this.customFieldRules);
+      });
     if (this.currentApi.id && (this.currentProtocol === "HTTP" || this.currentProtocol === "TCP")) {
       this.mockSetting();
     }
     this.formatApi();
+    this.getMaintainerOptions();
   },
   watch: {
     showMock() {
@@ -186,6 +237,10 @@ export default {
     reLoadCase() {
       this.$refs.trashCaseList.initTable();
     },
+    reloadForm() {
+      this.isFormAlive = false;
+      this.$nextTick(() => (this.isFormAlive = true));
+    },
     sort(stepArray) {
       if (stepArray) {
         for (let i in stepArray) {
@@ -194,6 +249,12 @@ export default {
           }
           if (stepArray[i] && stepArray[i].authManager && !stepArray[i].authManager.clazzName) {
             stepArray[i].authManager.clazzName = TYPE_TO_C.get(stepArray[i].authManager.type);
+          }
+          if (stepArray[i].type === 'Assertions' && !stepArray[i].document) {
+            stepArray[i].document = {
+              type: 'JSON',
+              data: {xmlFollowAPI: false, jsonFollowAPI: false, json: [], xml: []}
+            };
           }
           if (stepArray[i].hashTree && stepArray[i].hashTree.length > 0) {
             this.sort(stepArray[i].hashTree);
@@ -231,6 +292,7 @@ export default {
         this.$post('/mockConfig/genMockConfig', mockParam, response => {
           let mockConfig = response.data;
           mockConfig.apiName = this.currentApi.name;
+          mockConfig.versionName = this.currentApi.versionName;
           this.baseMockConfigData = mockConfig;
         });
       }
@@ -239,15 +301,42 @@ export default {
       this.$emit("runTest", data);
     },
     saveApi(data) {
-      this.$emit("saveApi", data);
-      if (data != null && data.tags != 'null' && data.tags != undefined) {
-        if (Object.prototype.toString.call(data.tags).match(/\[object (\w+)\]/)[1].toLowerCase() !== 'object') {
+      if (data != null && data.tags !== 'null' && data.tags !== undefined) {
+        if (Object.prototype.toString.call(data.tags) === "[object String]") {
           data.tags = JSON.parse(data.tags);
         }
       }
       Object.assign(this.currentApi, data);
+      this.currentApi.isCopy = false;
       this.mockSetting();
+      this.$emit("saveApi", data);
       this.reload();
+
+    },
+    validateBasic(data) {
+      let baseInfoValidate = this.$refs.apiBaseInfo.validateForm();
+      if (!baseInfoValidate) {
+        return false;
+      }
+      let customValidate = this.$refs.apiBaseInfo.validateCustomForm();
+      if (!customValidate) {
+        let customFieldFormFields = this.$refs.apiBaseInfo.getCustomFields();
+        for (let i = 0; i < customFieldFormFields.length; i++) {
+          let customField = customFieldFormFields[i];
+          if (customField.validateState === 'error') {
+            if (this.currentValidateName) {
+              this.currentValidateName = this.currentValidateName + "," + customField.label
+            } else {
+              this.currentValidateName = customField.label
+            }
+          }
+        }
+        this.$warning(this.currentValidateName + this.$t('commons.cannot_be_null'));
+        this.currentValidateName = '';
+        return false;
+      }
+      buildCustomFields(this.currentApi, data, this.apiTemplate);
+      this.$refs.apiConfig.saveApi(data);
     },
     createRootModel() {
       this.$emit("createRootModel");
@@ -258,11 +347,31 @@ export default {
     refresh() {
       this.$emit("refresh");
     },
+    checkout(data) {
+      Object.assign(this.currentApi, data);
+      this.reload();
+    },
     changeTab(tabType) {
-      if (this.$refs.apiConfig) {
-        this.$refs.apiConfig.handleSave();
-      }
+      this.beforeChangeTab();
       this.refreshButtonActiveClass(tabType);
+    },
+    beforeChangeTab() {
+      //关闭接口用例弹窗
+      this.$refs.caseList.close();
+    },
+    redirectToTest(param) {
+      this.refreshButtonActiveClass("test");
+      this.$nextTick(() => {
+        if (this.currentProtocol === "HTTP" && this.$refs.httpTestPage) {
+          let requestParam = null;
+          if (param.params) {
+            requestParam = param.params;
+          }
+          this.$refs.httpTestPage.setRequestParam(requestParam, true);
+        } else if (this.currentProtocol === "TCP" && this.$refs.tcpTestPage) {
+          this.$refs.tcpTestPage.setRequestParam(param, true);
+        }
+      });
     },
     removeListener() {
       if (this.$refs && this.$refs.apiConfig) {
@@ -284,9 +393,9 @@ export default {
       }
     },
     reload() {
-      this.loading = true
+      this.loading = true;
       this.$nextTick(() => {
-        this.loading = false
+        this.loading = false;
       });
     },
     saveAsCase(api) {
@@ -318,15 +427,44 @@ export default {
         this.showMock = true;
         this.$store.state.currentApiCase = undefined;
       } else {
-        this.showApiList = true;
-        this.showTestCaseList = false;
-        this.showTest = false;
-        this.showMock = false;
-        this.$store.state.currentApiCase = undefined;
+        this.syncApi();
       }
-    }
-  },
-}
+    },
+    changeApi() {
+      this.showApiList = true;
+      this.showTestCaseList = false;
+      this.showTest = false;
+      this.showMock = false;
+      this.$store.state.currentApiCase = undefined;
+    },
+    syncApi() {
+      if (this.syncTabs && this.syncTabs.length > 0 && this.syncTabs.includes(this.currentApi.id)) {
+        // 标示接口在其他地方更新过，当前页面需要同步
+        let url = "/api/definition/get/";
+        this.$get(url + this.currentApi.id, response => {
+          if (response.data) {
+            let request = JSON.parse(response.data.request);
+            let index = this.syncTabs.findIndex(item => {
+              if (item === this.currentApi.id) {
+                return true;
+              }
+            });
+            this.syncTabs.splice(index, 1);
+            this.currentApi.request = request;
+            this.changeApi();
+          }
+        });
+      } else {
+        this.changeApi();
+      }
+    },
+    getMaintainerOptions() {
+      getProjectMemberOption(data => {
+        this.maintainerOptions = data;
+      });
+    },
+  }
+};
 </script>
 
 <style scoped>
@@ -343,4 +481,19 @@ export default {
 .item {
   border: solid 1px var(--primary_color);
 }
+
+/deep/ .ms-opt-btn {
+  position: fixed;
+  right: 50px;
+  z-index: 1;
+  top: 90px;
+  float: right;
+  margin-right: 20px;
+  margin-top: 5px;
+}
+
+.ms-api-main-container {
+  height: calc(100vh - 100px);
+}
+
 </style>

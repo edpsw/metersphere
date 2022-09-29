@@ -1,5 +1,4 @@
 <template>
-
   <el-drawer
     :before-close="handleClose"
     :visible.sync="showDialog"
@@ -10,125 +9,134 @@
     v-loading="result.loading">
 
     <template v-slot:default="scope">
-      <el-row :gutter="10">
-        <div class="container">
+      <el-row>
           <el-col :span="17">
-            <el-card>
-              <el-scrollbar>
+            <div class="container">
+              <el-card>
+                <el-scrollbar>
+                  <el-header>
+                    <el-row type="flex" class="head-bar">
 
-                <el-header>
-                  <el-row type="flex" class="head-bar">
-
-                    <el-col :span="4">
-                      <el-button plain size="mini"
-                                 icon="el-icon-back"
-                                 @click="cancel">{{ $t('test_track.return') }}
-                      </el-button>
-                    </el-col>
-
-                    <el-col class="head-right" :span="20">
-                      <ms-previous-next-button :index="index" @pre="handlePre" @next="saveCase(true, true)" :list="testCases"/>
-                      <el-button class="save-btn" type="primary" size="mini" :disabled="isReadOnly" @click="saveCase(true)">
-                        {{$t('test_track.save')}} & {{$t('test_track.next')}}
-                      </el-button>
-                    </el-col>
-
-                  </el-row>
-
-                  <el-row class="head-bar">
-                    <el-col>
-                      <el-divider content-position="left">
-                        <el-button class="test-case-name" type="text" @click="openTestTestCase(testCase)">{{ testCase.name }}</el-button>
-                      </el-divider>
-                    </el-col>
-                  </el-row>
-                </el-header>
-
-                <div class="case_container">
-
-                  <el-form :model="testCase">
-
-                    <el-row>
-                      <el-col :span="7">
-                        <el-form-item :label="$t('test_track.case.module')" prop="nodePath" :label-width="formLabelWidth">
-                          {{testCase.nodePath}}
-                        </el-form-item >
+                      <el-col :span="4">
+                        <el-button plain size="mini"
+                                   icon="el-icon-back"
+                                   @click="cancel">{{ $t('test_track.return') }}
+                        </el-button>
                       </el-col>
-                      <el-col :span="7">
-                        <el-form-item :label="$t('test_track.plan.plan_project')" prop="projectName" :label-width="formLabelWidth">
-                          {{testCase.projectName}}
-                        </el-form-item >
+
+                      <el-col class="head-right" :span="20">
+                        <ms-previous-next-button
+                          :index="index"
+                          :page-num="pageNum"
+                          :page-size="pageSize"
+                          :page-total="pageTotal"
+                          :total="total"
+                          :next-page-data="nextPageData"
+                          :pre-page-data="prePageData"
+                          @pre="handlePre"
+                          @next="handleNext"
+                          :list="testCases"/>
                       </el-col>
-                      <el-col :span="10">
-                        <test-plan-test-case-status-button class="status-button"
-                                                           @statusChange="statusChange"
-                                                           :is-read-only="isReadOnly"
-                                                           :status="testCase.status"/>
-                      </el-col>
+
                     </el-row>
 
-                    <el-form ref="customFieldForm"
-                             v-if="isCustomFiledActive"
-                             class="case-form">
+                    <el-row class="head-bar">
+                      <el-col>
+                        <el-divider content-position="left" class="title-divider">
+                          <el-button class="test-case-name" type="text" @click="openTestTestCase(testCase)">
+                            <span
+                              class="title-link"
+                              :title="testCase.name"
+                              :style="{'max-width': titleWith + 'px'}">
+                              {{ testCase.customNum }}-{{ testCase.name }}
+                            </span>
+                          </el-button>
+                        </el-divider>
+                      </el-col>
+                    </el-row>
+                  </el-header>
+                  <div class="case_container">
+
+                    <el-form :model="testCase">
+
                       <el-row>
-                        <el-col :span="7" v-for="(item, index) in testCaseTemplate.customFields" :key="index">
-                          <el-form-item :label-width="formLabelWidth"
-                                        :label="item.system ? $t(systemNameMap[item.name]) : item.name"
-                                        :prop="item.name">
-                            <custom-filed-component :disabled="true" :data="item" :form="{}" prop="defaultValue"/>
-                          </el-form-item>
+                        <el-col :span="7">
+                          <el-form-item :label="$t('test_track.case.module')" prop="nodePath" :label-width="formLabelWidth">
+                            {{testCase.nodePath}}
+                          </el-form-item >
+                        </el-col>
+                        <el-col :span="7">
+                          <el-form-item :label="$t('test_track.plan.plan_project')" prop="projectName" :label-width="formLabelWidth">
+                            {{testCase.projectName}}
+                          </el-form-item >
+                        </el-col>
+                        <el-col :span="10">
+                          <el-form-item :label="$t('test_track.plan.load_case.execution_status')" :label-width="formLabelWidth">
+                            <status-table-item :value="originalStatus"/>
+                          </el-form-item >
                         </el-col>
                       </el-row>
+
+                      <el-form ref="customFieldForm"
+                               v-if="isCustomFiledActive"
+                               class="case-form">
+                        <el-row>
+                          <el-col :span="7" v-for="(item, index) in testCaseTemplate.customFields" :key="index">
+                            <el-form-item :label-width="formLabelWidth"
+                                          :label="item.system ? $t(systemNameMap[item.name]) : item.name"
+                                          :prop="item.name">
+                              <custom-filed-component :disabled="true" :data="item" :form="{}" prop="defaultValue"/>
+                            </el-form-item>
+                          </el-col>
+                        </el-row>
+                      </el-form>
+
+                      <form-rich-text-item :label-width="formLabelWidth" :disabled="true"
+                                           :title="$t('test_track.case.prerequisite')" :data="testCase"
+                                           prop="prerequisite"/>
+                      <step-change-item :disable="true" :label-width="formLabelWidth" :form="testCase"/>
+                      <test-plan-case-step-results-item :label-width="formLabelWidth" :is-read-only="isReadOnly"
+                                                        v-if="testCase.stepModel === 'STEP'" :test-case="testCase"/>
+                      <form-rich-text-item :label-width="formLabelWidth" v-if="testCase.stepModel === 'TEXT'"
+                                           :disabled="true" :title="$t('test_track.case.step_desc')" :data="testCase"
+                                           prop="stepDescription"/>
+                      <form-rich-text-item :label-width="formLabelWidth" v-if="testCase.stepModel === 'TEXT'"
+                                           :disabled="true" :title="$t('test_track.case.expected_results')"
+                                           :data="testCase" prop="expectedResult"/>
+                      <form-rich-text-item :label-width="formLabelWidth" v-if="testCase.stepModel === 'TEXT'"
+                                           :title="$t('test_track.plan_view.actual_result')"
+                                           :data="testCase" prop="actualResult"/>
+
+
+                      <el-form-item :label="$t('test_track.case.other_info')" :label-width="formLabelWidth">
+                        <test-case-edit-other-info :plan-id="testCase.planId" v-if="otherInfoActive" @openTest="openTest"
+                                                   :is-test-plan-edit="true" @syncRelationGraphOpen="syncRelationGraphOpen"
+                                                   :read-only="true" :is-test-plan="true" :project-id="testCase.projectId"
+                                                   :form="testCase" :case-id="testCase.caseId" ref="otherInfo"/>
+                      </el-form-item >
+
                     </el-form>
-
-                    <form-rich-text-item :label-width="formLabelWidth" :disabled="true"
-                                         :title="$t('test_track.case.prerequisite')" :data="testCase"
-                                         prop="prerequisite"/>
-                    <step-change-item :disable="true" :label-width="formLabelWidth" :form="testCase"/>
-                    <test-plan-case-step-results-item :label-width="formLabelWidth" :is-read-only="isReadOnly"
-                                                      v-if="testCase.stepModel === 'STEP'" :test-case="testCase"/>
-                    <form-rich-text-item :label-width="formLabelWidth" v-if="testCase.stepModel === 'TEXT'"
-                                         :disabled="true" :title="$t('test_track.case.step_desc')" :data="testCase"
-                                         prop="stepDescription"/>
-                    <form-rich-text-item :label-width="formLabelWidth" v-if="testCase.stepModel === 'TEXT'"
-                                         :disabled="true" :title="$t('test_track.case.expected_results')"
-                                         :data="testCase" prop="expectedResult"/>
-                    <form-rich-text-item :label-width="formLabelWidth" v-if="testCase.stepModel === 'TEXT'"
-                                         :title="$t('test_track.plan_view.actual_result')"
-                                         :data="testCase" prop="actualResult"/>
-
-                    <test-case-edit-other-info :plan-id="testCase.planId" v-if="otherInfoActive" @openTest="openTest"
-                                               :read-only="true" :is-test-plan="true" :project-id="testCase.projectId"
-                                               :form="testCase" :case-id="testCase.caseId" ref="otherInfo"/>
-                  </el-form>
-                </div>
-
-              </el-scrollbar>
-            </el-card>
+                  </div>
+                </el-scrollbar>
+              </el-card>
+            </div>
           </el-col>
-          <el-col :span="7">
-            <el-card class="comment-card">
-              <template slot="header">
-                <span style="font-size: 15px; color: #1E90FF">{{ $t('test_track.review.comment') }}</span>
-                <i class="el-icon-refresh" @click="getComments(testCase)"
-                   style="margin-left:10px;font-size: 14px; cursor: pointer"/>
-              </template>
-              <review-comment :comments="comments" :case-id="testCase.caseId" :review-id="testCase.reviewId"
-                              @getComments="getComments"/>
-            </el-card>
-            <!--            <case-comment :case-id="testCase ? testCase.caseId : ''" class="comment-card"/>-->
+          <el-col :span="7" v-if="!relationGraphOpen">
+            <div class="comment-card">
+              <test-plan-functional-execute
+                :test-case="testCase"
+                :is-read-only="isReadOnly"
+                :origin-status="originalStatus"
+                @saveCase="saveCase()"/>
+              <review-comment
+                default-type="PLAN"
+                :case-id="testCase.caseId"
+                ref="comment"/>
+            </div>
           </el-col>
-
-
-        </div>
       </el-row>
-
-
     </template>
-
   </el-drawer>
-
-
 </template>
 
 <script>
@@ -147,16 +155,22 @@ import {buildTestCaseOldFields, getTemplate, parseCustomField} from "@/common/js
 import FormRichTextItem from "@/business/components/track/case/components/FormRichTextItem";
 import MsFormDivider from "@/business/components/common/components/MsFormDivider";
 import TestCaseEditOtherInfo from "@/business/components/track/case/components/TestCaseEditOtherInfo";
-import CustomFiledComponent from "@/business/components/settings/workspace/template/CustomFiledComponent";
+import CustomFiledComponent from "@/business/components/project/template/CustomFiledComponent";
 import {SYSTEM_FIELD_NAME_MAP} from "@/common/js/table-constants";
 import IssueDescriptionTableItem from "@/business/components/track/issue/IssueDescriptionTableItem";
 import StepChangeItem from "@/business/components/track/case/components/StepChangeItem";
 import TestCaseStepItem from "@/business/components/track/case/components/TestCaseStepItem";
-import TestPlanCaseStepResultsItem from "@/business/components/track/plan/view/comonents/functional/TestPlanCaseStepResultsItem";
+import TestPlanCaseStepResultsItem
+  from "@/business/components/track/plan/view/comonents/functional/TestPlanCaseStepResultsItem";
+import TestPlanFunctionalExecute
+  from "@/business/components/track/plan/view/comonents/functional/TestPlanFunctionalExecute";
+import StatusTableItem from "@/business/components/track/common/tableItems/planview/StatusTableItem";
 
 export default {
   name: "FunctionalTestCaseEdit",
   components: {
+    StatusTableItem,
+    TestPlanFunctionalExecute,
     TestPlanCaseStepResultsItem,
     TestCaseStepItem,
     StepChangeItem,
@@ -181,12 +195,7 @@ export default {
       showDialog: false,
       testCase: {},
       index: 0,
-      testCases: [],
       editor: ClassicEditor,
-      editorConfig: {
-        toolbar: ['heading', '|', 'bold', 'italic', 'link', 'bulletedList', 'numberedList', 'blockQuote', 'insertTable', '|', 'undo', 'redo'],
-      },
-      readConfig: {toolbar: []},
       test: {},
       activeTab: 'detail',
       users: [],
@@ -199,10 +208,14 @@ export default {
       tableData: [],
       comments: [],
       testCaseTemplate: {},
-      formLabelWidth: "100px",
+      formLabelWidth: '100px',
       isCustomFiledActive: false,
       otherInfoActive: true,
       isReadOnly: false,
+      testCases: [],
+      originalStatus: '',
+      titleWith: 0,
+      relationGraphOpen: false,
     };
   },
   props: {
@@ -211,7 +224,14 @@ export default {
     },
     searchParam: {
       type: Object
-    }
+    },
+    pageNum: Number,
+    pageSize: {
+      type: Number,
+      default: 1
+    },
+    nextPageData: Object,
+    prePageData: Object
   },
   computed: {
     projectId() {
@@ -219,20 +239,12 @@ export default {
     },
     systemNameMap() {
       return SYSTEM_FIELD_NAME_MAP;
+    },
+    pageTotal() {
+      return Math.ceil(this.total / this.pageSize);
     }
   },
   methods: {
-    getComments(testCase) {
-      let id = '';
-      if (testCase) {
-        id = testCase.caseId;
-      } else {
-        id = this.testCase.caseId;
-      }
-      this.result = this.$get('/test/case/comment/list/' + id, res => {
-        this.comments = res.data;
-      })
-    },
     handleClose() {
       removeGoBackListener(this.handleClose);
       this.showDialog = false;
@@ -242,10 +254,6 @@ export default {
     cancel() {
       this.handleClose();
       this.$emit('refreshTable');
-    },
-    statusChange(status) {
-      this.testCase.status = status;
-      this.saveCase(true);
     },
     getOption(param) {
       let formData = new FormData();
@@ -282,14 +290,18 @@ export default {
         }
       };
     },
-    saveCase(next, noTip) {
+    saveCase() {
       let param = {};
       param.id = this.testCase.id;
+      param.caseId = this.testCase.caseId;
       param.status = this.testCase.status;
       param.results = [];
       param.remark = this.testCase.remark;
       param.projectId = this.testCase.projectId;
       param.nodeId = this.testCase.nodeId;
+      param.demandId = this.testCase.demandId;
+      param.name = this.testCase.name;
+      param.comment = this.testCase.comment;
       let option = this.getOption(param);
       for (let i = 0; i < this.testCase.steptResults.length; i++) {
         let result = {};
@@ -300,6 +312,11 @@ export default {
             + this.$t('test_track.length_less_than') + '300');
           return;
         }
+        if (result.executeResult === 'Failure' && this.testCase.status === 'Pass') {
+          this.$warning(this.$t('test_track.plan_view.execute_tip'));
+          this.testCase.status = this.originalStatus;
+          return;
+        }
         param.results.push(result);
       }
       param.results = JSON.stringify(param.results);
@@ -308,14 +325,17 @@ export default {
         this.$request(option, (response) => {
 
         });
-        if (!noTip) {
-          this.$success(this.$t('commons.save_success') + ' -> ' + this.$t('test_track.plan_view.next_case'));
-        }
+
+        this.$success(this.$t('commons.save_success'));
         this.updateTestCases(param);
         this.setPlanStatus(this.testCase.planId);
-        if (next && this.index < this.testCases.length - 1) {
-          this.handleNext();
+
+        if (this.testCase.comment) {
+          this.$refs.comment.getComments();
+          this.testCase.comment = '';
         }
+
+        this.originalStatus = this.testCase.status;
       });
     },
     updateTestCases(param) {
@@ -330,9 +350,19 @@ export default {
       }
     },
     handleNext() {
+      if (this.isLastData()) {
+        return;
+      } else if (this.index === this.testCases.length - 1) {
+        this.$emit('nextPage');
+        this.index = 0;
+        return;
+      }
       this.index++;
-      this.getTestCase(this.index);
+      this.getTestCase(this.testCases[this.index].id);
       this.reloadOtherInfo();
+    },
+    isLastData() {
+      return this.index === this.testCases.length - 1 && this.pageNum === this.pageTotal;
     },
     reloadOtherInfo() {
       this.otherInfoActive = false;
@@ -341,15 +371,21 @@ export default {
       })
     },
     handlePre() {
+      if (this.index === 0 && this.pageNum === 1) {
+        this.$warning('已经是第一页');
+        return;
+      } else if (this.index === 0) {
+        this.$emit('prePage');
+        this.index = this.pageSize - 1;
+        return;
+      }
       this.index--;
-      this.getTestCase(this.index);
+      this.getTestCase(this.testCases[this.index].id);
       this.reloadOtherInfo();
     },
-    getTestCase(index) {
-      this.testCase = {};
-      let testCase = this.testCases[index];
+    getTestCase(id) {
       // id 为 TestPlanTestCase 的 id
-      this.result = this.$get('/test/plan/case/get/' + testCase.id, response => {
+      this.result = this.$get('/test/plan/case/get/' + id, response => {
         let item = {};
         Object.assign(item, response.data);
         if (item.results) {
@@ -384,28 +420,48 @@ export default {
           }
         }
         this.testCase = item;
-        parseCustomField(this.testCase, this.testCaseTemplate, null, null, buildTestCaseOldFields(this.testCase));
+        this.originalStatus = this.testCase.status;
+        parseCustomField(this.testCase, this.testCaseTemplate, null, buildTestCaseOldFields(this.testCase));
+        this.testCaseTemplate.customFields.forEach(item => {
+          try {
+            item.defaultValue = JSON.parse(item.defaultValue);
+          } catch (e) {
+            // nothing
+          }
+        });
         this.isCustomFiledActive = true;
         if (!this.testCase.actualResult) {
           // 如果没值,使用模板的默认值
           this.testCase.actualResult = this.testCaseTemplate.actualResult;
         }
-        this.getComments(item);
       });
     },
-    openTestCaseEdit(testCase) {
+    openTestCaseEdit(testCase, tableData) {
       this.showDialog = true;
       this.activeTab = 'detail';
       this.hasTapdId = false;
       this.hasZentaoId = false;
       this.isReadOnly = !hasPermission('PROJECT_TRACK_PLAN:READ+RELEVANCE_OR_CANCEL');
+      this.originalStatus = testCase.status;
+      this.setTitleWith();
+
+      if (tableData) {
+        this.testCases = tableData;
+        for (let i = 0; i < this.testCases.length; i++) {
+          let item = this.testCases[i];
+          if (item.id === testCase.id) {
+            this.index = i;
+            break;
+          }
+        }
+      }
 
       listenGoBack(this.handleClose);
-      let initFuc = this.initData;
+      let initFuc = this.getTestCase;
       getTemplate('field/template/case/get/relate/', this)
         .then((template) => {
           this.testCaseTemplate = template;
-          initFuc(testCase);
+          initFuc(testCase.id);
         });
       if (this.$refs.otherInfo) {
         this.$refs.otherInfo.reset();
@@ -424,17 +480,6 @@ export default {
     },
     saveReport(reportId) {
       this.$post('/test/plan/case/edit', {id: this.testCase.id, reportId: reportId});
-    },
-    initData(testCase) {
-      this.result = this.$post('/test/plan/case/list/ids', this.searchParam, response => {
-        this.testCases = response.data;
-        for (let i = 0; i < this.testCases.length; i++) {
-          if (this.testCases[i].id === testCase.id) {
-            this.index = i;
-            this.getTestCase(i);
-          }
-        }
-      });
     },
     openTest(item) {
       const type = item.testType;
@@ -462,9 +507,21 @@ export default {
         }
       }
     },
+    syncRelationGraphOpen(val) {
+      this.relationGraphOpen = val;
+    },
+    setTitleWith() {
+      this.$nextTick(() => {
+        this.titleWith = 0;
+        let titleDivider = document.getElementsByClassName("title-divider");
+        if (titleDivider && titleDivider.length > 0) {
+          this.titleWith = 0.9 * titleDivider[0].clientWidth;
+        }
+      });
+    },
     openTestTestCase(item) {
       let TestCaseData = this.$router.resolve(
-        {path: '/track/case/all', query: {redirectID: getUUID(), dataType: "testCase", dataSelectRange: item.caseId}}
+        {path: '/track/case/all', query: {redirectID: getUUID(), dataType: "testCase", dataSelectRange: item.caseId, projectId: item.projectId}}
       );
       window.open(TestCaseData.href, '_blank');
     },
@@ -484,11 +541,6 @@ export default {
   color: dimgray;
 }
 
-.status-button {
-  padding-left: 4%;
-  padding-right: 4%;
-}
-
 .head-right {
   text-align: right;
 }
@@ -501,28 +553,27 @@ export default {
   line-height: 16px;
 }
 
-.status-button {
-  float: right;
-}
-
 .el-scrollbar {
   height: 100%;
 }
 
 .container {
   height: 100vh;
+  padding-right: 10px;
 }
 
 .container >>> .el-card__body {
   height: calc(100vh - 50px);
 }
 
-.comment-card >>> .el-card__header {
-  padding: 0 20px;
+.comment-card {
+  padding-left: 0;
+  padding-right: 15px;
+  padding-top: 15px;
 }
 
-.comment-card >>> .el-card__body {
-  height: calc(100vh - 100px);
+.comment-card >>> .el-card__header {
+  padding: 0 20px;
 }
 
 .case_container > .el-row {
@@ -545,18 +596,11 @@ p {
 .head-bar {
   z-index: 999;
 }
-</style>
 
-<style>
 .issues-popover {
   height: 550px;
   overflow: auto;
 }
-
-.save-btn {
-  margin-left: 10px;
-}
-
 
 .el-divider__text {
   line-height: normal;
@@ -564,5 +608,36 @@ p {
 
 .test-case-name {
   padding: 0;
+  text-decoration: underline solid #783887;
+}
+
+.title-link {
+  display: inline-block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  word-break: break-all;
+  margin-right: 5px;
+}
+
+/deep/ .el-drawer__body {
+  overflow: unset;
+}
+
+.comment-card >>> .executeCard {
+  margin-bottom: 5px;
+}
+
+/deep/ .el-form-item__content {
+  z-index: 2;
+}
+
+/deep/ .el-scrollbar__bar.is-vertical {
+  z-index: 0;
+  width: 0;
+}
+
+.head-bar {
+  z-index: 1;
 }
 </style>

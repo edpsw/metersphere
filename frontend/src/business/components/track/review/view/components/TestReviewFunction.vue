@@ -2,16 +2,20 @@
   <ms-test-plan-common-component>
     <template v-slot:aside>
       <ms-node-tree
-        class="node-tree"
-        :all-label="$t('commons.all_label.review')"
         v-loading="result.loading"
-        @nodeSelectEvent="nodeChange"
+        class="node-tree"
+        local-suffix="test_case"
+        default-label="未规划用例"
         :tree-nodes="treeNodes"
+        :default-expand-all="true"
+        :all-label="$t('commons.all_label.review')"
+        @nodeSelectEvent="nodeChange"
         ref="nodeTree"/>
     </template>
     <template v-slot:main>
       <ms-tab-button
-        :active-dom.sync="activeDom"
+        :active-dom="activeDom"
+        @update:activeDom="updateActiveDom"
         :left-tip="$t('test_track.case.list')"
         :left-content="$t('test_track.case.list')"
         :right-tip="$t('test_track.case.minder')"
@@ -20,25 +24,36 @@
         <test-review-test-case-list
           class="table-list"
           v-if="activeDom === 'left'"
-          @openTestReviewRelevanceDialog="openTestReviewRelevanceDialog"
-          @refresh="refresh"
-          @setCondition="setCondition"
           :review-id="reviewId"
           :clickType="clickType"
+          :current-version="currentVersion"
+          :version-enable="versionEnable"
+          @refresh="refresh"
+          @setCondition="setCondition"
+          @search="refreshTreeByCaseFilter"
+          @openTestReviewRelevanceDialog="openTestReviewRelevanceDialog"
           ref="testPlanTestCaseList"/>
         <test-review-minder
+          v-if="activeDom === 'right'"
           :tree-nodes="treeNodes"
           :project-id="projectId"
           :condition="condition"
           :review-id="reviewId"
-          v-if="activeDom === 'right'"
+          ref="minder"
         />
       </ms-tab-button>
     </template>
     <test-review-relevance
       @refresh="refresh"
       :review-id="reviewId"
+      :version-enable="versionEnable"
       ref="testReviewRelevance"/>
+
+    <is-change-confirm
+      :version-enable="versionEnable"
+      @confirm="changeConfirm"
+      ref="isChangeConfirm"/>
+
   </ms-test-plan-common-component>
 </template>
 
@@ -50,38 +65,54 @@ import TestReviewTestCaseList from "@/business/components/track/review/view/comp
 import MsTabButton from "@/business/components/common/components/MsTabButton";
 import TestReviewMinder from "@/business/components/track/common/minder/TestReviewMinder";
 import {getCurrentProjectID} from "@/common/js/utils";
+import IsChangeConfirm from "@/business/components/common/components/IsChangeConfirm";
+import {openMinderConfirm, saveMinderConfirm} from "@/business/components/track/common/minder/minderUtils";
+import {getTestReviewCaseNodesByCaseFilter} from "@/network/testCase";
+const requireComponent = require.context('@/business/components/xpack/', true, /\.vue$/);
+const VersionSelect = requireComponent.keys().length > 0 ? requireComponent("./version/VersionSelect.vue") : {};
 
 export default {
   name: "TestReviewFunction",
   components: {
+    IsChangeConfirm,
     TestReviewMinder,
     MsTabButton,
     TestReviewTestCaseList,
-    TestReviewRelevance, MsNodeTree, MsTestPlanCommonComponent
+    TestReviewRelevance, MsNodeTree, MsTestPlanCommonComponent,
+    'VersionSelect': VersionSelect.default,
   },
   data() {
     return {
       result: {},
       testReviews: [],
       currentReview: {},
-      // selectNodeIds: [],
-      // selectParentNodes: [],
       treeNodes: [],
       isMenuShow: true,
       activeDom: 'left',
-      condition: {}
+      condition: {},
+      tmpActiveDom: null,
+      tmpPath: null,
+      currentVersion : null
     }
   },
   props: [
     'reviewId',
     'redirectCharType',
     'clickType',
+    'versionEnable',
   ],
   mounted() {
-    this.getNodeTreeByReviewId()
+    this.$store.commit('setTestReviewSelectNode', {});
+    this.$store.commit('setTestReviewSelectNodeIds', []);
+    this.getNodeTreeByReviewId();
   },
   activated() {
-    this.getNodeTreeByReviewId()
+    this.getNodeTreeByReviewId();
+  },
+  watch: {
+    reviewId() {
+      this.getNodeTreeByReviewId();
+    }
   },
   computed: {
     projectId() {
@@ -102,22 +133,43 @@ export default {
       this.$store.commit('setTestReviewSelectNode', node);
       this.$store.commit('setTestReviewSelectNodeIds', nodeIds);
     },
-    getNodeTreeByReviewId() {
+    getNodeTreeByReviewId(condition) {
       if (this.reviewId) {
-        this.result = this.$get("/case/node/list/review/" + this.reviewId, response => {
-          this.treeNodes = response.data;
+        this.result = getTestReviewCaseNodesByCaseFilter(this.reviewId, condition, (data) => {
+          this.treeNodes = data;
         });
       }
+    },
+    refreshTreeByCaseFilter() {
+      this.getNodeTreeByReviewId(this.condition);
     },
     openTestReviewRelevanceDialog() {
       this.$refs.testReviewRelevance.openTestReviewRelevanceDialog();
     },
+    updateActiveDom(activeDom) {
+      openMinderConfirm(this, activeDom);
+    },
+    changeConfirm(isSave) {
+      saveMinderConfirm(this, isSave);
+    },
+    handleBeforeRouteLeave(to) {
+      if (this.$store.state.isTestCaseMinderChanged) {
+        this.$refs.isChangeConfirm.open();
+        this.tmpPath = to.path;
+        return false;
+      } else {
+        return true;
+      }
+    },
+    changeVersion(currentVersion) {
+      this.currentVersion = currentVersion || null;
+    }
   }
 }
 </script>
 
 <style scoped>
-/deep/ .el-button-group>.el-button:first-child {
-  padding: 4px 1px !important;
+.version-select {
+  padding-left: 10px;
 }
 </style>

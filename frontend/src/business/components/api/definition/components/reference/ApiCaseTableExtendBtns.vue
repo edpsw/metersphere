@@ -18,6 +18,8 @@
 
 <script>
 
+import {hasPermission} from "@/common/js/utils";
+
 export default {
   name: "MsApiCaseTableExtendBtns",
   components: {},
@@ -31,6 +33,7 @@ export default {
   },
 
   methods: {
+    hasPermission,
     handleCommand(cmd) {
       if (this.row.id) {
         switch (cmd) {
@@ -38,6 +41,10 @@ export default {
             this.$emit("showCaseRef", this.row);
             break;
           case "create_performance":
+            if (!hasPermission('PROJECT_PERFORMANCE_TEST:READ+CREATE')) {
+              this.$warning(this.$t('api_test.create_performance_test_tips'));
+              break;
+            }
             this.$emit("showEnvironment", this.row);
             break;
           case "history":

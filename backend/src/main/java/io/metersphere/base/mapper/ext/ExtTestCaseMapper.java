@@ -4,7 +4,10 @@ import io.metersphere.base.domain.TestCase;
 import io.metersphere.base.domain.TestCaseWithBLOBs;
 import io.metersphere.controller.request.BaseQueryRequest;
 import io.metersphere.dto.RelationshipGraphData;
+import io.metersphere.track.dto.CustomFieldResourceCompatibleDTO;
 import io.metersphere.track.dto.TestCaseDTO;
+import io.metersphere.track.dto.TestCaseNodeDTO;
+import io.metersphere.track.request.testcase.DeleteTestCaseRequest;
 import io.metersphere.track.request.testcase.QueryTestCaseRequest;
 import io.metersphere.track.request.testcase.TestCaseBatchRequest;
 import io.metersphere.track.response.TrackCountResult;
@@ -20,9 +23,11 @@ public interface ExtTestCaseMapper {
 
     List<TestCaseDTO> list(@Param("request") QueryTestCaseRequest request);
 
+    List<TestCaseDTO> publicList(@Param("request") QueryTestCaseRequest request);
+
     int moduleCount(@Param("request") QueryTestCaseRequest request);
 
-    List<TestCaseDTO> listIds(@Param("request") QueryTestCaseRequest request);
+    List<String> getPublicProjectIdByWorkSpaceId(@Param("request") QueryTestCaseRequest request);
 
     List<TestCaseDTO> listByMethod(@Param("request") QueryTestCaseRequest request);
 
@@ -36,7 +41,7 @@ public interface ExtTestCaseMapper {
      * @param request
      * @return
      */
-    List<TestCase> getTestCaseByNotInPlan(@Param("request") QueryTestCaseRequest request);
+    List<TestCaseDTO> getTestCaseByNotInPlan(@Param("request") QueryTestCaseRequest request);
 
     /**
      * 获取不在测试缺陷中的用例
@@ -52,7 +57,7 @@ public interface ExtTestCaseMapper {
      * @param request
      * @return
      */
-    List<TestCase> getTestCaseByNotInReview(@Param("request") QueryTestCaseRequest request);
+    List<TestCaseDTO> getTestCaseByNotInReview(@Param("request") QueryTestCaseRequest request);
 
     /**
      * 检查某工作空间下是否有某用例
@@ -65,8 +70,11 @@ public interface ExtTestCaseMapper {
 
     List<String> selectIds(@Param("request") BaseQueryRequest condition);
 
+    List<String> selectPublicIds(@Param("request") BaseQueryRequest condition);
+
     /**
      * 按照用例等级统计
+     *
      * @param projectId 项目ID
      * @return 统计结果
      */
@@ -78,7 +86,7 @@ public interface ExtTestCaseMapper {
 
     List<TrackCountResult> countRelevance(@Param("projectId") String projectId);
 
-    long countRelevanceCreatedThisWeek(@Param("projectId") String projectId,@Param("firstDayTimestamp") long firstDayTimestamp, @Param("lastDayTimestamp") long lastDayTimestamp);
+    long countRelevanceCreatedThisWeek(@Param("projectId") String projectId, @Param("firstDayTimestamp") long firstDayTimestamp, @Param("lastDayTimestamp") long lastDayTimestamp);
 
     int countCoverage(@Param("projectId") String projectId);
 
@@ -86,29 +94,38 @@ public interface ExtTestCaseMapper {
 
     List<TrackCountResult> countRelevanceMaintainer(@Param("projectId") String projectId);
 
-    int getTestPlanBug(@Param("planId") String planId);
+    List<String> getTestPlanBug(@Param("planId") String planId);
+
     int getTestPlanCase(@Param("planId") String planId);
+
     int getTestPlanPassCase(@Param("planId") String planId);
 
 
-    List<TestCaseWithBLOBs> listForMinder(@Param("request") QueryTestCaseRequest request);
+    List<TestCaseDTO> listForMinder(@Param("request") QueryTestCaseRequest request);
 
-    List<TestCaseDTO> getTestCaseByIds(@Param("ids")List<String> ids);
+    List<TestCaseDTO> getTestCaseByIds(@Param("ids") List<String> ids);
 
     void updateTestCaseCustomNumByProjectId(@Param("projectId") String projectId);
 
     List<String> selectRelateIdsByQuery(@Param("request") BaseQueryRequest query);
 
-    List<Map<String, Object>> moduleCountByCollection(@Param("request")QueryTestCaseRequest request);
+    List<TestCaseNodeDTO> getCountNodes(@Param("request") QueryTestCaseRequest request);
+
+    List<TestCaseNodeDTO> getTestPlanRelateCountNodes(@Param("request") QueryTestCaseRequest request);
+
+    List<TestCaseNodeDTO> getTestReviewRelateCountNodes(@Param("request") QueryTestCaseRequest request);
 
     List<TestCaseWithBLOBs> getCustomFieldsByIds(@Param("ids") List<String> ids);
 
-    int deleteToGc(@Param("request") TestCase testCase);
+    int deleteToGc(@Param("request") DeleteTestCaseRequest testCase);
+
+    int deletePublic(@Param("request") TestCase testCase);
+
     int reduction(@Param("ids") List<String> ids);
 
     void checkOriginalStatusByIds(@Param("ids") List<String> ids);
 
-    List<String> selectIdsByNodeIds(@Param("ids")List<String> nodeIds);
+    List<String> selectIdsByNodeIds(@Param("ids") List<String> nodeIds);
 
     TestCaseWithBLOBs getTestCaseStep(@Param("id") String id);
 
@@ -116,13 +133,37 @@ public interface ExtTestCaseMapper {
 
     List<String> getIdsOrderByUpdateTime(@Param("projectId") String projectId);
 
-    Long getLastOrder(@Param("projectId")String projectId, @Param("baseOrder") Long baseOrder);
+    Long getLastOrder(@Param("projectId") String projectId, @Param("baseOrder") Long baseOrder);
 
-    Long getPreOrder(@Param("projectId")String projectId, @Param("baseOrder") Long baseOrder);
+    Long getPreOrder(@Param("projectId") String projectId, @Param("baseOrder") Long baseOrder);
 
-    List<TestCase> getTestCase(@Param("request") QueryTestCaseRequest request);
+    List<TestCaseDTO> getTestCase(@Param("request") QueryTestCaseRequest request);
 
     List<RelationshipGraphData.Node> getTestCaseForGraph(@Param("ids") Set<String> ids);
 
     int countByIds(@Param("ids") List<String> ids);
+
+    String getLastExecStatusById(String id);
+
+    int countByWorkSpaceId(String workSpaceId);
+
+    long trashCount(@Param("projectId") String projectId);
+
+    List<String> selectRefIdsForVersionChange(@Param("versionId") String versionId, @Param("projectId") String projectId);
+
+    int addLatestVersion(@Param("refId") String refId);
+
+    List<TestCase> getMaintainerMap(@Param("request") QueryTestCaseRequest request);
+
+    List<TestCaseDTO> getForNodeEdit(@Param("ids") List<String> ids);
+
+    List<CustomFieldResourceCompatibleDTO> getForCompatibleCustomField(String projectId, int offset, int pageSize);
+
+    List<Map<String, Object>> moduleExtraNodeCount(@Param("nodeIds") List<String> nodeIds);
+
+    int bathUpdateByCondition(@Param("request") QueryTestCaseRequest condition, @Param("record") TestCaseWithBLOBs testCaseWithBLOBs);
+
+    List<TestCaseNodeDTO> getWorkspaceCountNodes(@Param("request") QueryTestCaseRequest request);
+
+    void updateNoModuleTrashNodeToDefault(@Param("projectId") String projectId, @Param("defaultNodeId") String defaultNodeId, @Param("defaultNodePath") String defaultNodePath);
 }

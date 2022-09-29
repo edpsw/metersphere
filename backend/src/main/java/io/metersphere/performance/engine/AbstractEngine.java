@@ -3,7 +3,6 @@ package io.metersphere.performance.engine;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import io.metersphere.api.dto.RunRequest;
 import io.metersphere.base.domain.LoadTestReportWithBLOBs;
 import io.metersphere.base.domain.TestResource;
 import io.metersphere.base.domain.TestResourcePool;
@@ -13,6 +12,7 @@ import io.metersphere.commons.constants.ResourceStatusEnum;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.CommonBeanFactory;
 import io.metersphere.config.JmeterProperties;
+import io.metersphere.dto.JmeterRunRequestDTO;
 import io.metersphere.performance.service.PerformanceTestService;
 import io.metersphere.service.TestResourcePoolService;
 import io.metersphere.service.TestResourceService;
@@ -42,7 +42,7 @@ public abstract class AbstractEngine implements Engine {
         GC_ALGO = CommonBeanFactory.getBean(JmeterProperties.class).getGcAlgo();
     }
 
-    protected void initApiConfig(RunRequest runRequest) {
+    protected void initApiConfig(JmeterRunRequestDTO runRequest) {
         String resourcePoolId = runRequest.getPoolId();
         resourcePool = testResourcePoolService.getResourcePool(resourcePoolId);
         if (resourcePool == null || StringUtils.equals(resourcePool.getStatus(), ResourceStatusEnum.DELETE.name())) {
@@ -143,15 +143,25 @@ public abstract class AbstractEngine implements Engine {
             if (next instanceof List) {
                 List<Object> o = (List<Object>) next;
                 for (Object o1 : o) {
-                    if (StringUtils.equals(JSONObject.parseObject(o1.toString()).getString("deleted"), "true")) {
-                        iterator.remove();
-                        continue outer;
+                    JSONObject jsonObject = JSONObject.parseObject(o1.toString());
+                    String key = jsonObject.getString("key");
+                    if (StringUtils.equals(key, "deleted")) {
+                        String value = jsonObject.getString("value");
+                        if (StringUtils.equals(value, "true")) {
+                            iterator.remove();
+                            continue outer;
+                        }
                     }
                 }
                 for (Object o1 : o) {
-                    if (StringUtils.equals(JSONObject.parseObject(o1.toString()).getString("enabled"), "false")) {
-                        iterator.remove();
-                        continue outer;
+                    JSONObject jsonObject = JSONObject.parseObject(o1.toString());
+                    String key = jsonObject.getString("key");
+                    if (StringUtils.equals(key, "enabled")) {
+                        String value = jsonObject.getString("value");
+                        if (StringUtils.equals(value, "false")) {
+                            iterator.remove();
+                            continue outer;
+                        }
                     }
                 }
             }

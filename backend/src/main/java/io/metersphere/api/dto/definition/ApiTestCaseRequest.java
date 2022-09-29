@@ -37,4 +37,40 @@ public class ApiTestCaseRequest extends BaseQueryRequest {
      * 检查待更新的（近三天有更新的或者状态为error的）
      */
     private boolean toUpdate;
+    /**
+     * 是否进入待更新列表
+     */
+    private boolean toBeUpdated;
+
+    /**
+     * 当前时间减去进入待更新的时间
+     */
+    private Long toBeUpdateTime;
+
+    /**
+     * 进入待更新列表用例状态集合
+     */
+    private List<String> statusList;
+    /**
+     * 不需要查用例状态
+     */
+    private boolean noSearchStatus;
+    /**
+     * 是否需要查询环境字段
+     */
+    private boolean selectEnvironment = false;
+
+    /**
+     * 查询排除一些接口
+     */
+    private List<String> notInIds;
+
+    //页面跳转时附带的过滤条件
+    private String redirectFilter;
+
+    //同步配置
+    private ApiSyncCaseRequest syncConfig;
+
+    //全选
+    private boolean selectAll;
 }

@@ -59,7 +59,7 @@
 
 <script>
 import MsTag from "@/business/components/common/components/MsTag";
-import {getCurrentProjectID} from "@/common/js/utils";
+import {getCurrentProjectID, getUUID} from "@/common/js/utils";
 import {API_DEFINITION_CONFIGS} from "@/business/components/common/components/search/search-components";
 import {API_STATUS} from "@/business/components/api/definition/model/JsonData";
 import ApiStatus from "@/business/components/api/definition/components/list/ApiStatus";
@@ -104,9 +104,6 @@ export default {
         this.condition.moduleIds = this.selectNodeIds;
       }
       this.condition.projectId = this.projectId;
-      if (this.currentProtocol != null) {
-        this.condition.protocol = this.currentProtocol;
-      }
 
       this.enableOrderDrag = (this.condition.orders && this.condition.orders.length) > 0 ? false : true;
 
@@ -197,9 +194,21 @@ export default {
       }
     },
     redirect(pageType, param) {
+      //api页面跳转
+      //传入UUID是为了进行页面重新加载判断
+      let resolve;
+      let uuid = getUUID();
       switch (pageType) {
         case "api":
-          this.$router.push('/api/definition?resourceId=' + param)
+          resolve = this.$router.resolve({
+            name: 'ApiDefinitionWithQuery',
+            params: {
+              redirectID: getUUID(),
+              dataType: "api",
+              dataSelectRange: 'edit:' + param,
+            }
+          });
+          window.open(resolve.href, '_blank');
           break;
         case "apiCase":
           this.$emit('redirectPage', 'api', 'apiTestCase', 'singleList:' + param);
@@ -212,13 +221,13 @@ export default {
       }
     },
   },
-    created() {
-      this.search();
-    },
-    activated() {
-      this.search();
-    }
+  created() {
+    this.search();
+  },
+  activated() {
+    this.search();
   }
+}
 </script>
 
 <style scoped>

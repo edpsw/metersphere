@@ -1,6 +1,6 @@
 <template>
   <div class="card-container">
-    <ms-table-header :tester-permission="true" :condition.sync="condition" @search="initTableData"
+    <ms-table-header :tester-permission="true" :condition.sync="condition" @search="search"
                      :show-create="false" :tip="$t('commons.search_by_name_or_id')">
       <template v-slot:button>
         <ms-table-button v-permission="['PROJECT_TRACK_REVIEW:READ+REVIEW']" icon="el-icon-video-play"
@@ -8,6 +8,7 @@
         <ms-table-button v-permission="['PROJECT_TRACK_REVIEW:READ+RELEVANCE_OR_CANCEL']" icon="el-icon-connection"
                          :content="$t('test_track.review_view.relevance_case')"
                          @click="$emit('openTestReviewRelevanceDialog')"/>
+
       </template>
     </ms-table-header>
 
@@ -15,7 +16,6 @@
                    @refresh="initTableData"/>
     <status-edit ref="statusEdit" :plan-id="reviewId"
                  :select-ids="new Set(Array.from(this.selectRows).map(row => row.id))" @refresh="initTableData"/>
-
     <ms-table
       v-loading="result.loading"
       :field-key="tableHeaderKey"
@@ -28,22 +28,43 @@
       :batch-operators="buttons"
       @handlePageChange="initTableData"
       @handleRowClick="showDetail"
+      row-key="id"
       :fields.sync="fields"
       :remember-order="true"
       :enable-order-drag="enableOrderDrag"
       :row-order-func="editTestReviewTestCaseOrder"
       :row-order-group-id="reviewId"
-      @refresh="initTableData"
+      @order="initTableData"
+      @filter="search"
       ref="table"
     >
       <span v-for="item in fields" :key="item.key">
         <ms-table-column
-          v-if="item.id === 'num'"
-          prop="customNum"
-          sortable="custom"
+          v-if="!customNum"
+          :field="item"
           :fields-width="fieldsWidth"
+          :column-key="'num'"
+          :prop="'num'"
+          sortable
           :label="$t('commons.id')"
-          min-width="120px"/>
+          min-width="80">
+          <template v-slot:default="scope">
+            {{ scope.row.num }}
+          </template>
+        </ms-table-column>
+
+        <ms-table-column
+          v-if="item.id === 'num' && customNum"
+          :fields-width="fieldsWidth"
+          :column-key="'customNum'"
+          :prop="'customNum'"
+          sortable
+          :label="$t('commons.id')"
+          min-width="80">
+          <template v-slot:default="scope">
+            {{ scope.row.customNum }}
+          </template>
+        </ms-table-column>
 
         <ms-table-column
           prop="name"
@@ -52,6 +73,19 @@
           :fields-width="fieldsWidth"
           :label="$t('commons.name')"
           min-width="120px"/>
+
+        <ms-table-column
+          v-if="versionEnable"
+          prop="versionId"
+          :field="item"
+          :filters="versionFilters"
+          :fields-width="fieldsWidth"
+          :label="$t('commons.version')"
+          min-width="120px">
+          <template v-slot:default="scope">
+            <span>{{ scope.row.versionName }}</span>
+          </template>
+        </ms-table-column>
 
         <ms-table-column
           prop="priority"
@@ -67,19 +101,7 @@
         </ms-table-column>
 
         <ms-table-column
-          prop="type"
-          :field="item"
-          :fields-width="fieldsWidth"
-          :filters="typeFilters"
-          min-width="120px"
-          :label="$t('test_track.case.type')">
-          <template v-slot:default="scope">
-            <type-table-item :value="scope.row.type"/>
-          </template>
-        </ms-table-column>
-
-        <ms-table-column
-          prop="maintainer"
+          prop="maintainerName"
           :field="item"
           :fields-width="fieldsWidth"
           :label="$t('custom_field.case_maintainer')"
@@ -106,19 +128,9 @@
           :label="$t('test_track.review.reviewer')"
           min-width="120px"/>
 
-        <ms-table-column
-          prop="reviewStatus"
+        <test-case-review-status-table-item
           :field="item"
-          :fields-width="fieldsWidth"
-          :filters="statusFilters"
-          min-width="120px"
-          :label="$t('test_track.review_view.execute_result')">
-            <template v-slot:default="scope">
-              <span class="el-dropdown-link">
-                <review-status :value="scope.row.reviewStatus"/>
-              </span>
-            </template>
-          </ms-table-column>
+          :fields-width="fieldsWidth"/>
 
         <ms-table-column
           sortable
@@ -135,15 +147,23 @@
 
     </ms-table>
 
-    <ms-table-pagination :change="search" :current-page.sync="currentPage" :page-size.sync="pageSize"
+    <ms-table-pagination :change="initTableData" :current-page.sync="currentPage" :page-size.sync="pageSize"
                          :total="total"/>
 
     <test-review-test-case-edit
       ref="testReviewTestCaseEdit"
       :search-param="condition"
-      @refresh="initTableData"
+      :page-num="currentPage"
+      :page-size="pageSize"
+      :next-page-data="nextPageData"
+      :pre-page-data="prePageData"
+      :test-cases="tableData"
       :is-read-only="isReadOnly"
-      @refreshTable="search"/>
+      :total="total"
+      @nextPage="nextPage"
+      @prePage="prePage"
+      @refresh="initTableData"
+      @refreshTable="initTableData"/>
 
 
     <batch-edit ref="batchEdit" @batchEdit="batchEdit"
@@ -173,8 +193,12 @@ import TestReviewTestCaseEdit from "./TestReviewTestCaseEdit";
 import ReviewStatus from "@/business/components/track/case/components/ReviewStatus";
 import {
   _handleSelectAll,
-  buildBatchParam, deepClone, getCustomTableWidth, getLastTableSortField,
-  getSelectDataCounts, getTableHeaderWithCustomFields,
+  buildBatchParam,
+  deepClone,
+  getCustomTableWidth,
+  getLastTableSortField,
+  getSelectDataCounts,
+  getTableHeaderWithCustomFields,
   initCondition,
   toggleAllSelection
 } from "@/common/js/tableUtils";
@@ -184,11 +208,14 @@ import HeaderLabelOperate from "@/business/components/common/head/HeaderLabelOpe
 import MsTableHeaderSelectPopover from "@/business/components/common/components/table/MsTableHeaderSelectPopover";
 import MsTableColumn from "@/business/components/common/components/table/MsTableColumn";
 import MsTable from "@/business/components/common/components/table/MsTable";
-import {editTestReviewTestCaseOrder} from "@/network/testCase";
+import {editTestReviewTestCaseOrder, getTestReviewTestCase} from "@/network/testCase";
+import {getCurrentProjectID, hasLicense} from "@/common/js/utils";
+import TestCaseReviewStatusTableItem from "@/business/components/track/common/tableItems/TestCaseReviewStatusTableItem";
 
 export default {
   name: "TestReviewTestCaseList",
   components: {
+    TestCaseReviewStatusTableItem,
     HeaderLabelOperate,
     HeaderCustom,
     MsTableOperatorButton, MsTableOperator, MethodTableItem, TypeTableItem,
@@ -204,14 +231,17 @@ export default {
       fields: [],
       fieldsWidth: getCustomTableWidth('TEST_CASE_REVIEW_FUNCTION_TEST_CASE'),
       headerItems: Test_Case_Review_Case_List,
-      screenHeight: 'calc(100vh - 280px)',
+      screenHeight: 'calc(100vh - 240px)',
       tableLabel: [],
       result: {},
       condition: {},
       tableData: [],
+      nextPageData: null,
+      prePageData: null,
       currentPage: 1,
       pageSize: 10,
       total: 0,
+      pageCount: 0,
       enableOrderDrag: true,
       selectRows: new Set(),
       testReview: {},
@@ -233,11 +263,6 @@ export default {
         {text: this.$t('commons.functional'), value: 'functional'},
         {text: this.$t('commons.performance'), value: 'performance'},
         {text: this.$t('commons.api'), value: 'api'}
-      ],
-      statusFilters: [
-        {text: this.$t('test_track.review.prepare'), value: 'Prepare'},
-        {text: this.$t('test_track.review.pass'), value: 'Pass'},
-        {text: this.$t('test_track.review.un_pass'), value: 'UnPass'},
       ],
       showMore: false,
       buttons: [
@@ -270,23 +295,39 @@ export default {
           {name: this.$t('test_track.review.un_pass'), id: 'UnPass'},
         ]
       },
+      versionFilters: []
     };
   },
   props: {
     reviewId: {
       type: String
     },
+    currentVersion: {
+      type: String
+    },
+    versionEnable: {
+      type: Boolean,
+      default: false
+    }
   },
   watch: {
     reviewId() {
+      this.$store.commit('setTestReviewSelectNodeIds', []);
       this.refreshTableAndReview();
     },
     selectNodeIds() {
-      this.search();
+      this.initTableData();
     },
     condition() {
       this.$emit('setCondition', this.condition);
     },
+    currentVersion() {
+      this.condition.versionId = this.currentVersion;
+      this.initTableData();
+    },
+    pageCount() {
+      this.currentPage = 1;
+    }
   },
   computed: {
     selectNodeIds() {
@@ -294,29 +335,47 @@ export default {
     },
     editTestReviewTestCaseOrder() {
       return editTestReviewTestCaseOrder;
-    }
+    },
+    customNum() {
+      return this.$store.state.currentProjectIsCustomNum;
+    },
+    projectId() {
+      return getCurrentProjectID();
+    },
   },
   created() {
     this.condition.orders = getLastTableSortField(this.tableHeaderKey);
+    this.pageCount = Math.ceil(this.total / this.pageSize);
   },
   mounted() {
     this.$emit('setCondition', this.condition);
     this.refreshTableAndReview();
     this.isTestManagerOrTestUser = true;
     this.initTableHeader();
+    this.getVersionOptions();
+    this.getProject();
   },
   methods: {
+    nextPage() {
+      this.currentPage++;
+      this.initTableData(() => {
+        this.$refs.testReviewTestCaseEdit.openTestCaseEdit(this.tableData[0], this.tableData);
+      });
+    },
+    prePage() {
+      this.currentPage--;
+      this.initTableData(() => {
+        this.$refs.testReviewTestCaseEdit.openTestCaseEdit(this.tableData[this.tableData.length - 1], this.tableData);
+      });
+    },
     initTableHeader() {
-      this.result.loading = true;
       this.fields = getTableHeaderWithCustomFields(this.tableHeaderKey, []);
-      this.result.loading = false;
-      this.$refs.table.reloadTable();
     },
     customHeader() {
       const list = deepClone(this.tableLabel);
       this.$refs.headerCustom.open(list);
     },
-    initTableData() {
+    initTableData(callback) {
       initCondition(this.condition, this.condition.selectAll);
       if (this.reviewId) {
         this.condition.reviewId = this.reviewId;
@@ -333,18 +392,46 @@ export default {
 
       this.condition.nodeIds = this.selectNodeIds;
       if (this.reviewId) {
-        this.result = this.$post(this.buildPagePath('/test/review/case/list'), this.condition, response => {
-          let data = response.data;
+        this.result = getTestReviewTestCase(this.currentPage, this.pageSize, this.condition, (data) => {
           this.total = data.itemCount;
+          this.pageCount = Math.ceil(this.total / this.pageSize);
           this.tableData = data.listObject;
-          this.tableClear();
+          this.getPreData();
+          if (callback && callback instanceof Function) {
+            callback();
+          }
+        });
+        this.getNexPageData();
+      }
+    },
+    getNexPageData() {
+      this.result = getTestReviewTestCase(this.currentPage * this.pageSize + 1, 1, this.condition, (data) => {
+        if (data.listObject && data.listObject.length > 0) {
+          this.nextPageData = {
+            name: data.listObject[0].name
+          }
+        } else {
+          this.nextPageData = null;
+        }
+      });
+    },
+    getPreData() {
+      // 如果不是第一页并且只有一条数据时，需要调用
+      if (this.currentPage > 1 && this.tableData.length === 1) {
+        this.result = getTestReviewTestCase((this.currentPage - 1) * this.pageSize, 1, this.condition, (data) => {
+          if (data.listObject && data.listObject.length > 0) {
+            this.prePageData = {
+              name: data.listObject[0].name
+            }
+          } else {
+            this.prePageData = null;
+          }
         });
       }
-
     },
     showDetail(row, event, column) {
       this.isReadOnly = true;
-      this.$refs.testReviewTestCaseEdit.openTestCaseEdit(row);
+      this.$refs.testReviewTestCaseEdit.openTestCaseEdit(row, this.tableData);
     },
     refresh() {
       this.condition = {components: TEST_CASE_CONFIGS};
@@ -359,17 +446,25 @@ export default {
       let param = {};
       param.id = this.reviewId;
       param.updateTime = Date.now();
-      // this.$post('/test/case/review/edit', param);
     },
     search() {
       this.initTableData();
+      this.$emit('search');
+    },
+    getProject() {
+      this.$get('/project_application/get/config/' + this.projectId + "/CASE_CUSTOM_NUM", result => {
+        let data = result.data;
+        if (data) {
+          this.$store.commit('setCurrentProjectIsCustomNum', data.caseCustomNum);
+        }
+      });
     },
     buildPagePath(path) {
       return path + "/" + this.currentPage + "/" + this.pageSize;
     },
     handleEdit(testCase, index) {
       this.isReadOnly = false;
-      this.$refs.testReviewTestCaseEdit.openTestCaseEdit(testCase);
+      this.$refs.testReviewTestCaseEdit.openTestCaseEdit(testCase, this.tableData);
     },
     handleDelete(testCase) {
       this.$alert(this.$t('test_track.plan_view.confirm_cancel_relevance') + ' ' + testCase.name + " ？", '', {
@@ -406,7 +501,7 @@ export default {
       });
     },
     handleEditBatch() {
-      this.$refs.batchEdit.open(this.$refs.table.selectRows.size);
+      this.$refs.batchEdit.open(this.condition.selectAll ? this.total : this.$refs.table.selectRows.size);
     },
     batchEdit(form) {
       let reviewId = this.reviewId;
@@ -436,7 +531,7 @@ export default {
     startReview() {
       if (this.tableData.length !== 0) {
         this.isReadOnly = false;
-        this.$refs.testReviewTestCaseEdit.openTestCaseEdit(this.tableData[0]);
+        this.$refs.testReviewTestCaseEdit.openTestCaseEdit(this.tableData[0], this.tableData);
       } else {
         this.$warning(this.$t('test_track.review.no_link_case'));
       }
@@ -456,7 +551,16 @@ export default {
       if (this.$refs.table) {
         this.$refs.table.clear();
       }
-    }
+    },
+    getVersionOptions() {
+      if (hasLicense()) {
+        this.$get('/project/version/get-project-versions/' + getCurrentProjectID(), response => {
+          this.versionFilters = response.data.map(u => {
+            return {text: u.name, value: u.id};
+          });
+        });
+      }
+    },
   }
 };
 </script>
@@ -471,5 +575,6 @@ export default {
 .ms-table-header {
   margin-bottom: 10px;
 }
+
 </style>
 

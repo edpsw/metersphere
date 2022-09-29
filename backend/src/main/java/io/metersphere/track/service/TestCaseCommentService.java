@@ -4,36 +4,35 @@ import com.alibaba.fastjson.JSON;
 import io.metersphere.base.domain.*;
 import io.metersphere.base.mapper.TestCaseCommentMapper;
 import io.metersphere.base.mapper.TestCaseMapper;
-import io.metersphere.base.mapper.TestCaseReviewMapper;
 import io.metersphere.base.mapper.UserMapper;
 import io.metersphere.base.mapper.ext.ExtTestCaseCommentMapper;
-import io.metersphere.commons.constants.NoticeConstants;
+import io.metersphere.commons.constants.*;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.SessionUtils;
-import io.metersphere.dto.BaseSystemConfigDTO;
 import io.metersphere.i18n.Translator;
+import io.metersphere.log.annotation.MsAuditLog;
 import io.metersphere.log.utils.ReflexObjectUtil;
 import io.metersphere.log.vo.DetailColumn;
 import io.metersphere.log.vo.OperatingLogDetails;
 import io.metersphere.log.vo.track.TestCaseReviewReference;
-import io.metersphere.notice.sender.NoticeModel;
-import io.metersphere.notice.service.NoticeSendService;
-import io.metersphere.service.SystemParameterService;
+import io.metersphere.notice.annotation.SendNotice;
 import io.metersphere.track.dto.TestCaseCommentDTO;
 import io.metersphere.track.request.testreview.SaveCommentRequest;
+import io.metersphere.track.request.testreview.TestCaseReviewTestCaseEditRequest;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.Date;
+import java.util.List;
+import java.util.UUID;
 
 @Service
 @Transactional(rollbackFor = Exception.class)
 public class TestCaseCommentService {
-    @Resource
-    TestCaseReviewMapper testCaseReviewMapper;
     @Resource
     private TestCaseCommentMapper testCaseCommentMapper;
     @Resource
@@ -42,50 +41,43 @@ public class TestCaseCommentService {
     private ExtTestCaseCommentMapper extTestCaseCommentMapper;
     @Resource
     private UserMapper userMapper;
-    @Resource
-    private NoticeSendService noticeSendService;
-    @Resource
-    private SystemParameterService systemParameterService;
 
     public TestCaseComment saveComment(SaveCommentRequest request) {
-        TestCaseComment testCaseComment = new TestCaseComment();
-        testCaseComment.setId(request.getId());
-        testCaseComment.setAuthor(SessionUtils.getUser().getId());
-        testCaseComment.setCaseId(request.getCaseId());
-        testCaseComment.setCreateTime(System.currentTimeMillis());
-        testCaseComment.setUpdateTime(System.currentTimeMillis());
-        testCaseComment.setDescription(request.getDescription());
-        testCaseComment.setStatus(request.getStatus());
-        testCaseCommentMapper.insert(testCaseComment);
-//        TestCaseWithBLOBs testCaseWithBLOBs;
-//        testCaseWithBLOBs = testCaseMapper.selectByPrimaryKey(request.getCaseId());
-//
-//        // 发送通知
-//        User user = userMapper.selectByPrimaryKey(testCaseComment.getAuthor());
-//        BaseSystemConfigDTO baseSystemConfigDTO = systemParameterService.getBaseInfo();
-//        List<String> userIds = new ArrayList<>();
-//        userIds.add(testCaseWithBLOBs.getMaintainer());//用例维护人
-//        String context = getReviewContext(testCaseComment, testCaseWithBLOBs);
-//        Map<String, Object> paramMap = new HashMap<>();
-//        paramMap.put("maintainer", user.getName());
-//        paramMap.put("testCaseName", testCaseWithBLOBs.getName());
-//        paramMap.put("description", request.getDescription());
-//        paramMap.put("url", baseSystemConfigDTO.getUrl());
-//        paramMap.put("id", request.getReviewId());
-//        NoticeModel noticeModel = NoticeModel.builder()
-//                .context(context)
-//                .relatedUsers(userIds)
-//                .subject(Translator.get("test_review_task_notice"))
-//                .mailTemplate("ReviewComments")
-//                .paramMap(paramMap)
-//                .event(NoticeConstants.Event.COMMENT)
-//                .build();
-//        noticeSendService.send(NoticeConstants.TaskType.REVIEW_TASK, noticeModel);
-        return testCaseComment;
+        request.setId(UUID.randomUUID().toString());
+        request.setAuthor(SessionUtils.getUser().getId());
+        request.setCreateTime(System.currentTimeMillis());
+        request.setUpdateTime(System.currentTimeMillis());
+        if (StringUtils.isBlank(request.getType())) {
+            request.setType(TestCaseCommentType.CASE.name());
+        }
+        testCaseCommentMapper.insert(request);
+        return request;
+    }
+
+    /**
+     * 放 TestReviewTestCaseService 通知等会失效
+     * 需要走 Spring 的代理对象
+     * @param request
+     */
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_REVIEW_READ_COMMENT)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE_REVIEW, type = OperLogConstants.CREATE, content = "#msClass.getLogDetails(#request.id)", msClass = TestCaseCommentService.class)
+    @SendNotice(taskType = NoticeConstants.TaskType.REVIEW_TASK, target = "#targetClass.getTestReview(#request.reviewId)", targetClass = TestCaseReviewService.class,
+            event = NoticeConstants.Event.COMMENT, subject = "测试评审通知")
+    public void saveComment(TestCaseReviewTestCaseEditRequest request) {
+        SaveCommentRequest saveCommentRequest = new SaveCommentRequest();
+        saveCommentRequest.setCaseId(request.getCaseId());
+        saveCommentRequest.setDescription(request.getComment());
+        saveCommentRequest.setStatus(request.getStatus());
+        saveCommentRequest.setType(TestCaseCommentType.REVIEW.name());
+        saveComment(saveCommentRequest);
+    }
+
+    public List<TestCaseCommentDTO> getCaseComments(String caseId, String type) {
+        return extTestCaseCommentMapper.getCaseComments(caseId, type);
     }
 
     public List<TestCaseCommentDTO> getCaseComments(String caseId) {
-        return extTestCaseCommentMapper.getCaseComments(caseId);
+        return this.getCaseComments(caseId, null);
     }
 
     public void deleteCaseComment(String caseId) {
@@ -121,6 +113,9 @@ public class TestCaseCommentService {
 
     private void checkCommentOwner(String commentId) {
         TestCaseComment comment = testCaseCommentMapper.selectByPrimaryKey(commentId);
+        if (comment == null) {
+            MSException.throwException(Translator.get("resource_not_exist"));
+        }
         if (!StringUtils.equals(comment.getAuthor(), SessionUtils.getUser().getId())) {
             MSException.throwException(Translator.get("check_owner_comment"));
         }

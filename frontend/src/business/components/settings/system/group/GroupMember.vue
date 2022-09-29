@@ -2,11 +2,10 @@
   <div>
     <el-dialog :close-on-click-modal="false" :visible.sync="visible" width="65%" top="15vh"
                :destroy-on-close="true" @close="close" v-loading="result.loading"
-               class="group-member"
-    >
+               class="group-member">
       <template v-slot:title>
         <ms-table-header :condition.sync="condition" @create="addMemberBtn" @search="search"
-                         :create-tip="$t('member.create')" :title="$t('commons.member')"/>
+                         :create-permission="createPermission" :create-tip="$t('member.create')" :title="$t('commons.member')"/>
       </template>
       <el-table :border="true" class="adjust-table" :data="memberData" style="width: 100%;margin-top:5px;">
         <el-table-column prop="id" label="ID"/>
@@ -22,16 +21,14 @@
             <el-popover
               placement="top"
               width="250"
-              trigger="click"
-            >
+              trigger="click">
               <div v-loading="sourceResult.loading" style="height: 150px;overflow: auto;">
                 <el-tag
                   v-for="item in groupSource"
                   :key="item.id"
                   :type="item.name"
                   size="small"
-                  style="margin-left: 5px;margin-top: 5px;"
-                >
+                  style="margin-left: 5px;margin-top: 5px;">
                   {{ item.name }}
                 </el-tag>
               </div>
@@ -44,6 +41,8 @@
             <div>
               <ms-table-operator :tip2="$t('commons.remove')"
                                  :show-edit="showTypeLabel"
+                                 :delete-permission="deletePermission"
+                                 :edit-permission="editPermission"
                                  @editClick="editMemberBtn(scope.row)"
                                  @deleteClick="removeMember(scope.row)"/>
             </div>
@@ -64,7 +63,7 @@
             multiple
             filterable
             :popper-append-to-body="false"
-            style="width: 100%"
+            class="member_select"
             :disabled="userSelectDisable"
             :placeholder="$t('member.please_choose_member')">
             <el-option
@@ -73,15 +72,14 @@
               :label="item.id"
               :value="item.id">
               <template>
-                <span class="user-select-left">{{ item.name }} ({{ item.id }})</span>
-                <span class="user-select-right">{{ item.email }}</span>
+                <user-option-item :user="item"/>
               </template>
             </el-option>
           </el-select>
         </el-form-item>
         <el-form-item :label="typeLabel" v-if="showTypeLabel" prop="sourceIds">
-          <el-select v-model="form.sourceIds" :placeholder="typeLabel" style="width: 100%;" clearable multiple
-                     filterable>
+          <el-select v-model="form.sourceIds" :placeholder="typeLabel" class="other_source_select"
+                     clearable multiple filterable>
             <el-option v-for="item in sourceData" :key="item.id" :label="item.name" :value="item.id"/>
           </el-select>
         </el-form-item>
@@ -103,10 +101,13 @@ import MsTableHeader from "@/business/components/common/components/MsTableHeader
 import MsTablePagination from "@/business/components/common/pagination/TablePagination";
 import {GROUP_PROJECT, GROUP_SYSTEM, GROUP_WORKSPACE} from "@/common/js/constants";
 import MsTableOperator from "@/business/components/common/components/MsTableOperator";
+import UserOptionItem from "@/business/components/settings/common/UserOptionItem";
+import {getCurrentProjectID, getCurrentUserId, operationConfirm} from "@/common/js/utils";
 
 export default {
   name: "GroupMember",
   components: {
+    UserOptionItem,
     MsTableHeader,
     MsTablePagination,
     MsTableOperator
@@ -127,15 +128,41 @@ export default {
       groupSource: [],
       sourceData: [],
       users: [],
+      currentProject: {
+        id: "",
+        name: ""
+      },
       form: {},
       title: '',
       submitType: '',
       userSelectDisable: false,
+      initUserGroupUrl: "/user/group/user/",
+      initUserUrl: "/user/list/",
       rules: {
         userIds: {required: true, message: this.$t('member.please_choose_member'), trigger: 'blur'},
         sourceIds: {required: true, message: this.$t('group.select_belong_source'), trigger: 'blur'}
       }
-    }
+    };
+  },
+  props: {
+    editPermission: {
+      type: Array,
+      default() {
+        return [];
+      }
+    },
+    deletePermission: {
+      type: Array,
+      default() {
+        return [];
+      }
+    },
+    createPermission: {
+      type: Array,
+      default() {
+        return []
+      }
+    },
   },
   computed: {
     typeLabel() {
@@ -155,16 +182,23 @@ export default {
   methods: {
     init() {
       this.condition.userGroupId = this.group.id;
-      this.result = this.$post("/user/group/user/" + this.currentPage + "/" + this.pageSize, this.condition, res => {
+      this.result = this.$post(this.initUserGroupUrl + this.currentPage + "/" + this.pageSize, this.condition, res => {
         let data = res.data;
         if (data) {
           let {itemCount, listObject} = data;
           this.total = itemCount;
           this.memberData = listObject;
         }
-      })
+      });
+      if (getCurrentProjectID()) {
+        this.$get("/project/get/" + getCurrentProjectID(), res => {
+          this.currentProject = res.data;
+        });
+      }
     },
-    open(group) {
+    open(group, initUserGroupUrl, initUserUrl) {
+      this.initUserGroupUrl = initUserGroupUrl ? initUserGroupUrl : "/user/group/user/";
+      this.initUserUrl = initUserUrl ? initUserUrl : "/user/list/";
       this.visible = true;
       this.group = group;
       this.init();
@@ -196,7 +230,7 @@ export default {
         let sourceIds = data.map(d => d.id);
         this.$set(this.form, 'userIds', userIds);
         this.$set(this.form, 'sourceIds', sourceIds);
-      })
+      });
     },
     editMember() {
       this.form.groupId = this.group.id;
@@ -210,32 +244,32 @@ export default {
         } else {
           return false;
         }
-      })
+      });
     },
     getUser() {
-      this.memberResult = this.$get('/user/list/', response => {
+      this.memberResult = this.$get(this.initUserUrl, response => {
         this.users = response.data;
-      })
+      });
     },
     removeMember(row) {
-      this.$confirm(this.$t('member.remove_member').toString(), '', {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
+      operationConfirm(this.$t('member.remove_member'), () => {
+        if (this.initUserUrl === 'user/ws/current/member/list') {
+          if (row.id === getCurrentUserId()) {
+            this.$warning(this.$t('group.unable_to_remove_current_member'));
+            return;
+          }
+        }
         this.result = this.$get('/user/group/rm/' + row.id + '/' + this.group.id, () => {
           this.$success(this.$t('commons.remove_success'));
           this.init();
         });
-      }).catch(() => {
-        this.$info(this.$t('commons.remove_cancel'));
       });
     },
     getGroupSource(row) {
       this.groupSource = [];
       this.sourceResult = this.$get('/user/group/source/' + row.id + "/" + this.group.id, res => {
         this.groupSource = res.data;
-      })
+      });
     },
     addMember() {
       if (this.submitType === 'ADD') {
@@ -256,7 +290,7 @@ export default {
         } else {
           return false;
         }
-      })
+      });
     },
     getResource() {
       this.memberResult = this.$get('/workspace/list/resource/' + this.group.id + "/" + this.group.type, res => {
@@ -264,7 +298,7 @@ export default {
         if (data) {
           this._setResource(this.group.type, data);
         }
-      })
+      });
     },
     _setResource(type, data) {
       switch (type) {
@@ -272,7 +306,15 @@ export default {
           this.sourceData = data.workspaces;
           break;
         case GROUP_PROJECT:
-          this.sourceData = data.projects;
+          if (this.initUserUrl === 'user/ws/current/member/list') {
+            if (!this.currentProject.id) {
+              this.currentProject.id = sessionStorage.getItem("project_id");
+              this.currentProject.name = sessionStorage.getItem("project_name");
+            }
+            this.sourceData = [this.currentProject];
+          } else {
+            this.sourceData = data.projects;
+          }
           break;
         default:
       }
@@ -283,22 +325,15 @@ export default {
       this.userSelectDisable = false;
     }
   }
-}
+};
 </script>
 
 <style scoped>
-/*.group-member >>> .el-dialog__header {*/
-/*  padding: 0;*/
-/*}*/
-
-.user-select-left {
-  float: left;
+.member_select, .other_source_select {
+  display: block;
 }
 
-.user-select-right {
-  float: right;
-  margin-right: 18px;
-  color: #8492a6;
-  font-size: 13px;
+.group-member >>> .el-dialog__body {
+  padding-top: 0;
 }
 </style>

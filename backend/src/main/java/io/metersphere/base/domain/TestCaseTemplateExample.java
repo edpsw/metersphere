@@ -574,146 +574,6 @@ public class TestCaseTemplateExample {
             return (Criteria) this;
         }
 
-        public Criteria andWorkspaceIdIsNull() {
-            addCriterion("workspace_id is null");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdIsNotNull() {
-            addCriterion("workspace_id is not null");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdEqualTo(String value) {
-            addCriterion("workspace_id =", value, "workspaceId");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdNotEqualTo(String value) {
-            addCriterion("workspace_id <>", value, "workspaceId");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdGreaterThan(String value) {
-            addCriterion("workspace_id >", value, "workspaceId");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdGreaterThanOrEqualTo(String value) {
-            addCriterion("workspace_id >=", value, "workspaceId");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdLessThan(String value) {
-            addCriterion("workspace_id <", value, "workspaceId");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdLessThanOrEqualTo(String value) {
-            addCriterion("workspace_id <=", value, "workspaceId");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdLike(String value) {
-            addCriterion("workspace_id like", value, "workspaceId");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdNotLike(String value) {
-            addCriterion("workspace_id not like", value, "workspaceId");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdIn(List<String> values) {
-            addCriterion("workspace_id in", values, "workspaceId");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdNotIn(List<String> values) {
-            addCriterion("workspace_id not in", values, "workspaceId");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdBetween(String value1, String value2) {
-            addCriterion("workspace_id between", value1, value2, "workspaceId");
-            return (Criteria) this;
-        }
-
-        public Criteria andWorkspaceIdNotBetween(String value1, String value2) {
-            addCriterion("workspace_id not between", value1, value2, "workspaceId");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteIsNull() {
-            addCriterion("prerequisite is null");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteIsNotNull() {
-            addCriterion("prerequisite is not null");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteEqualTo(String value) {
-            addCriterion("prerequisite =", value, "prerequisite");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteNotEqualTo(String value) {
-            addCriterion("prerequisite <>", value, "prerequisite");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteGreaterThan(String value) {
-            addCriterion("prerequisite >", value, "prerequisite");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteGreaterThanOrEqualTo(String value) {
-            addCriterion("prerequisite >=", value, "prerequisite");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteLessThan(String value) {
-            addCriterion("prerequisite <", value, "prerequisite");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteLessThanOrEqualTo(String value) {
-            addCriterion("prerequisite <=", value, "prerequisite");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteLike(String value) {
-            addCriterion("prerequisite like", value, "prerequisite");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteNotLike(String value) {
-            addCriterion("prerequisite not like", value, "prerequisite");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteIn(List<String> values) {
-            addCriterion("prerequisite in", values, "prerequisite");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteNotIn(List<String> values) {
-            addCriterion("prerequisite not in", values, "prerequisite");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteBetween(String value1, String value2) {
-            addCriterion("prerequisite between", value1, value2, "prerequisite");
-            return (Criteria) this;
-        }
-
-        public Criteria andPrerequisiteNotBetween(String value1, String value2) {
-            addCriterion("prerequisite not between", value1, value2, "prerequisite");
-            return (Criteria) this;
-        }
-
         public Criteria andCreateTimeIsNull() {
             addCriterion("create_time is null");
             return (Criteria) this;
@@ -971,6 +831,76 @@ public class TestCaseTemplateExample {
 
         public Criteria andCreateUserNotBetween(String value1, String value2) {
             addCriterion("create_user not between", value1, value2, "createUser");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdIsNull() {
+            addCriterion("project_id is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdIsNotNull() {
+            addCriterion("project_id is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdEqualTo(String value) {
+            addCriterion("project_id =", value, "projectId");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdNotEqualTo(String value) {
+            addCriterion("project_id <>", value, "projectId");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdGreaterThan(String value) {
+            addCriterion("project_id >", value, "projectId");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdGreaterThanOrEqualTo(String value) {
+            addCriterion("project_id >=", value, "projectId");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdLessThan(String value) {
+            addCriterion("project_id <", value, "projectId");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdLessThanOrEqualTo(String value) {
+            addCriterion("project_id <=", value, "projectId");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdLike(String value) {
+            addCriterion("project_id like", value, "projectId");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdNotLike(String value) {
+            addCriterion("project_id not like", value, "projectId");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdIn(List<String> values) {
+            addCriterion("project_id in", values, "projectId");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdNotIn(List<String> values) {
+            addCriterion("project_id not in", values, "projectId");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdBetween(String value1, String value2) {
+            addCriterion("project_id between", value1, value2, "projectId");
+            return (Criteria) this;
+        }
+
+        public Criteria andProjectIdNotBetween(String value1, String value2) {
+            addCriterion("project_id not between", value1, value2, "projectId");
             return (Criteria) this;
         }
     }

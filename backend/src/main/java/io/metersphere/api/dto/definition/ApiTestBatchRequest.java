@@ -44,4 +44,18 @@ public class ApiTestBatchRequest extends ApiTestCaseWithBLOBs {
 
     private String envId;
 
+    /**
+     * 批量编辑标签
+     */
+    private List<String> tagList;
+    private String type;
+    /**
+     * 默认覆盖原标签
+     */
+    private boolean appendTag = false;
+
+    /**
+     * 关注
+     */
+    private String follow;
 }

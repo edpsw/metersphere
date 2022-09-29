@@ -1,6 +1,7 @@
 package io.metersphere.api.parse;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import io.metersphere.api.dto.ApiTestImportRequest;
 import io.metersphere.api.dto.definition.request.MsScenario;
 import io.metersphere.api.dto.definition.request.sampler.MsHTTPSamplerProxy;
@@ -75,7 +76,7 @@ public abstract class ApiImportAbstractParser<T> implements ApiImportParser<T> {
                 bodyType = Body.FORM_DATA;
                 break;
             case "application/json":
-                bodyType = Body.JSON;
+                bodyType = Body.JSON_STR;
                 break;
             case "application/xml":
                 bodyType = Body.XML;
@@ -96,7 +97,7 @@ public abstract class ApiImportAbstractParser<T> implements ApiImportParser<T> {
                 case Body.WWW_FROM:
                     contentType = "application/x-www-form-urlencoded";
                     break;
-                case Body.JSON:
+                case Body.JSON_STR:
                     contentType = "application/json";
                     break;
                 case Body.XML:
@@ -135,7 +136,7 @@ public abstract class ApiImportAbstractParser<T> implements ApiImportParser<T> {
         return apiDefinition;
     }
 
-    private String formatPath(String url) {
+    public String formatPath(String url) {
         try {
             URL urlObject = new URL(url);
             String path = StringUtils.isBlank(urlObject.getPath()) ? "/" : urlObject.getPath();
@@ -164,6 +165,15 @@ public abstract class ApiImportAbstractParser<T> implements ApiImportParser<T> {
         body.initKvs();
         body.initBinary();
         request.setBody(body);
+        return request;
+    }
+
+    protected MsHTTPSamplerProxy buildRequest(String name, String path, String method, String jsonSchema) {
+        MsHTTPSamplerProxy request = buildRequest(name, path, method);
+        if (StringUtils.isNotBlank(jsonSchema)) {
+            request.getBody().setJsonSchema(JSONObject.parseObject(jsonSchema));
+            request.getBody().setFormat("JSON-SCHEMA");
+        }
         return request;
     }
 

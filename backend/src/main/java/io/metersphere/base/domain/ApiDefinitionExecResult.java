@@ -27,7 +27,17 @@ public class ApiDefinitionExecResult implements Serializable {
 
     private String triggerMode;
 
-    private String content;
+    private String errorCode;
+
+    private String versionId;
+
+    private String projectId;
+
+    private String integratedReportId;
+
+    private String reportType;
+
+    private String relevanceTestPlanReportId;
 
     private static final long serialVersionUID = 1L;
 }

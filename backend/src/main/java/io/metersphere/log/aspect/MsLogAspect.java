@@ -4,7 +4,6 @@ import com.alibaba.fastjson.JSON;
 import io.metersphere.base.domain.OperatingLogWithBLOBs;
 import io.metersphere.commons.utils.LogUtil;
 import io.metersphere.commons.utils.SessionUtils;
-import io.metersphere.i18n.Translator;
 import io.metersphere.log.annotation.MsAuditLog;
 import io.metersphere.log.service.OperatingLogService;
 import io.metersphere.log.utils.ReflexObjectUtil;
@@ -31,12 +30,8 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -60,6 +55,9 @@ public class MsLogAspect {
     @Resource
     private OperatingLogService operatingLogService;
 
+    private ThreadLocal<String> beforeValue = new ThreadLocal<>();
+    private ThreadLocal<String> operUser = new ThreadLocal<>();
+
     /**
      * 定义切点 @Pointcut 在注解的位置切入代码
      */
@@ -78,7 +76,6 @@ public class MsLogAspect {
             Object[] args = joinPoint.getArgs();
             MsAuditLog msLog = method.getAnnotation(MsAuditLog.class);
             if (msLog != null && StringUtils.isNotEmpty(msLog.beforeEvent())) {
-                // 操作内容
                 //获取方法参数名
                 String[] params = discoverer.getParameterNames(method);
                 //将参数纳入Spring管理
@@ -86,14 +83,10 @@ public class MsLogAspect {
                 for (int len = 0; len < params.length; len++) {
                     context.setVariable(params[len], args[len]);
                 }
-                InvocationHandler invocationHandler = Proxy.getInvocationHandler(msLog);
-                Field value = invocationHandler.getClass().getDeclaredField("memberValues");
-                value.setAccessible(true);
                 boolean isNext = false;
                 for (Class clazz : msLog.msClass()) {
                     if (clazz.getName().equals("io.metersphere.commons.utils.SessionUtils")) {
-                        Map<String, Object> memberValues = (Map<String, Object>) value.get(invocationHandler);
-                        memberValues.put("operUser", SessionUtils.getUserId());
+                        operUser.set(SessionUtils.getUserId());
                         continue;
                     }
                     context.setVariable("msClass", applicationContext.getBean(clazz));
@@ -102,12 +95,11 @@ public class MsLogAspect {
                 if (isNext) {
                     Expression expression = parser.parseExpression(msLog.beforeEvent());
                     String beforeContent = expression.getValue(context, String.class);
-                    Map<String, Object> memberValues = (Map<String, Object>) value.get(invocationHandler);
-                    memberValues.put("beforeValue", beforeContent);
+                    beforeValue.set(beforeContent);
                 }
             }
         } catch (Exception e) {
-            LogUtil.error(e);
+            LogUtil.error("操作日志写入异常：" + joinPoint.getSignature());
         }
     }
 
@@ -137,7 +129,7 @@ public class MsLogAspect {
                 // 项目ID
                 msOperLog.setProjectId(msLog.project());
 
-                String module = Translator.get(msLog.module());
+                String module = msLog.module();
                 msOperLog.setOperModule(StringUtils.isNotEmpty(module) ? module : msLog.module());
                 //获取方法参数名
                 String[] params = discoverer.getParameterNames(method);
@@ -184,6 +176,7 @@ public class MsLogAspect {
                 }
 
                 // 操作内容
+                String beforeValue = this.beforeValue.get();
                 if (StringUtils.isNotEmpty(msLog.content())) {
                     Expression expression = parser.parseExpression(msLog.content());
                     String content = expression.getValue(context, String.class);
@@ -199,9 +192,9 @@ public class MsLogAspect {
                             msOperLog.setSourceId(details.getSourceId());
                             msOperLog.setCreateUser(details.getCreateUser());
                         }
-                        if (StringUtils.isNotEmpty(content) && StringUtils.isNotEmpty(msLog.beforeValue())) {
+                        if (StringUtils.isNotEmpty(content) && StringUtils.isNotEmpty(beforeValue)) {
                             OperatingLogDetails details = JSON.parseObject(content, OperatingLogDetails.class);
-                            List<DetailColumn> columns = ReflexObjectUtil.compared(JSON.parseObject(msLog.beforeValue(), OperatingLogDetails.class), details,msLog.module());
+                            List<DetailColumn> columns = ReflexObjectUtil.compared(JSON.parseObject(beforeValue, OperatingLogDetails.class), details, msLog.module());
                             details.setColumns(columns);
                             msOperLog.setOperContent(JSON.toJSONString(details));
                             msOperLog.setSourceId(details.getSourceId());
@@ -214,9 +207,9 @@ public class MsLogAspect {
                     }
                 }
                 // 只有前置操作的处理/如 删除操作
-                if (StringUtils.isNotEmpty(msLog.beforeEvent()) && StringUtils.isNotEmpty(msLog.beforeValue()) && StringUtils.isEmpty(msLog.content())) {
-                    msOperLog.setOperContent(msLog.beforeValue());
-                    OperatingLogDetails details = JSON.parseObject(msLog.beforeValue(), OperatingLogDetails.class);
+                if (StringUtils.isNotEmpty(msLog.beforeEvent()) && StringUtils.isNotEmpty(beforeValue) && StringUtils.isEmpty(msLog.content())) {
+                    msOperLog.setOperContent(beforeValue);
+                    OperatingLogDetails details = JSON.parseObject(beforeValue, OperatingLogDetails.class);
                     if (StringUtils.isEmpty(msLog.title())) {
                         msOperLog.setOperTitle(details.getTitle());
                     }
@@ -235,8 +228,8 @@ public class MsLogAspect {
 
                 msOperLog.setOperTime(System.currentTimeMillis());
                 //获取用户名
-                if (StringUtils.isNotEmpty(msLog.operUser())) {
-                    msOperLog.setOperUser(msLog.operUser());
+                if (StringUtils.isNotEmpty(operUser.get())) {
+                    msOperLog.setOperUser(operUser.get());
                 } else {
                     msOperLog.setOperUser(SessionUtils.getUserId());
                 }
@@ -256,17 +249,17 @@ public class MsLogAspect {
                 }
 
                 String path = request.getServletPath();
-                if (StringUtils.isNotEmpty(msOperLog.getSourceId()) && msOperLog.getSourceId().length() > 6000) {
-                    msOperLog.setSourceId(msOperLog.getSourceId().substring(0, 5999));
-                }
                 if (StringUtils.isNotEmpty(msOperLog.getOperTitle()) && msOperLog.getOperTitle().length() > 6000) {
                     msOperLog.setOperTitle(msOperLog.getOperTitle().substring(0, 5999));
                 }
                 msOperLog.setOperPath(path);
-                operatingLogService.create(msOperLog);
+                operatingLogService.create(msOperLog, msOperLog.getSourceId());
             }
         } catch (Exception e) {
-            LogUtil.error(e);
+            LogUtil.error("操作日志写入异常：" + joinPoint.getSignature());
+        } finally {
+            operUser.remove();
+            beforeValue.remove();
         }
     }
 }

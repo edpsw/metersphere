@@ -784,66 +784,6 @@ public class ProjectExample {
             return (Criteria) this;
         }
 
-        public Criteria andRepeatableIsNull() {
-            addCriterion("`repeatable` is null");
-            return (Criteria) this;
-        }
-
-        public Criteria andRepeatableIsNotNull() {
-            addCriterion("`repeatable` is not null");
-            return (Criteria) this;
-        }
-
-        public Criteria andRepeatableEqualTo(Boolean value) {
-            addCriterion("`repeatable` =", value, "repeatable");
-            return (Criteria) this;
-        }
-
-        public Criteria andRepeatableNotEqualTo(Boolean value) {
-            addCriterion("`repeatable` <>", value, "repeatable");
-            return (Criteria) this;
-        }
-
-        public Criteria andRepeatableGreaterThan(Boolean value) {
-            addCriterion("`repeatable` >", value, "repeatable");
-            return (Criteria) this;
-        }
-
-        public Criteria andRepeatableGreaterThanOrEqualTo(Boolean value) {
-            addCriterion("`repeatable` >=", value, "repeatable");
-            return (Criteria) this;
-        }
-
-        public Criteria andRepeatableLessThan(Boolean value) {
-            addCriterion("`repeatable` <", value, "repeatable");
-            return (Criteria) this;
-        }
-
-        public Criteria andRepeatableLessThanOrEqualTo(Boolean value) {
-            addCriterion("`repeatable` <=", value, "repeatable");
-            return (Criteria) this;
-        }
-
-        public Criteria andRepeatableIn(List<Boolean> values) {
-            addCriterion("`repeatable` in", values, "repeatable");
-            return (Criteria) this;
-        }
-
-        public Criteria andRepeatableNotIn(List<Boolean> values) {
-            addCriterion("`repeatable` not in", values, "repeatable");
-            return (Criteria) this;
-        }
-
-        public Criteria andRepeatableBetween(Boolean value1, Boolean value2) {
-            addCriterion("`repeatable` between", value1, value2, "repeatable");
-            return (Criteria) this;
-        }
-
-        public Criteria andRepeatableNotBetween(Boolean value1, Boolean value2) {
-            addCriterion("`repeatable` not between", value1, value2, "repeatable");
-            return (Criteria) this;
-        }
-
         public Criteria andCaseTemplateIdIsNull() {
             addCriterion("case_template_id is null");
             return (Criteria) this;
@@ -981,126 +921,6 @@ public class ProjectExample {
 
         public Criteria andIssueTemplateIdNotBetween(String value1, String value2) {
             addCriterion("issue_template_id not between", value1, value2, "issueTemplateId");
-            return (Criteria) this;
-        }
-
-        public Criteria andCustomNumIsNull() {
-            addCriterion("custom_num is null");
-            return (Criteria) this;
-        }
-
-        public Criteria andCustomNumIsNotNull() {
-            addCriterion("custom_num is not null");
-            return (Criteria) this;
-        }
-
-        public Criteria andCustomNumEqualTo(Boolean value) {
-            addCriterion("custom_num =", value, "customNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andCustomNumNotEqualTo(Boolean value) {
-            addCriterion("custom_num <>", value, "customNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andCustomNumGreaterThan(Boolean value) {
-            addCriterion("custom_num >", value, "customNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andCustomNumGreaterThanOrEqualTo(Boolean value) {
-            addCriterion("custom_num >=", value, "customNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andCustomNumLessThan(Boolean value) {
-            addCriterion("custom_num <", value, "customNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andCustomNumLessThanOrEqualTo(Boolean value) {
-            addCriterion("custom_num <=", value, "customNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andCustomNumIn(List<Boolean> values) {
-            addCriterion("custom_num in", values, "customNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andCustomNumNotIn(List<Boolean> values) {
-            addCriterion("custom_num not in", values, "customNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andCustomNumBetween(Boolean value1, Boolean value2) {
-            addCriterion("custom_num between", value1, value2, "customNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andCustomNumNotBetween(Boolean value1, Boolean value2) {
-            addCriterion("custom_num not between", value1, value2, "customNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andScenarioCustomNumIsNull() {
-            addCriterion("scenario_custom_num is null");
-            return (Criteria) this;
-        }
-
-        public Criteria andScenarioCustomNumIsNotNull() {
-            addCriterion("scenario_custom_num is not null");
-            return (Criteria) this;
-        }
-
-        public Criteria andScenarioCustomNumEqualTo(Boolean value) {
-            addCriterion("scenario_custom_num =", value, "scenarioCustomNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andScenarioCustomNumNotEqualTo(Boolean value) {
-            addCriterion("scenario_custom_num <>", value, "scenarioCustomNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andScenarioCustomNumGreaterThan(Boolean value) {
-            addCriterion("scenario_custom_num >", value, "scenarioCustomNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andScenarioCustomNumGreaterThanOrEqualTo(Boolean value) {
-            addCriterion("scenario_custom_num >=", value, "scenarioCustomNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andScenarioCustomNumLessThan(Boolean value) {
-            addCriterion("scenario_custom_num <", value, "scenarioCustomNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andScenarioCustomNumLessThanOrEqualTo(Boolean value) {
-            addCriterion("scenario_custom_num <=", value, "scenarioCustomNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andScenarioCustomNumIn(List<Boolean> values) {
-            addCriterion("scenario_custom_num in", values, "scenarioCustomNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andScenarioCustomNumNotIn(List<Boolean> values) {
-            addCriterion("scenario_custom_num not in", values, "scenarioCustomNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andScenarioCustomNumBetween(Boolean value1, Boolean value2) {
-            addCriterion("scenario_custom_num between", value1, value2, "scenarioCustomNum");
-            return (Criteria) this;
-        }
-
-        public Criteria andScenarioCustomNumNotBetween(Boolean value1, Boolean value2) {
-            addCriterion("scenario_custom_num not between", value1, value2, "scenarioCustomNum");
             return (Criteria) this;
         }
 
@@ -1244,126 +1064,6 @@ public class ProjectExample {
             return (Criteria) this;
         }
 
-        public Criteria andMockTcpPortIsNull() {
-            addCriterion("mock_tcp_port is null");
-            return (Criteria) this;
-        }
-
-        public Criteria andMockTcpPortIsNotNull() {
-            addCriterion("mock_tcp_port is not null");
-            return (Criteria) this;
-        }
-
-        public Criteria andMockTcpPortEqualTo(Integer value) {
-            addCriterion("mock_tcp_port =", value, "mockTcpPort");
-            return (Criteria) this;
-        }
-
-        public Criteria andMockTcpPortNotEqualTo(Integer value) {
-            addCriterion("mock_tcp_port <>", value, "mockTcpPort");
-            return (Criteria) this;
-        }
-
-        public Criteria andMockTcpPortGreaterThan(Integer value) {
-            addCriterion("mock_tcp_port >", value, "mockTcpPort");
-            return (Criteria) this;
-        }
-
-        public Criteria andMockTcpPortGreaterThanOrEqualTo(Integer value) {
-            addCriterion("mock_tcp_port >=", value, "mockTcpPort");
-            return (Criteria) this;
-        }
-
-        public Criteria andMockTcpPortLessThan(Integer value) {
-            addCriterion("mock_tcp_port <", value, "mockTcpPort");
-            return (Criteria) this;
-        }
-
-        public Criteria andMockTcpPortLessThanOrEqualTo(Integer value) {
-            addCriterion("mock_tcp_port <=", value, "mockTcpPort");
-            return (Criteria) this;
-        }
-
-        public Criteria andMockTcpPortIn(List<Integer> values) {
-            addCriterion("mock_tcp_port in", values, "mockTcpPort");
-            return (Criteria) this;
-        }
-
-        public Criteria andMockTcpPortNotIn(List<Integer> values) {
-            addCriterion("mock_tcp_port not in", values, "mockTcpPort");
-            return (Criteria) this;
-        }
-
-        public Criteria andMockTcpPortBetween(Integer value1, Integer value2) {
-            addCriterion("mock_tcp_port between", value1, value2, "mockTcpPort");
-            return (Criteria) this;
-        }
-
-        public Criteria andMockTcpPortNotBetween(Integer value1, Integer value2) {
-            addCriterion("mock_tcp_port not between", value1, value2, "mockTcpPort");
-            return (Criteria) this;
-        }
-
-        public Criteria andIsMockTcpOpenIsNull() {
-            addCriterion("is_mock_tcp_open is null");
-            return (Criteria) this;
-        }
-
-        public Criteria andIsMockTcpOpenIsNotNull() {
-            addCriterion("is_mock_tcp_open is not null");
-            return (Criteria) this;
-        }
-
-        public Criteria andIsMockTcpOpenEqualTo(Boolean value) {
-            addCriterion("is_mock_tcp_open =", value, "isMockTcpOpen");
-            return (Criteria) this;
-        }
-
-        public Criteria andIsMockTcpOpenNotEqualTo(Boolean value) {
-            addCriterion("is_mock_tcp_open <>", value, "isMockTcpOpen");
-            return (Criteria) this;
-        }
-
-        public Criteria andIsMockTcpOpenGreaterThan(Boolean value) {
-            addCriterion("is_mock_tcp_open >", value, "isMockTcpOpen");
-            return (Criteria) this;
-        }
-
-        public Criteria andIsMockTcpOpenGreaterThanOrEqualTo(Boolean value) {
-            addCriterion("is_mock_tcp_open >=", value, "isMockTcpOpen");
-            return (Criteria) this;
-        }
-
-        public Criteria andIsMockTcpOpenLessThan(Boolean value) {
-            addCriterion("is_mock_tcp_open <", value, "isMockTcpOpen");
-            return (Criteria) this;
-        }
-
-        public Criteria andIsMockTcpOpenLessThanOrEqualTo(Boolean value) {
-            addCriterion("is_mock_tcp_open <=", value, "isMockTcpOpen");
-            return (Criteria) this;
-        }
-
-        public Criteria andIsMockTcpOpenIn(List<Boolean> values) {
-            addCriterion("is_mock_tcp_open in", values, "isMockTcpOpen");
-            return (Criteria) this;
-        }
-
-        public Criteria andIsMockTcpOpenNotIn(List<Boolean> values) {
-            addCriterion("is_mock_tcp_open not in", values, "isMockTcpOpen");
-            return (Criteria) this;
-        }
-
-        public Criteria andIsMockTcpOpenBetween(Boolean value1, Boolean value2) {
-            addCriterion("is_mock_tcp_open between", value1, value2, "isMockTcpOpen");
-            return (Criteria) this;
-        }
-
-        public Criteria andIsMockTcpOpenNotBetween(Boolean value1, Boolean value2) {
-            addCriterion("is_mock_tcp_open not between", value1, value2, "isMockTcpOpen");
-            return (Criteria) this;
-        }
-
         public Criteria andAzureFilterIdIsNull() {
             addCriterion("azure_filter_id is null");
             return (Criteria) this;
@@ -1431,6 +1131,266 @@ public class ProjectExample {
 
         public Criteria andAzureFilterIdNotBetween(String value1, String value2) {
             addCriterion("azure_filter_id not between", value1, value2, "azureFilterId");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformIsNull() {
+            addCriterion("platform is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformIsNotNull() {
+            addCriterion("platform is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformEqualTo(String value) {
+            addCriterion("platform =", value, "platform");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformNotEqualTo(String value) {
+            addCriterion("platform <>", value, "platform");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformGreaterThan(String value) {
+            addCriterion("platform >", value, "platform");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformGreaterThanOrEqualTo(String value) {
+            addCriterion("platform >=", value, "platform");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformLessThan(String value) {
+            addCriterion("platform <", value, "platform");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformLessThanOrEqualTo(String value) {
+            addCriterion("platform <=", value, "platform");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformLike(String value) {
+            addCriterion("platform like", value, "platform");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformNotLike(String value) {
+            addCriterion("platform not like", value, "platform");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformIn(List<String> values) {
+            addCriterion("platform in", values, "platform");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformNotIn(List<String> values) {
+            addCriterion("platform not in", values, "platform");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformBetween(String value1, String value2) {
+            addCriterion("platform between", value1, value2, "platform");
+            return (Criteria) this;
+        }
+
+        public Criteria andPlatformNotBetween(String value1, String value2) {
+            addCriterion("platform not between", value1, value2, "platform");
+            return (Criteria) this;
+        }
+
+        public Criteria andThirdPartTemplateIsNull() {
+            addCriterion("third_part_template is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andThirdPartTemplateIsNotNull() {
+            addCriterion("third_part_template is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andThirdPartTemplateEqualTo(Boolean value) {
+            addCriterion("third_part_template =", value, "thirdPartTemplate");
+            return (Criteria) this;
+        }
+
+        public Criteria andThirdPartTemplateNotEqualTo(Boolean value) {
+            addCriterion("third_part_template <>", value, "thirdPartTemplate");
+            return (Criteria) this;
+        }
+
+        public Criteria andThirdPartTemplateGreaterThan(Boolean value) {
+            addCriterion("third_part_template >", value, "thirdPartTemplate");
+            return (Criteria) this;
+        }
+
+        public Criteria andThirdPartTemplateGreaterThanOrEqualTo(Boolean value) {
+            addCriterion("third_part_template >=", value, "thirdPartTemplate");
+            return (Criteria) this;
+        }
+
+        public Criteria andThirdPartTemplateLessThan(Boolean value) {
+            addCriterion("third_part_template <", value, "thirdPartTemplate");
+            return (Criteria) this;
+        }
+
+        public Criteria andThirdPartTemplateLessThanOrEqualTo(Boolean value) {
+            addCriterion("third_part_template <=", value, "thirdPartTemplate");
+            return (Criteria) this;
+        }
+
+        public Criteria andThirdPartTemplateIn(List<Boolean> values) {
+            addCriterion("third_part_template in", values, "thirdPartTemplate");
+            return (Criteria) this;
+        }
+
+        public Criteria andThirdPartTemplateNotIn(List<Boolean> values) {
+            addCriterion("third_part_template not in", values, "thirdPartTemplate");
+            return (Criteria) this;
+        }
+
+        public Criteria andThirdPartTemplateBetween(Boolean value1, Boolean value2) {
+            addCriterion("third_part_template between", value1, value2, "thirdPartTemplate");
+            return (Criteria) this;
+        }
+
+        public Criteria andThirdPartTemplateNotBetween(Boolean value1, Boolean value2) {
+            addCriterion("third_part_template not between", value1, value2, "thirdPartTemplate");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionEnableIsNull() {
+            addCriterion("version_enable is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionEnableIsNotNull() {
+            addCriterion("version_enable is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionEnableEqualTo(Boolean value) {
+            addCriterion("version_enable =", value, "versionEnable");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionEnableNotEqualTo(Boolean value) {
+            addCriterion("version_enable <>", value, "versionEnable");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionEnableGreaterThan(Boolean value) {
+            addCriterion("version_enable >", value, "versionEnable");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionEnableGreaterThanOrEqualTo(Boolean value) {
+            addCriterion("version_enable >=", value, "versionEnable");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionEnableLessThan(Boolean value) {
+            addCriterion("version_enable <", value, "versionEnable");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionEnableLessThanOrEqualTo(Boolean value) {
+            addCriterion("version_enable <=", value, "versionEnable");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionEnableIn(List<Boolean> values) {
+            addCriterion("version_enable in", values, "versionEnable");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionEnableNotIn(List<Boolean> values) {
+            addCriterion("version_enable not in", values, "versionEnable");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionEnableBetween(Boolean value1, Boolean value2) {
+            addCriterion("version_enable between", value1, value2, "versionEnable");
+            return (Criteria) this;
+        }
+
+        public Criteria andVersionEnableNotBetween(Boolean value1, Boolean value2) {
+            addCriterion("version_enable not between", value1, value2, "versionEnable");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdIsNull() {
+            addCriterion("api_template_id is null");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdIsNotNull() {
+            addCriterion("api_template_id is not null");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdEqualTo(String value) {
+            addCriterion("api_template_id =", value, "apiTemplateId");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdNotEqualTo(String value) {
+            addCriterion("api_template_id <>", value, "apiTemplateId");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdGreaterThan(String value) {
+            addCriterion("api_template_id >", value, "apiTemplateId");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdGreaterThanOrEqualTo(String value) {
+            addCriterion("api_template_id >=", value, "apiTemplateId");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdLessThan(String value) {
+            addCriterion("api_template_id <", value, "apiTemplateId");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdLessThanOrEqualTo(String value) {
+            addCriterion("api_template_id <=", value, "apiTemplateId");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdLike(String value) {
+            addCriterion("api_template_id like", value, "apiTemplateId");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdNotLike(String value) {
+            addCriterion("api_template_id not like", value, "apiTemplateId");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdIn(List<String> values) {
+            addCriterion("api_template_id in", values, "apiTemplateId");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdNotIn(List<String> values) {
+            addCriterion("api_template_id not in", values, "apiTemplateId");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdBetween(String value1, String value2) {
+            addCriterion("api_template_id between", value1, value2, "apiTemplateId");
+            return (Criteria) this;
+        }
+
+        public Criteria andApiTemplateIdNotBetween(String value1, String value2) {
+            addCriterion("api_template_id not between", value1, value2, "apiTemplateId");
             return (Criteria) this;
         }
     }

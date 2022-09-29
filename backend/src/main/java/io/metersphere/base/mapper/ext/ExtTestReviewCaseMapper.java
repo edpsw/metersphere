@@ -1,5 +1,7 @@
 package io.metersphere.base.mapper.ext;
 
+import io.metersphere.track.dto.CountMapDTO;
+import io.metersphere.track.dto.TestCaseNodeDTO;
 import io.metersphere.track.dto.TestReviewCaseDTO;
 import io.metersphere.track.request.testreview.QueryCaseReviewRequest;
 import org.apache.ibatis.annotations.Param;
@@ -16,14 +18,6 @@ public interface ExtTestReviewCaseMapper {
     List<String> findRelateTestReviewId(@Param("userId") String userId, @Param("workspaceId") String workspaceId, @Param("projectId") String projectId);
 
     /**
-     * 根据项目 ids 查询 TestReviewCaseDTO 列表
-     *
-     * @param ids project id list
-     * @return List<TestReviewCaseDTO>
-     */
-    List<TestReviewCaseDTO> listTestCaseByProjectIds(@Param("ids") List<String> ids);
-
-    /**
      * 获取 TestReviewTestCase 详细信息
      *
      * @param id TestReviewTestCase id
@@ -37,12 +31,17 @@ public interface ExtTestReviewCaseMapper {
 
     List<TestReviewCaseDTO> listForMinder(@Param("request") QueryCaseReviewRequest request);
 
-
     List<String> selectReviewIds();
 
     List<String> getIdsOrderByUpdateTime(@Param("reviewId") String reviewId);
 
-    Long getPreOrder(@Param("reviewId")String reviewId, @Param("baseOrder") Long baseOrder);
+    Long getPreOrder(@Param("reviewId") String reviewId, @Param("baseOrder") Long baseOrder);
 
-    Long getLastOrder(@Param("reviewId")String reviewId, @Param("baseOrder") Long baseOrder);
+    Long getLastOrder(@Param("reviewId") String reviewId, @Param("baseOrder") Long baseOrder);
+
+    List<CountMapDTO> getStatusMapByReviewId(@Param("reviewId") String reviewId);
+
+    List<String> projectIdsByPlanId(@Param("reviewId") String reviewId);
+
+    List<TestCaseNodeDTO> getTestReviewCountNodes(@Param("request") QueryCaseReviewRequest request);
 }

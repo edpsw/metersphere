@@ -17,11 +17,11 @@ export const Test_Case_Review = [
   {id: 'name', label: i18n.t('test_track.review.review_name')},
   {id: 'reviewer', label: i18n.t('test_track.review.reviewer')},
   {id: 'projectName', label: i18n.t('test_track.review.review_project')},
-  {id: 'creatorName', label: i18n.t('test_track.review.review_creator')},
+  {id: 'creatorName', label: i18n.t('test_track.review.creator')},
   {id: 'status', label: i18n.t('test_track.review.review_status')},
   {id: 'createTime', label: i18n.t('commons.create_time')},
   {id: 'endTime', label: i18n.t('test_track.review.end_time')},
-  {id: 'tags', label: '标签'},
+  {id: 'tags', label: i18n.t('commons.tag')},
 ]
 //测试计划-测试用例
 export const Test_Plan_List = [
@@ -39,6 +39,10 @@ export const Test_Plan_List = [
   {id: 'executionTimes', label: i18n.t('commons.execution_times')},
   {id: 'passRate', label: i18n.t('commons.pass_rate')},
   {id: 'createUser', label: i18n.t('commons.create_user')},
+  {id: 'testPlanTestCaseCount', label: i18n.t('test_track.plan.test_plan_test_case_count')},
+  {id: 'testPlanApiCaseCount', label: i18n.t('test_track.plan.test_plan_api_case_count')},
+  {id: 'testPlanApiScenarioCount', label: i18n.t('test_track.plan.test_plan_api_scenario_count')},
+  {id: 'testPlanLoadCaseCount', label: i18n.t('test_track.plan.test_plan_load_case_count')}
 ]
 //接口定义-api列表
 export const Api_List = [
@@ -61,7 +65,6 @@ export const Test_Case_Review_Case_List = [
   {id: 'num', label: i18n.t('commons.id')},
   {id: 'name', label: i18n.t('commons.name')},
   {id: 'priority', label: i18n.t('test_track.case.priority')},
-  {id: 'type', label: i18n.t('test_track.case.type')},
   {id: 'nodePath', label: i18n.t('test_track.case.module')},
   {id: 'projectName', label: i18n.t('test_track.review.review_project')},
   {id: 'reviewerName', label: i18n.t('test_track.review.reviewer')},

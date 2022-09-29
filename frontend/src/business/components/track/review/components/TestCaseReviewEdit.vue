@@ -46,22 +46,9 @@
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="12" :offset="1">
-            <el-form-item :label="$t('test_track.review.review_follow_people')" :label-width="formLabelWidth"
-                          prop="followIds">
-              <el-select v-model="form.followIds"
-                         clearable multiple
-                         :placeholder="$t('test_track.review.review_follow_people')" filterable size="small">
-                <el-option
-                  v-for="item in reviewerOptions"
-                  :key="item.id"
-                  :label="item.name"
-                  :value="item.id">
-                </el-option>
-              </el-select>
-            </el-form-item>
-          </el-col>
           <el-col :span="12">
+          </el-col>
+          <el-col :span="12" :offset="1">
             <el-form-item :label="$t('test_track.review.end_time')" :label-width="formLabelWidth" prop="endTime">
               <el-date-picker @change="endTimeChange" type="datetime" :placeholder="$t('commons.select_date')"
                               v-model="form.endTime" style="width: 100%"/>
@@ -118,6 +105,7 @@ import TestPlanStatusButton from "../../plan/common/TestPlanStatusButton";
 import {WORKSPACE_ID} from "@/common/js/constants";
 import {getCurrentProjectID, listenGoBack, removeGoBackListener} from "@/common/js/utils";
 import MsInputTag from "@/business/components/api/automation/scenario/MsInputTag";
+import i18n from "@/i18n/i18n";
 
 export default {
   name: "TestCaseReviewEdit",
@@ -142,11 +130,10 @@ export default {
           {required: true, message: this.$t('test_track.review.input_review_name'), trigger: 'blur'},
           {max: 30, message: this.$t('test_track.length_less_than') + '30', trigger: 'blur'}
         ],
-        // projectIds: [{required: true, message: this.$t('test_track.plan.input_plan_project'), trigger: 'change'}],
         userIds: [{required: true, message: this.$t('test_track.review.input_reviewer'), trigger: 'change'}],
         stage: [{required: true, message: this.$t('test_track.plan.input_plan_stage'), trigger: 'change'}],
         description: [{max: 200, message: this.$t('test_track.length_less_than') + '200', trigger: 'blur'}],
-        endTime: [{required: true, message: '请选择截止时间', trigger: 'blur'}]
+        endTime: [{required: true, message: this.$t('commons.please_select_a_deadline'), trigger: 'blur'}]
       },
       formLabelWidth: "100px",
       operationType: '',
@@ -248,7 +235,7 @@ export default {
       });
     },
     setReviewerOptions() {
-      this.result = this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()},response => {
+      this.result = this.$get('/user/project/member/list', response => {
         this.reviewerOptions = response.data;
       });
     },
@@ -285,7 +272,7 @@ export default {
     },
     compareTime(ts1, ts2) {
       if (ts1 > ts2) {
-        this.$warning("截止时间不能早于当前时间！");
+        this.$warning(i18n.t('test_track.review.deadline_cannot_early_tips'));
         return false;
       }
       return true;

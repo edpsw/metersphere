@@ -3,24 +3,21 @@ package io.metersphere.api.controller;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import io.metersphere.api.dto.*;
+import io.metersphere.api.dto.automation.parse.ScenarioToPerformanceInfoDTO;
 import io.metersphere.api.dto.datacount.ApiDataCountResult;
 import io.metersphere.api.dto.datacount.ExecutedCaseInfoResult;
 import io.metersphere.api.dto.datacount.request.ScheduleInfoRequest;
-import io.metersphere.api.dto.datacount.response.ApiDataCountDTO;
-import io.metersphere.api.dto.datacount.response.ExecutedCaseInfoDTO;
-import io.metersphere.api.dto.datacount.response.TaskInfoResult;
+import io.metersphere.api.dto.datacount.response.*;
 import io.metersphere.api.dto.definition.RunDefinitionRequest;
 import io.metersphere.api.dto.scenario.request.dubbo.RegistryCenter;
 import io.metersphere.api.service.*;
 import io.metersphere.base.domain.ApiDefinition;
-import io.metersphere.base.domain.ApiScenarioWithBLOBs;
+import io.metersphere.base.domain.ApiDefinitionExecResultExpand;
 import io.metersphere.base.domain.ApiTest;
 import io.metersphere.base.domain.Schedule;
+import io.metersphere.commons.constants.ExecuteResult;
 import io.metersphere.commons.constants.NoticeConstants;
-import io.metersphere.commons.utils.CronUtils;
-import io.metersphere.commons.utils.PageUtils;
-import io.metersphere.commons.utils.Pager;
-import io.metersphere.commons.utils.SessionUtils;
+import io.metersphere.commons.utils.*;
 import io.metersphere.controller.request.BaseQueryRequest;
 import io.metersphere.controller.request.QueryScheduleRequest;
 import io.metersphere.controller.request.ScheduleRequest;
@@ -28,16 +25,14 @@ import io.metersphere.dto.ScheduleDao;
 import io.metersphere.notice.annotation.SendNotice;
 import io.metersphere.service.CheckPermissionService;
 import io.metersphere.service.ScheduleService;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import java.text.DecimalFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 
 import static io.metersphere.commons.utils.JsonPathUtils.getListJson;
 
@@ -209,35 +204,59 @@ public class APITestController {
     @GetMapping("/testCaseInfoCount/{projectId}")
     public ApiDataCountDTO testCaseInfoCount(@PathVariable String projectId) {
         ApiDataCountDTO apiCountResult = new ApiDataCountDTO();
-
         List<ApiDataCountResult> countResultList = apiTestCaseService.countProtocolByProjectID(projectId);
         apiCountResult.countProtocal(countResultList);
-
         long dateCountByCreateInThisWeek = apiTestCaseService.countByProjectIDAndCreateInThisWeek(projectId);
         apiCountResult.setThisWeekAddedCount(dateCountByCreateInThisWeek);
-
         long executedInThisWeekCountNumber = apiDefinitionExecResultService.countByTestCaseIDInProjectAndExecutedInThisWeek(projectId);
         apiCountResult.setThisWeekExecutedCount(executedInThisWeekCountNumber);
         long executedCountNumber = apiDefinitionExecResultService.countByTestCaseIDInProject(projectId);
         apiCountResult.setExecutedCount(executedCountNumber);
-
         //未覆盖 已覆盖： 统计当前接口下是否含有案例
         List<ApiDataCountResult> countResultByApiCoverageList = apiDefinitionService.countApiCoverageByProjectID(projectId);
         apiCountResult.countApiCoverage(countResultByApiCoverageList);
         long allCount = apiCountResult.getCoverageCount() + apiCountResult.getUncoverageCount();
-
         if (allCount != 0) {
             float coverageRageNumber = (float) apiCountResult.getCoverageCount() * 100 / allCount;
             DecimalFormat df = new DecimalFormat("0.0");
             apiCountResult.setCoverageRage(df.format(coverageRageNumber) + "%");
         }
-
-
         apiCountResult.setHttpCountStr("HTTP&nbsp;&nbsp;<br/><br/>" + apiCountResult.getHttpApiDataCountNumber());
         apiCountResult.setRpcCountStr("RPC&nbsp;&nbsp;<br/><br/>" + apiCountResult.getRpcApiDataCountNumber());
         apiCountResult.setTcpCountStr("TCP&nbsp;&nbsp;<br/><br/>" + apiCountResult.getTcpApiDataCountNumber());
         apiCountResult.setSqlCountStr("SQL&nbsp;&nbsp;<br/><br/>" + apiCountResult.getSqlApiDataCountNumber());
+        //计算用例的通过率
+        List<ExecuteResultCountDTO> apiCaseExecResultList = apiTestCaseService.selectExecuteResultByProjectId(projectId);
+        long unexecuteCount = 0;
+        long executionFailedCount = 0;
+        long executionPassCount = 0;
+        long fakeErrorCount = 0;
+        for (ExecuteResultCountDTO execResult : apiCaseExecResultList) {
+            if (StringUtils.isEmpty(execResult.getExecResult())) {
+                unexecuteCount += execResult.getCount();
+            } else if (StringUtils.equalsAnyIgnoreCase(execResult.getExecResult(), "Underway", ExecuteResult.STOP.toString(), ExecuteResult.TEST_PLAN_PREPARE.toString())) {
+                unexecuteCount += execResult.getCount();
+            } else if (StringUtils.equalsIgnoreCase(execResult.getExecResult(), ExecuteResult.API_SUCCESS.toString())) {
+                executionPassCount += execResult.getCount();
+            } else if (StringUtils.equalsAnyIgnoreCase(execResult.getExecResult(), ExecuteResult.ERROR_REPORT_RESULT.toString(), ExecuteResult.ERROR_REPORT.toString())) {
+                fakeErrorCount += execResult.getCount();
+            } else {
+                executionFailedCount += execResult.getCount();
+            }
+        }
+        apiCountResult.setUnexecuteCount(unexecuteCount);
+        apiCountResult.setExecutionFailedCount(executionFailedCount);
+        apiCountResult.setExecutionPassCount(executionPassCount);
+        apiCountResult.setFakeErrorCount(fakeErrorCount);
 
+        if (unexecuteCount + executionFailedCount + executionPassCount + fakeErrorCount > 0) {
+            //通过率
+            float coverageRageNumber = (float) executionPassCount * 100 / (unexecuteCount + executionFailedCount + fakeErrorCount + executionPassCount);
+            DecimalFormat df = new DecimalFormat("0.0");
+            apiCountResult.setPassRage(df.format(coverageRageNumber) + "%");
+        } else {
+            apiCountResult.setPassRage("0%");
+        }
         return apiCountResult;
     }
 
@@ -262,7 +281,7 @@ public class APITestController {
         //未执行、未通过、已通过
         List<ApiDataCountResult> countResultByRunResult = apiAutomationService.countRunResultByProjectID(projectId);
         apiCountResult.countRunResult(countResultByRunResult);
-        long allCount = apiCountResult.getUnexecuteCount() + apiCountResult.getExecutionPassCount() + apiCountResult.getExecutionFailedCount();
+        long allCount = apiCountResult.getAllExecutedResultCount();
         DecimalFormat df = new DecimalFormat("0.0");
         if (allCount != 0) {
             //通过率
@@ -272,45 +291,69 @@ public class APITestController {
         return apiCountResult;
     }
 
+    /**
+     * 接口覆盖率统计
+     *
+     * @param projectId
+     * @return
+     */
     @GetMapping("/countApiCoverage/{projectId}")
-    public String countApiCoverage(@PathVariable String projectId) {
-        String returnStr = "100%";
+    public CoverageDTO countApiCoverage(@PathVariable String projectId) {
+        CoverageDTO coverage = new CoverageDTO();
         /**
          * 接口覆盖率
-         * 接口有案例/被场景引用 ： 所有的接口
+         * 有案例的接口/没有案例确被场景引用  （apiHasCase + apiInScenario） ： 所有的接口（effectiveApiCount）
          */
         long effectiveApiCount = apiDefinitionService.countEffectiveByProjectId(projectId);
-        long sourceIdCount = apiDefinitionService.countQuotedApiByProjectId(projectId);
+        long apiHasCase = apiDefinitionService.countApiByProjectIdAndHasCase(projectId);
+
+
+        /**
+         * 计算没有用例接口的覆盖数量
+         */
+        List<ApiDefinition> apiNoCaseList = apiDefinitionService.selectEffectiveIdByProjectIdAndHaveNotCase(projectId);
+        Map<String, Map<String, String>> scenarioUrlList = apiAutomationService.selectScenarioUseUrlByProjectId(projectId);
+        int apiInScenario = apiAutomationService.getApiIdInScenario(projectId, scenarioUrlList, apiNoCaseList).size();
+
         try {
-            if(sourceIdCount != 0){
-                float coverageRageNumber = (float) sourceIdCount * 100 / effectiveApiCount;
+            if (effectiveApiCount == 0) {
+                coverage.setCoverate(0);
+                coverage.setNotCoverate(0);
+            } else {
+                long quotedApiCount = apiHasCase + apiInScenario;
+                coverage.setCoverate(quotedApiCount);
+                coverage.setNotCoverate(effectiveApiCount - quotedApiCount);
+                float coverageRageNumber = (float) quotedApiCount * 100 / effectiveApiCount;
                 DecimalFormat df = new DecimalFormat("0.0");
-                returnStr = df.format(coverageRageNumber) + "%";
+                coverage.setRateOfCoverage(df.format(coverageRageNumber) + "%");
             }
-        }catch (Exception e){
-            e.printStackTrace();
+        } catch (Exception e) {
+            LogUtil.error(e);
         }
-        return  returnStr;
+        return coverage;
     }
 
-    @GetMapping("/countInterfaceCoverage/{projectId}")
-    public String countInterfaceCoverage(@PathVariable String projectId) {
-        String returnStr = "100%";
+    /**
+     * 场景覆盖率统计
+     *
+     * @param projectId
+     * @return
+     */
+    @GetMapping("/countScenarioCoverage/{projectId}")
+    public CoverageDTO countScenarioCoverage(@PathVariable String projectId) {
+        CoverageDTO coverage = new CoverageDTO();
         /**
          * 接口覆盖率
          * 复制的接口定义/复制或引用的单接口用例/ 添加的自定义请求 url 路径与现有的接口定义一致的请求
          */
-        List<ApiScenarioWithBLOBs> allScenarioInfoList = apiAutomationService.selectIdAndUseUrlByProjectId(projectId);
+        Map<String, Map<String, String>> scenarioUrlList = apiAutomationService.selectScenarioUseUrlByProjectId(projectId);
         List<ApiDefinition> allEffectiveApiIdList = apiDefinitionService.selectEffectiveIdByProjectId(projectId);
-//        List<ApiTestCase> allEffectiveApiCaseList = apiTestCaseService.selectEffectiveTestCaseByProjectId(projectId);
         try {
-            float intetfaceCoverageRageNumber = apiAutomationService.countInterfaceCoverage(allScenarioInfoList, allEffectiveApiIdList);
-            DecimalFormat df = new DecimalFormat("0.0");
-            returnStr = df.format(intetfaceCoverageRageNumber) + "%";
-        }catch (Exception e){
-            e.printStackTrace();
+            coverage = apiAutomationService.countInterfaceCoverage(projectId, scenarioUrlList, allEffectiveApiIdList);
+        } catch (Exception e) {
+            LogUtil.error(e);
         }
-        return  returnStr;
+        return coverage;
     }
 
     @GetMapping("/scheduleTaskInfoCount/{projectId}")
@@ -340,10 +383,10 @@ public class APITestController {
         return apiCountResult;
     }
 
-    @GetMapping("/faliureCaseAboutTestPlan/{projectId}/{limitNumber}")
-    public List<ExecutedCaseInfoDTO> faliureCaseAboutTestPlan(@PathVariable String projectId, @PathVariable int limitNumber) {
+    @GetMapping("/faliureCaseAboutTestPlan/{projectId}/{selectFunctionCase}/{limitNumber}")
+    public List<ExecutedCaseInfoDTO> faliureCaseAboutTestPlan(@PathVariable String projectId, @PathVariable boolean selectFunctionCase, @PathVariable int limitNumber) {
 
-        List<ExecutedCaseInfoResult> selectDataList = apiDefinitionExecResultService.findFaliureCaseInfoByProjectIDAndLimitNumberInSevenDays(projectId, limitNumber);
+        List<ExecutedCaseInfoResult> selectDataList = apiDefinitionExecResultService.findFailureCaseInfoByProjectIDAndLimitNumberInSevenDays(projectId, selectFunctionCase, limitNumber);
 
         List<ExecutedCaseInfoDTO> returnList = new ArrayList<>(limitNumber);
 
@@ -358,6 +401,7 @@ public class APITestController {
                 dataDTO.setCaseName(selectData.getCaseName());
                 dataDTO.setTestPlan(selectData.getTestPlan());
                 dataDTO.setFailureTimes(selectData.getFailureTimes());
+                dataDTO.setTestPlanId(selectData.getTestPlanId());
                 dataDTO.setCaseType(selectData.getCaseType());
                 dataDTO.setId(selectData.getId());
                 dataDTO.setTestPlanDTOList(selectData.getTestPlanDTOList());
@@ -371,7 +415,7 @@ public class APITestController {
     }
 
     @PostMapping("/runningTask/{projectID}")
-    public List<TaskInfoResult> runningTask(@PathVariable String projectID,@RequestBody BaseQueryRequest request) {
+    public List<TaskInfoResult> runningTask(@PathVariable String projectID, @RequestBody BaseQueryRequest request) {
         List<TaskInfoResult> resultList = scheduleService.findRunningTaskInfoByProjectID(projectID, request);
         int dataIndex = 1;
         for (TaskInfoResult taskInfo :
@@ -394,7 +438,7 @@ public class APITestController {
     }
 
     @PostMapping(value = "/schedule/updateEnableByPrimyKey/disable")
-    @SendNotice(taskType = NoticeConstants.TaskType.API_HOME_TASK, event = NoticeConstants.Event.CLOSE_SCHEDULE, mailTemplate = "api/ScheduleClose", subject = "接口测试通知")
+    @SendNotice(taskType = NoticeConstants.TaskType.API_HOME_TASK, event = NoticeConstants.Event.CLOSE_SCHEDULE, subject = "接口测试通知")
     public Schedule disableSchedule(@RequestBody ScheduleInfoRequest request) {
         Schedule schedule = scheduleService.getSchedule(request.getTaskID());
         schedule.setEnable(false);
@@ -408,8 +452,21 @@ public class APITestController {
     }
 
     @PostMapping(value = "/genPerformanceTestXml", consumes = {"multipart/form-data"})
-    public JmxInfoDTO genPerformanceTest(@RequestPart("request") RunDefinitionRequest runRequest, @RequestPart(value = "files", required = false) List<MultipartFile> bodyFiles) throws Exception {
-        return apiTestService.getJmxInfoDTO(runRequest, bodyFiles);
+    public ScenarioToPerformanceInfoDTO genPerformanceTest(@RequestPart("request") RunDefinitionRequest runRequest, @RequestPart(value = "files", required = false) List<MultipartFile> bodyFiles) throws Exception {
+        JmxInfoDTO jmxInfoDTO = apiTestService.getJmxInfoDTO(runRequest, bodyFiles);
+        ScenarioToPerformanceInfoDTO returnDTO = new ScenarioToPerformanceInfoDTO();
+        returnDTO.setJmxInfoDTO(jmxInfoDTO);
+        Map<String, List<String>> projectEnvMap = apiTestService.selectEnvironmentByHashTree(runRequest.getProjectId(), runRequest.getTestElement());
+        returnDTO.setProjectEnvMap(projectEnvMap);
+        return returnDTO;
+    }
+
+
+    @PostMapping("/execute/result/list/{goPage}/{pageSize}")
+    public Pager<List<ApiDefinitionExecResultExpand>> list(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryAPIReportRequest request) {
+        Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
+        request.setLimit("LIMIT " + (goPage - 1) * pageSize + "," + pageSize * 50);
+        return PageUtils.setPageInfo(page, apiDefinitionExecResultService.apiReportList(request));
     }
 
 }

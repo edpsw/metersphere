@@ -8,7 +8,6 @@ import io.github.ningyu.jmeter.plugin.util.Constants;
 import io.metersphere.api.dto.ApiTestImportRequest;
 import io.metersphere.api.dto.automation.ImportPoolsDTO;
 import io.metersphere.api.dto.definition.request.MsScenario;
-import io.metersphere.plugin.core.MsTestElement;
 import io.metersphere.api.dto.definition.request.assertions.*;
 import io.metersphere.api.dto.definition.request.controller.MsLoopController;
 import io.metersphere.api.dto.definition.request.controller.MsTransactionController;
@@ -39,7 +38,6 @@ import io.metersphere.api.dto.scenario.request.BodyFile;
 import io.metersphere.api.dto.scenario.request.RequestType;
 import io.metersphere.api.parse.ApiImportAbstractParser;
 import io.metersphere.api.service.ApiTestEnvironmentService;
-import io.metersphere.base.domain.ApiScenarioModule;
 import io.metersphere.base.domain.ApiScenarioWithBLOBs;
 import io.metersphere.base.domain.ApiTestEnvironmentExample;
 import io.metersphere.base.domain.ApiTestEnvironmentWithBLOBs;
@@ -48,7 +46,9 @@ import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.BeanUtils;
 import io.metersphere.commons.utils.CommonBeanFactory;
 import io.metersphere.commons.utils.LogUtil;
+import io.metersphere.plugin.core.MsTestElement;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.jmeter.assertions.*;
 import org.apache.jmeter.config.ConfigTestElement;
@@ -63,6 +63,7 @@ import org.apache.jmeter.extractor.json.jsonpath.JSONPostProcessor;
 import org.apache.jmeter.modifiers.JSR223PreProcessor;
 import org.apache.jmeter.protocol.http.control.HeaderManager;
 import org.apache.jmeter.protocol.http.sampler.HTTPSamplerProxy;
+import org.apache.jmeter.protocol.http.util.HTTPArgument;
 import org.apache.jmeter.protocol.http.util.HTTPFileArg;
 import org.apache.jmeter.protocol.java.sampler.JSR223Sampler;
 import org.apache.jmeter.protocol.jdbc.config.DataSourceElement;
@@ -71,6 +72,7 @@ import org.apache.jmeter.protocol.tcp.sampler.TCPSampler;
 import org.apache.jmeter.save.SaveService;
 import org.apache.jmeter.testelement.TestElement;
 import org.apache.jmeter.testelement.TestPlan;
+import org.apache.jmeter.testelement.property.JMeterProperty;
 import org.apache.jmeter.timers.ConstantTimer;
 import org.apache.jorphan.collections.HashTree;
 
@@ -88,6 +90,7 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
      * todo 存放单个请求下的Header 为了和平台对应
      */
     private Map<Integer, List<Object>> headerMap = new HashMap<>();
+    private static final String ALWAYS_ENCODE = "HTTPArgument.always_encode";
 
     @Override
     public ScenarioImport parse(InputStream inputSource, ApiTestImportRequest request) {
@@ -106,7 +109,7 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
             scenarioImport.setProjectId(request.getProjectId());
             return scenarioImport;
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
             MSException.throwException("当前JMX版本不兼容");
         }
         return null;
@@ -115,27 +118,11 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
     private List<ApiScenarioWithBLOBs> parseObj(MsScenario msScenario, ApiTestImportRequest request) {
         List<ApiScenarioWithBLOBs> scenarioWithBLOBsList = new ArrayList<>();
         ApiScenarioWithBLOBs scenarioWithBLOBs = new ApiScenarioWithBLOBs();
-        ApiScenarioModule selectModule = null;
-        String selectModulePath = null;
-        if (StringUtils.isNotBlank(request.getModuleId())) {
-            selectModule = ApiScenarioImportUtil.getSelectModule(request.getModuleId());
-            if (selectModule != null) {
-                selectModulePath = ApiScenarioImportUtil.getSelectModulePath(selectModule.getName(), selectModule.getParentId());
-            }
-        }
-        ApiScenarioModule module = ApiScenarioImportUtil.buildModule(selectModule, msScenario.getName(), this.projectId);
         scenarioWithBLOBs.setName(request.getFileName());
         scenarioWithBLOBs.setProjectId(request.getProjectId());
         if (msScenario != null && CollectionUtils.isNotEmpty(msScenario.getHashTree())) {
             scenarioWithBLOBs.setStepTotal(msScenario.getHashTree().size());
-        }
-        if (module != null) {
-            scenarioWithBLOBs.setApiScenarioModuleId(module.getId());
-            if (StringUtils.isNotBlank(selectModulePath)) {
-                scenarioWithBLOBs.setModulePath(selectModulePath + "/" + module.getName());
-            } else {
-                scenarioWithBLOBs.setModulePath("/" + module.getName());
-            }
+            scenarioWithBLOBs.setModulePath("/" + msScenario.getName());
         }
         scenarioWithBLOBs.setId(UUID.randomUUID().toString());
         scenarioWithBLOBs.setScenarioDefinition(JSON.toJSONString(msScenario));
@@ -170,12 +157,11 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
         String path = source.getPath();
         // Request Defaults
         if (StringUtils.isEmpty(source.getDomain())) {
-            return null;
+            return path;
         }
         if (!path.startsWith("http://") && !path.startsWith("https://")) {
             String domain = source.getDomain();
             String protocol = source.getProtocol();
-            String method = source.getMethod();
             StringBuilder pathAndQuery = new StringBuilder(100);
             if ("file".equalsIgnoreCase(protocol)) {
                 domain = null;
@@ -184,18 +170,6 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
             }
 
             pathAndQuery.append(path);
-            if ("GET".equals(method) || "DELETE".equals(method) || "OPTIONS".equals(method)) {
-                String queryString = source.getQueryString(source.getContentEncoding());
-                if (queryString.length() > 0) {
-                    if (path.contains("?")) {
-                        pathAndQuery.append("&");
-                    } else {
-                        pathAndQuery.append("?");
-                    }
-
-                    pathAndQuery.append(queryString);
-                }
-            }
             String portAsString = source.getPropertyAsString("HTTPSampler.port");
             return this.isProtocolDefaultPort(source) ? new URL(protocol, domain, pathAndQuery.toString()).toExternalForm() : this.url(protocol, domain, portAsString, pathAndQuery.toString());
         } else {
@@ -211,6 +185,44 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
             }
         }
         return null;
+    }
+
+    private static String truncateUrlPage(String strURL) {
+        String strAllParam = null;
+        if (StringUtils.isNotEmpty(strURL)) {
+            String[] arrSplit = strURL.split("[?]");
+            if (strURL.length() > 1) {
+                if (arrSplit.length > 1) {
+                    if (arrSplit[1] != null) {
+                        strAllParam = arrSplit[1];
+                    }
+                }
+            }
+        }
+        return strAllParam;
+    }
+
+    public static Map<String, String> parseURLParam(String URL) {
+        Map<String, String> mapRequest = new LinkedHashMap<>();
+        String strUrlParam = truncateUrlPage(URL);
+        if (StringUtils.isEmpty(strUrlParam)) {
+            return mapRequest;
+        }
+        //每个键值为一组
+        String[] arrSplit = strUrlParam.split("[&]");
+        for (String strSplit : arrSplit) {
+            String[] arrSplitEqual = strSplit.split("[=]");
+            //解析出键值
+            if (arrSplitEqual.length > 1) {
+                mapRequest.put(arrSplitEqual[0], arrSplitEqual[1]);
+            } else {
+                if (StringUtils.isNotEmpty(arrSplitEqual[0])) {
+                    //只有参数没有值，不加入
+                    mapRequest.put(arrSplitEqual[0], "");
+                }
+            }
+        }
+        return mapRequest;
     }
 
     private void convertHttpSampler(MsHTTPSamplerProxy samplerProxy, Object key) {
@@ -280,10 +292,20 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
                         samplerProxy.getBody().setRaw(v);
                     });
                     samplerProxy.getBody().initKvs();
-                } else if (StringUtils.isNotEmpty(bodyType) || (source.getMethod().equalsIgnoreCase("POST") && source.getArguments().getArgumentsAsMap().size() > 0)) {
+                } else if (source.getDoMultipart()) {
+                    samplerProxy.getBody().setType(Body.FORM_DATA);
+                    source.getArguments().getArguments().forEach(params -> {
+                        KeyValue keyValue = new KeyValue();
+                        parseParams(params, keyValue);
+                        samplerProxy.getBody().getKvs().add(keyValue);
+                    });
+                } else if (StringUtils.isNotEmpty(bodyType) ||
+                        (source.getMethod().equalsIgnoreCase("POST") &&
+                                MapUtils.isNotEmpty(source.getArguments().getArgumentsAsMap()))) {
                     samplerProxy.getBody().setType(Body.WWW_FROM);
-                    source.getArguments().getArgumentsAsMap().forEach((k, v) -> {
-                        KeyValue keyValue = new KeyValue(k, v);
+                    source.getArguments().getArguments().forEach(params -> {
+                        KeyValue keyValue = new KeyValue();
+                        parseParams(params, keyValue);
                         samplerProxy.getBody().getKvs().add(keyValue);
                     });
                 } else if (samplerProxy.getBody() != null && samplerProxy.getBody().getType().equals(Body.FORM_DATA)) {
@@ -293,8 +315,9 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
                     });
                 } else {
                     List<KeyValue> keyValues = new LinkedList<>();
-                    source.getArguments().getArgumentsAsMap().forEach((k, v) -> {
-                        KeyValue keyValue = new KeyValue(k, v);
+                    source.getArguments().getArguments().forEach(params -> {
+                        KeyValue keyValue = new KeyValue();
+                        parseParams(params, keyValue);
                         keyValues.add(keyValue);
                     });
                     if (CollectionUtils.isNotEmpty(keyValues)) {
@@ -303,11 +326,12 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
                 }
                 samplerProxy.getBody().initBinary();
             }
-            // samplerProxy.setPath(source.getPath());
             samplerProxy.setMethod(source.getMethod());
-            if (this.getUrl(source) != null) {
+            URL url = source.getUrl();
+            if (url != null) {
                 samplerProxy.setUrl(this.getUrl(source));
                 samplerProxy.setPath(null);
+                samplerProxy.setCustomizeReq(true);
             }
             samplerProxy.setId(UUID.randomUUID().toString());
             samplerProxy.setType("HTTPSamplerProxy");
@@ -315,7 +339,21 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
             body.getBinary().add(new KeyValue());
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
+        }
+    }
+
+    private void parseParams(JMeterProperty params, KeyValue keyValue) {
+        if (params == null || keyValue == null) {
+            return;
+        }
+        Object objValue = params.getObjectValue();
+        if (objValue instanceof HTTPArgument) {
+            HTTPArgument argument = (HTTPArgument) objValue;
+            boolean propertyAsBoolean = argument.getPropertyAsBoolean(ALWAYS_ENCODE);
+            keyValue.setUrlEncode(propertyAsBoolean);
+            keyValue.setName(argument.getName());
+            keyValue.setValue(argument.getValue());
         }
     }
 
@@ -323,7 +361,7 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
         msTCPSampler.setName(tcpSampler.getName());
         msTCPSampler.setType("TCPSampler");
         msTCPSampler.setServer(tcpSampler.getServer());
-        msTCPSampler.setPort(tcpSampler.getPort() + "");
+        msTCPSampler.setPort(tcpSampler.getPropertyAsString(TCPSampler.PORT));
         msTCPSampler.setCtimeout(tcpSampler.getConnectTimeout() + "");
         msTCPSampler.setReUseConnection(tcpSampler.getProperty(TCPSampler.RE_USE_CONNECTION).getBooleanValue());
         msTCPSampler.setNodelay(tcpSampler.getProperty(TCPSampler.NODELAY).getBooleanValue());
@@ -530,9 +568,11 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
             RegexExtractor regexExtractor = (RegexExtractor) key;
             if (regexExtractor.useRequestHeaders()) {
                 regex.setUseHeaders("request_headers");
-            }if (regexExtractor.useHeaders()) {
+            }
+            if (regexExtractor.useHeaders()) {
                 regex.setUseHeaders("true");
-            } if (regexExtractor.useBody()) {
+            }
+            if (regexExtractor.useBody()) {
                 regex.setUseHeaders("false");
             } else if (regexExtractor.useUnescapedBody()) {
                 regex.setUseHeaders("unescaped");
@@ -580,24 +620,44 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
         assertions.setDuration(new MsAssertionDuration());
         assertions.setType("Assertions");
         if (key instanceof ResponseAssertion) {
-            MsAssertionRegex assertionRegex = new MsAssertionRegex();
             ResponseAssertion assertion = (ResponseAssertion) key;
-            assertionRegex.setDescription(assertion.getName());
-            assertionRegex.setAssumeSuccess(assertion.getAssumeSuccess());
             if (assertion.getTestStrings() != null && !assertion.getTestStrings().isEmpty()) {
-                assertionRegex.setExpression(assertion.getTestStrings().get(0).getStringValue());
+                assertion.getTestStrings().forEach(item -> {
+                    MsAssertionRegex assertionRegex = new MsAssertionRegex();
+                    assertionRegex.setDescription(assertion.getName());
+                    assertionRegex.setAssumeSuccess(assertion.getAssumeSuccess());
+                    assertionRegex.setExpression(item.getStringValue());
+                    if (assertion.isTestFieldResponseData()) {
+                        assertionRegex.setSubject("Response Data");
+                    }
+                    if (assertion.isTestFieldResponseCode()) {
+                        assertionRegex.setSubject("Response Code");
+                    }
+                    if (assertion.isTestFieldResponseHeaders()) {
+                        assertionRegex.setSubject("Response Headers");
+                    }
+                    assertions.setName(assertion.getName());
+                    assertions.getRegex().add(assertionRegex);
+                });
+            } else {
+                MsAssertionRegex assertionRegex = new MsAssertionRegex();
+                assertionRegex.setDescription(assertion.getName());
+                assertionRegex.setAssumeSuccess(assertion.getAssumeSuccess());
+                if (assertion.getTestStrings() != null && !assertion.getTestStrings().isEmpty()) {
+                    assertionRegex.setExpression(assertion.getTestStrings().get(0).getStringValue());
+                }
+                if (assertion.isTestFieldResponseData()) {
+                    assertionRegex.setSubject("Response Data");
+                }
+                if (assertion.isTestFieldResponseCode()) {
+                    assertionRegex.setSubject("Response Code");
+                }
+                if (assertion.isTestFieldResponseHeaders()) {
+                    assertionRegex.setSubject("Response Headers");
+                }
+                assertions.setName(assertion.getName());
+                assertions.getRegex().add(assertionRegex);
             }
-            if (assertion.isTestFieldResponseData()) {
-                assertionRegex.setSubject("Response Data");
-            }
-            if (assertion.isTestFieldResponseCode()) {
-                assertionRegex.setSubject("Response Code");
-            }
-            if (assertion.isTestFieldResponseHeaders()) {
-                assertionRegex.setSubject("Response Headers");
-            }
-            assertions.setName(assertion.getName());
-            assertions.getRegex().add(assertionRegex);
         } else if (key instanceof JSONPathAssertion) {
             MsAssertionJsonPath assertionJsonPath = new MsAssertionJsonPath();
             JSONPathAssertion jsonPathAssertion = (JSONPathAssertion) key;
@@ -643,7 +703,7 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
             SaveService.saveElement(obj, baos);
             return baos.toString();
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
             LogUtil.warn("HashTree error, can't log jmx scenarioDefinition");
         }
         return null;
@@ -731,12 +791,6 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
                 BeanUtils.copyBean(elementNode, key);
                 elementNode.setType("ConstantTimer");
             }
-            // IF条件控制器，这里平台方式和jmeter 不同，暂时不处理
-//            else if (key instanceof IfController) {
-//                elementNode = new MsIfController();
-//                BeanUtils.copyBean(elementNode, key);
-//                elementNode.setType("IfController");
-//            }
             // 次数循环控制器
             else if (key instanceof LoopController) {
                 elementNode = new MsLoopController();
@@ -745,7 +799,7 @@ public class MsJmeterParser extends ApiImportAbstractParser<ScenarioImport> {
                 ((MsLoopController) elementNode).setLoopType(LoopConstants.LOOP_COUNT.name());
                 LoopController loopController = (LoopController) key;
                 CountController countController = new CountController();
-                countController.setLoops(loopController.getLoops());
+                countController.setLoops(String.valueOf(loopController.getLoops()));
                 countController.setProceed(true);
                 ((MsLoopController) elementNode).setCountController(countController);
             }

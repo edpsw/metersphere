@@ -1,8 +1,11 @@
-import {getCurrentProjectID, getCurrentUser, getUUID, humpToLine} from "@/common/js/utils";
+import {getCurrentProjectID, getCurrentUser, getUUID, hasLicense, humpToLine} from "@/common/js/utils";
 import {CUSTOM_TABLE_HEADER} from "@/common/js/default-table-header";
 import {updateCustomFieldTemplate} from "@/network/custom-field-template";
 import i18n from "@/i18n/i18n";
 import Sortable from 'sortablejs'
+import {timestampFormatDate} from "@/common/js/filter";
+import {CUSTOM_FIELD_TYPE_OPTION} from "@/common/js/table-constants";
+import _ from "lodash"
 
 export function _handleSelectAll(component, selection, tableData, selectRows, condition) {
   if (selection.length > 0) {
@@ -146,6 +149,12 @@ export function _sort(column, condition) {
     condition.orders = [];
   }
   if (column.order == null) {
+    if (condition.orders && condition.orders.length) {
+      let index = _.findIndex(condition.orders, {"name": column.column.columnKey});
+      if (index != -1) {
+        condition.orders.splice(index, 1);
+      }
+    }
     return;
   }
   let hasProp = false;
@@ -190,14 +199,14 @@ export function getLabel(vueObj, type) {
 }
 
 
-export function buildBatchParam(vueObj, selectIds) {
+export function buildBatchParam(vueObj, selectIds, projectId) {
   let param = {};
   if (vueObj.selectRows) {
     param.ids = selectIds ? selectIds: Array.from(vueObj.selectRows).map(row => row.id);
   } else {
     param.ids = selectIds;
   }
-  param.projectId = getCurrentProjectID();
+  param.projectId = projectId ? projectId : getCurrentProjectID();
   param.condition = vueObj.condition;
   return param;
 }
@@ -226,6 +235,7 @@ export function getPageInfo(condition) {
     result: {},
     data: [],
     condition: condition ? condition : {},
+    loading: false
   }
 }
 
@@ -281,11 +291,18 @@ function getCustomTableHeaderByFiledSetting(key, fieldSetting) {
  * @param customFields
  * @returns {[]|*}
  */
-export function getTableHeaderWithCustomFields(key, customFields) {
+export function getTableHeaderWithCustomFields(key, customFields, projectMembers=[]) {
   let fieldSetting = [...CUSTOM_TABLE_HEADER[key]];
   fieldSetting = JSON.parse(JSON.stringify(fieldSetting)); // 复制，国际化
   translateLabel(fieldSetting);
   let keys = getCustomFieldsKeys(customFields);
+  projectMembers.forEach(member => {
+    member['text'] = member.name;
+    // 高级搜索使用
+    member['label'] = member.name;
+    member['value'] = member.id;
+    member['showLabel'] = member.name + "(" + member.id + ")";
+  })
   customFields.forEach(item => {
     if (!item.key) {
       // 兼容旧版，更新key
@@ -299,6 +316,9 @@ export function getTableHeaderWithCustomFields(key, customFields) {
       isCustom: true
     }
     fieldSetting.push(field);
+    if ((item.type === 'member' || item.type === 'multipleMember' ) && projectMembers && projectMembers.length > 0) {
+      item.options = projectMembers;
+    }
   });
   return getCustomTableHeaderByFiledSetting(key, fieldSetting);
 }
@@ -321,6 +341,10 @@ export function translateLabel(fieldSetting) {
  */
 export function getAllFieldWithCustomFields(key, customFields) {
   let fieldSetting = [...CUSTOM_TABLE_HEADER[key]];
+  // 如果没有 license, 排除 xpack
+  if (!hasLicense()) {
+    fieldSetting = fieldSetting.filter(v => !v.xpack);
+  }
   fieldSetting = JSON.parse(JSON.stringify(fieldSetting));
   translateLabel(fieldSetting);
   if (customFields) {
@@ -424,6 +448,17 @@ export function saveCustomTableWidth(key, fieldKey, colWith) {
   localStorage.setItem(key + '_WITH', JSON.stringify(fields));
 }
 
+function parseStatus(row, options) {
+  if (options) {
+    for (let option of options) {
+      if (option.value === row.status) {
+        return option.system ? i18n.t(option.text) : option.text;
+      }
+    }
+  }
+  return row.status;
+}
+
 /**
  * 获取列表的自定义字段的显示值
  * @param row
@@ -432,10 +467,14 @@ export function saveCustomTableWidth(key, fieldKey, colWith) {
  * @returns {VueI18n.TranslateResult|*}
  */
 export function getCustomFieldValue(row, field, members) {
-  if (row.customFields) {
-    for (let i = 0; i < row.customFields.length; i++) {
-      let item = row.customFields[i];
-      if (item.name === field.name) {
+  if (field.name === '用例状态' && field.system) {
+    return parseStatus(row, field.options);
+  }
+  if (row.fields) {
+    for (let i = 0; i < row.fields.length; i++) {
+      let item = row.fields[i];
+      if (item.id === field.id) {
+        if (!item.value) return '';
         if (field.type === 'member') {
           for (let j = 0; j < members.length; j++) {
             let member = members[j];
@@ -444,52 +483,74 @@ export function getCustomFieldValue(row, field, members) {
             }
           }
         } else if (field.type === 'multipleMember') {
-          if (item.value) {
-            let values = '';
+          let values = '';
+          item.value.forEach(v => {
+            for (let j = 0; j < members.length; j++) {
+              let member = members[j];
+              if (member.id === v) {
+                values += member.name;
+                values += " ";
+                break;
+              }
+            }
+          });
+          return values;
+        } else if (['radio', 'select'].indexOf(field.type) > -1) {
+          if (field.options) {
+            for (let j = 0; j < field.options.length; j++) {
+              let option = field.options[j];
+              if (option.value === item.value) {
+                return field.system ? i18n.t(option.text) : option.text;
+              }
+            }
+          }
+        }
+        else if (['multipleSelect', 'checkbox'].indexOf(field.type) > -1) {
+          let values = '';
+          try {
+            if (field.type === 'multipleSelect') {
+              if (typeof (item.value) === 'string' || item.value instanceof String) {
+                item.value = JSON.parse(item.value);
+              }
+            }
             item.value.forEach(v => {
-              for (let j = 0; j < members.length; j++) {
-                let member = members[j];
-                if (member.id === v) {
-                  values += member.name;
+              for (let j = 0; j < field.options.length; j++) {
+                let option = field.options[j];
+                if (option.value === v) {
+                  values += (field.system ? i18n.t(option.text) : option.text);
                   values += " ";
                   break;
                 }
               }
             });
-            return values;
+          } catch (e) {
+            values = '';
           }
-        } else if (['radio', 'select'].indexOf(field.type) > -1) {
-          for (let j = 0; j < field.options.length; j++) {
-            let option = field.options[j];
-            if (option.value === item.value) {
-              return field.system ? i18n.t(option.text) : option.text;
-            }
-          }
-        }
-        else if (['multipleSelect', 'checkbox'].indexOf(field.type) > -1) {
-          if (item.value) {
-            let values = '';
-            try {
-              if (field.type === 'multipleSelect') {
-                if (typeof (item.value) === 'string' || item.value instanceof String) {
-                  item.value = JSON.parse(item.value);
-                }
+          return values;
+        } else if (field.type === 'cascadingSelect') {
+          let val = '';
+          let options = field.options;
+          for (const v of item.value) {
+            if (!options) break;
+            for (const o of options) {
+              if (o.value === v) {
+                val = o.text;
+                options = o.children;
+                break;
               }
-              item.value.forEach(v => {
-                for (let j = 0; j < field.options.length; j++) {
-                  let option = field.options[j];
-                  if (option.value === v) {
-                    values += (field.system ? i18n.t(option.text) : option.text);
-                    values += " ";
-                    break;
-                  }
-                }
-              });
-            } catch (e) {
-              values = '';
             }
-            return values;
           }
+          return val;
+        }  else if (field.type === 'multipleInput' && item.value instanceof Array) {
+          let val = '';
+          item.value.forEach(i => {
+            val += i + ' ';
+          });
+          return val;
+        } else if (field.type === 'datetime' || field.type === 'date') {
+          return timestampFormatDate(item.value);
+        } else if (['richText', 'textarea'].indexOf(field.type) > -1) {
+          return item.textValue;
         }
         return item.value;
       }
@@ -509,9 +570,10 @@ export function getCustomFieldBatchEditOption(customFields, typeArr, valueArr, m
   customFields.forEach(item => {
     if (item.options) {
       typeArr.push({
-        id: item.name,
+        id: item.id,
         name: item.name,
-        uuid: item.id
+        uuid: item.id,
+        custom: "custom" + item.id
       });
 
       let options = [];
@@ -535,9 +597,41 @@ export function getCustomFieldBatchEditOption(customFields, typeArr, valueArr, m
   });
 }
 
-export function handleRowDrop(data, callback) {
+export function parseCustomFilesForList(data) {
+  data.forEach(item => {
+    if (item.fields) {
+      item.fields.forEach(i => {
+        parseCustomFilesForItem(i);
+      });
+    }
+  });
+}
+
+export function parseCustomFilesForItem(data) {
+  if (data.value) {
+    try {
+      data.value = JSON.parse(data.value);
+    } catch (e) {
+      window.console.error(e);
+    }
+  }
+  if (data.textValue) {
+    data.value = data.textValue;
+  }
+}
+
+// 多个监听共享变量
+// 否则切换 pageSize 等刷新操作会导致部分行的回调函数中 data 数据不一致
+let shareDragParam = {};
+
+// 清除 shareDragParam ，减少内存占用
+export function clearShareDragParam() {
+  shareDragParam.data = null;
+}
+
+export function handleRowDrop(data, callback, msTableKey) {
   setTimeout(() => {
-    const tbody = document.querySelector('.el-table__body-wrapper tbody');
+    const tbody = document.querySelector(`#${msTableKey} .el-table__body-wrapper tbody`);
     if (!tbody) {
       return;
     }
@@ -553,6 +647,8 @@ export function handleRowDrop(data, callback) {
       dropBars[i].classList.add(dropClass);
     }
 
+    shareDragParam.data = data;
+
     Sortable.create(tbody, {
       handle: "." + dropClass,
       animation: 100,
@@ -566,24 +662,24 @@ export function handleRowDrop(data, callback) {
       },
       onEnd({ newIndex, oldIndex}) {
         let param = {};
-        param.moveId = data[oldIndex].id;
+        param.moveId = shareDragParam.data[oldIndex].id;
         if (newIndex === 0) {
           param.moveMode = 'BEFORE';
-          param.targetId = data[0].id;
+          param.targetId = shareDragParam.data[0].id;
         } else {
           // 默认从后面添加
           param.moveMode = 'AFTER';
           if (newIndex < oldIndex) {
             // 如果往前拖拽，则添加到当前下标的前一个元素后面
-            param.targetId = data[newIndex - 1].id;
+            param.targetId = shareDragParam.data[newIndex - 1].id;
           } else {
             // 如果往后拖拽，则添加到当前下标的元素后面
-            param.targetId = data[newIndex].id;
+            param.targetId = shareDragParam.data[newIndex].id;
           }
         }
-        if (data && data.length > 1 && newIndex != oldIndex) {
-          const currRow = data.splice(oldIndex, 1)[0];
-          data.splice(newIndex, 0, currRow);
+        if (shareDragParam.data && shareDragParam.data.length > 1 && newIndex !== oldIndex) {
+          const currRow = shareDragParam.data.splice(oldIndex, 1)[0];
+          shareDragParam.data.splice(newIndex, 0, currRow);
           if (callback) {
             callback(param);
           }
@@ -595,4 +691,20 @@ export function handleRowDrop(data, callback) {
       }
     });
   }, 100);
+}
+
+export function getCustomFieldFilter(field, userFilter) {
+  if (field.type === 'multipleMember') {
+    return null;
+  }
+  if (field.type === 'member' && userFilter) {
+    return userFilter;
+  }
+
+  let optionTypes = CUSTOM_FIELD_TYPE_OPTION
+        .filter(x => x.hasOption)
+        .map(x => x.value);
+
+  return optionTypes.indexOf(field.type) > -1 && Array.isArray(field.options) ?
+    (field.options.length > 0 ? field.options : null) : null;
 }

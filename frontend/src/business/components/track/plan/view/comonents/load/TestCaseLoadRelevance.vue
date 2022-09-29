@@ -9,63 +9,90 @@
       <node-tree class="node-tree"
                  v-loading="result.loading"
                  @nodeSelectEvent="nodeChange"
+                 local-suffix="test_case"
+                 default-label="未规划用例"
                  :tree-nodes="treeNodes"
                  ref="nodeTree"/>
     </template>
 
-    <el-card>
-      <el-input :placeholder="$t('api_test.definition.request.select_case')" @blur="getTestCases"
-                @keyup.enter.native="getTestCases" class="search-input" size="small" v-model="condition.name"/>
-      <ms-table-adv-search-bar :condition.sync="condition" class="adv-search-bar"
-                               v-if="condition.components !== undefined && condition.components.length > 0"
-                               @search="getTestCases"/>
 
-      <el-table
-        v-loading="result.loading"
-        :data="testCases"
-        row-key="id"
-        @select-all="handleSelectAll"
-        @select="handleSelectionChange"
-        @filter-change="filter"
-        height="50vh"
-        ref="table">
-        <el-table-column
-          type="selection"/>
-        <el-table-column
-          prop="name"
-          :label="$t('commons.name')"
-          show-overflow-tooltip>
-        </el-table-column>
-        <el-table-column
-          prop="status"
-          column-key="status"
-          :filters="statusFilters"
-          :label="$t('commons.status')">
-          <template v-slot:default="{row}">
-            <ms-performance-test-status :row="row"/>
-          </template>
-        </el-table-column>
-        <el-table-column
-          sortable
-          prop="createTime"
-          :label="$t('commons.create_time')">
-          <template v-slot:default="scope">
-            <span>{{ scope.row.createTime | timestampFormatDate }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column
-          sortable
-          prop="updateTime"
-          :label="$t('commons.update_time')">
-          <template v-slot:default="scope">
-            <span>{{ scope.row.updateTime | timestampFormatDate }}</span>
-          </template>
-        </el-table-column>
-      </el-table>
+    <el-input :placeholder="$t('api_test.definition.request.select_case')" @blur="search"
+              @keyup.enter.native="search" class="search-input" size="small" v-model="condition.name"/>
+    <ms-table-adv-search-bar :condition.sync="condition" class="adv-search-bar"
+                             v-if="condition.components !== undefined && condition.components.length > 0"
+                             @search="search"/>
+    <version-select v-xpack :project-id="projectId" @changeVersion="changeVersion" style="float: left;"
+                    class="search-input"/>
 
-    </el-card>
+    <ms-table
+      v-loading="result.loading"
+      :data="testCases"
+      :condition="condition"
+      :page-size="pageSize"
+      :total="total"
+      :remember-order="true"
+      row-key="id"
+      :row-order-group-id="projectId"
+      @order="getTestCases"
+      @filter="search"
+      :disable-header-config="true"
+      @selectCountChange="setSelectCounts"
+      ref="table">
+
+      <el-table-column
+        prop="num"
+        label="ID"
+        width="100px"
+        sortable>
+      </el-table-column>
+      <el-table-column
+        prop="name"
+        :label="$t('commons.name')"
+        show-overflow-tooltip>
+      </el-table-column>
+
+      <el-table-column
+        v-if="versionEnable"
+        prop="versionId"
+        :column-key="'versionId'"
+        :filters="versionFilters"
+        :label="$t('commons.version')">
+        <template v-slot:default="scope">
+          <span>{{ scope.row.versionName }}</span>
+        </template>
+      </el-table-column>
+
+      <el-table-column
+        prop="status"
+        column-key="status"
+        :filters="statusFilters"
+        :label="$t('commons.status')">
+        <template v-slot:default="{row}">
+          <ms-performance-test-status :row="row"/>
+        </template>
+      </el-table-column>
+      <el-table-column
+        sortable
+        prop="createTime"
+        :label="$t('commons.create_time')"
+        show-overflow-tooltip>
+        <template v-slot:default="scope">
+          <span>{{ scope.row.createTime | timestampFormatDate }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column
+        sortable
+        prop="updateTime"
+        :label="$t('commons.update_time')"
+        show-overflow-tooltip>
+        <template v-slot:default="scope">
+          <span>{{ scope.row.updateTime | timestampFormatDate }}</span>
+        </template>
+      </el-table-column>
+    </ms-table>
     <ms-table-pagination :change="getTestCases" :current-page.sync="currentPage" :page-size.sync="pageSize"
                          :total="total"/>
+
   </test-case-relevance-base>
 </template>
 
@@ -80,12 +107,18 @@ import MsTableAdvSearchBar from "@/business/components/common/components/search/
 import MsTableHeader from "@/business/components/common/components/MsTableHeader";
 import MsPerformanceTestStatus from "@/business/components/performance/test/PerformanceTestStatus";
 import MsTablePagination from "@/business/components/common/pagination/TablePagination";
-import {_filter} from "@/common/js/tableUtils";
+import {_filter, buildBatchParam} from "@/common/js/tableUtils";
 import {TEST_PLAN_RELEVANCE_LOAD_CASE} from "@/business/components/common/components/search/search-components";
+import MsTable from "@/business/components/common/components/table/MsTable";
+import {getVersionFilters} from "@/network/project";
+
+const requireComponent = require.context('@/business/components/xpack/', true, /\.vue$/);
+const VersionSelect = requireComponent.keys().length > 0 ? requireComponent("./version/VersionSelect.vue") : {};
 
 export default {
   name: "TestCaseLoadRelevance",
   components: {
+    MsTable,
     TestCaseRelevanceBase,
     NodeTree,
     PriorityTableItem,
@@ -94,7 +127,8 @@ export default {
     MsTableAdvSearchBar,
     MsTableHeader,
     MsPerformanceTestStatus,
-    MsTablePagination
+    MsTablePagination,
+    'VersionSelect': VersionSelect.default,
   },
   data() {
     return {
@@ -120,7 +154,8 @@ export default {
         {text: 'Reporting', value: 'Reporting'},
         {text: 'Completed', value: 'Completed'},
         {text: 'Error', value: 'Error'}
-      ]
+      ],
+      versionFilters: [],
     };
   },
   props: {
@@ -129,7 +164,10 @@ export default {
     },
     reviewId: {
       type: String
-    }
+    },
+    versionEnable: {
+      type: Boolean
+    },
   },
   watch: {
     planId() {
@@ -138,6 +176,13 @@ export default {
     reviewId() {
       this.condition.reviewId = this.reviewId;
     },
+    projectId() {
+      this.condition.versionId = null;
+      this.getVersionOptions();
+    }
+  },
+  mounted() {
+    this.getVersionOptions();
   },
   methods: {
     filter(filters) {
@@ -154,31 +199,37 @@ export default {
       this.search();
     },
     saveCaseRelevance() {
-      let param = {};
-      param.caseIds = [...this.selectIds];
+      let selectRows = this.$refs.table.selectRows;
+      let param = buildBatchParam(this, undefined, this.projectId);
+      param.ids = Array.from(selectRows).map(row => row.id);
       if (this.planId) {
-        param.testPlanId = this.planId;
-        this.result = this.$post('/test/plan/load/case/relevance', param, () => {
-          this.selectIds.clear();
-          this.$success(this.$t('commons.save_success'));
-
-          this.$refs.baseRelevance.close();
-
-          this.$emit('refresh');
+        this.result = this.$post("/performance/list/batch", param, (response) => {
+          let tests = response.data;
+          let condition = {
+            caseIds: Array.from(tests).map(row => row.id),
+            testPlanId: this.planId,
+          };
+          this.result = this.$post('/test/plan/load/case/relevance', condition, () => {
+            this.$success(this.$t('commons.save_success'));
+            this.$refs.baseRelevance.close();
+            this.$emit('refresh');
+          });
         });
       }
       if (this.reviewId) {
-        param.testCaseReviewId = this.reviewId;
-        this.result = this.$post('/test/review/load/case/relevance', param, () => {
-          this.selectIds.clear();
-          this.$success(this.$t('commons.save_success'));
-
-          this.$refs.baseRelevance.close();
-
-          this.$emit('refresh');
+        this.result = this.$post("/performance/list/batch", param, (response) => {
+          let tests = response.data;
+          let condition = {
+            caseIds: Array.from(tests).map(row => row.id),
+            testCaseReviewId: this.reviewId,
+          };
+          this.result = this.$post('/test/review/load/case/relevance', condition, () => {
+            this.$success(this.$t('commons.save_success'));
+            this.$refs.baseRelevance.close();
+            this.$emit('refresh');
+          });
         });
       }
-
     },
     buildPagePath(path) {
       return path + "/" + this.currentPage + "/" + this.pageSize;
@@ -243,17 +294,6 @@ export default {
     refresh() {
       this.close();
     },
-    getAllNodeTreeByPlanId() {
-      if (this.planId) {
-        let param = {
-          testPlanId: this.planId,
-          projectId: this.projectId
-        };
-        this.result = this.$post("/case/node/list/all/plan", param, response => {
-          this.treeNodes = response.data;
-        });
-      }
-    },
     close() {
       this.selectIds.clear();
       this.selectNodeIds = [];
@@ -269,9 +309,21 @@ export default {
       }
       this.treeNodes = [];
       this.selectNodeIds = [];
+    },
+    getVersionOptions() {
+      getVersionFilters(this.projectId, (data) => {
+        this.versionFilters = data;
+      });
+    },
+    changeVersion(currentVersion) {
+      this.condition.versionId = currentVersion || null;
+      this.search();
+    },
+    setSelectCounts(data) {
+      this.$refs.baseRelevance.selectCounts = data;
     }
   }
-}
+};
 </script>
 
 <style scoped>

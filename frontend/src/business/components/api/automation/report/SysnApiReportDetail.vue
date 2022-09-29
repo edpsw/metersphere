@@ -1,13 +1,15 @@
 <template>
   <ms-container>
     <ms-main-container>
-      <el-card>
+      <el-card class="report-body">
         <section class="report-container">
           <div style="margin-top: 10px">
             <ms-api-report-view-header
+              :show-cancel-button="false"
               :debug="debug"
               :export-flag="exportFlag"
               :report="report"
+              :project-env-map="projectEnvMap"
               @reportExport="handleExport"
               @reportSave="handleSave"/>
           </div>
@@ -15,12 +17,14 @@
             <ms-metric-chart
               :content="content"
               :totalTime="totalTime"
+              :report="report"
               v-if="!loading"/>
             <div>
               <el-tabs v-model="activeName" @tab-click="handleClick">
                 <el-tab-pane :label="$t('api_report.total')" name="total">
                   <ms-scenario-results
                     :treeData="fullTreeNodes"
+                    :report="report"
                     :default-expand="true"
                     :console="content.console"
                     v-on:requestResult="requestResult"
@@ -34,9 +38,36 @@
                   </template>
                   <ms-scenario-results
                     :console="content.console"
-                    :treeData="failsTreeNodes"
+                    :report="report"
+                    :treeData="fullTreeNodes"
                     v-on:requestResult="requestResult"
+                    ref="failsTree"
                   />
+                </el-tab-pane>
+                <el-tab-pane name="errorReport" v-if="content.errorCode > 0">
+                  <template slot="label">
+                    <span class="fail" style="color: #F6972A">{{ $t('error_report_library.option.name') }}</span>
+                  </template>
+                  <ms-scenario-results v-on:requestResult="requestResult" :console="content.console"
+                                       :treeData="fullTreeNodes" ref="errorReportTree"/>
+                </el-tab-pane>
+                <el-tab-pane name="unExecute" v-if="content.unExecute > 0">
+                  <template slot="label">
+                    <span class="fail" style="color: #9C9B9A">{{
+                        $t('api_test.home_page.detail_card.unexecute')
+                      }}</span>
+                  </template>
+                  <ms-scenario-results v-on:requestResult="requestResult"
+                                       :report="report"
+                                       :console="content.console"
+                                       :treeData="fullTreeNodes"
+                                       ref="unExecuteTree"/>
+                </el-tab-pane>
+                <el-tab-pane name="console">
+                  <template slot="label">
+                    <span class="console">{{ $t('api_test.definition.request.console') }}</span>
+                  </template>
+                  <pre>{{ content.console }}</pre>
                 </el-tab-pane>
               </el-tabs>
             </div>
@@ -44,6 +75,7 @@
               :title="report.testName"
               :content="content"
               :total-time="totalTime"
+              :project-env-map="projectEnvMap"
               id="apiTestReport"
               v-if="reportExportVisible"
             />
@@ -66,9 +98,8 @@ import MsMainContainer from "@/business/components/common/components/MsMainConta
 import MsApiReportExport from "./ApiReportExport";
 import MsApiReportViewHeader from "./ApiReportViewHeader";
 import {RequestFactory} from "../../definition/model/ApiTestModel";
-import {windowPrint, getCurrentProjectID, getUUID} from "@/common/js/utils";
+import {getCurrentProjectID, windowPrint} from "@/common/js/utils";
 import {STEP} from "../scenario/Setting";
-import {scenario} from "@/business/components/track/plan/event-bus";
 
 export default {
   name: "SysnApiReportDetail",
@@ -84,8 +115,6 @@ export default {
       content: {total: 0, scenarioTotal: 1},
       report: {},
       loading: false,
-      fails: [],
-      failsTreeNodes: [],
       totalTime: 0,
       isRequestResult: false,
       startTime: 99991611737506593,
@@ -102,64 +131,57 @@ export default {
       messageWebSocket: {},
       websocket: {},
       stepFilter: new STEP,
+      tempResult: [],
+      projectEnvMap: {},
     }
   },
   activated() {
     this.isRequestResult = false;
   },
   created() {
-    if (this.scenario && this.scenario.scenarioDefinition) {
-      this.content.scenarioStepTotal = this.scenario.scenarioDefinition.hashTree.length;
-      this.initTree();
-      this.initWebSocket();
-      this.initMessageSocket();
-      this.clearDebug();
-    }
+
+  },
+  mounted() {
+    this.$nextTick(() => {
+      if (this.scenario && this.scenario.scenarioDefinition) {
+        this.content.scenarioStepTotal = this.scenario.scenarioDefinition.hashTree.length;
+        this.initTree();
+        this.initMessageSocket();
+        this.clearDebug();
+      }
+    });
   },
   props: {
     reportId: String,
-    currentProjectId: String,
     infoDb: Boolean,
     debug: Boolean,
     scenario: {},
-    scenarioId: String
+    scenarioId: String,
+    isUi: {
+      type: Boolean,
+      default: false
+    }
   },
   methods: {
     initTree() {
       this.fullTreeNodes = [];
-      let obj = {index: 1, label: this.scenario.name, value: {responseResult: {}, unexecute: true, testing: false}, children: [], unsolicited: true};
-      this.formatContent(this.scenario.scenarioDefinition.hashTree, obj);
+      let obj = {
+        resId: "root",
+        index: 1,
+        label: this.scenario.name,
+        value: {responseResult: {}, unexecute: true, testing: false},
+        children: [],
+        unsolicited: true
+      };
+      this.formatContent(this.scenario.scenarioDefinition.hashTree, obj, "", "root");
       this.fullTreeNodes.push(obj);
     },
-    setTreeValue(arr) {
-      arr.forEach(item => {
-        if (this.debugResult && this.debugResult.get(item.resId)) {
-          let arrValue = this.debugResult.get(item.resId);
-          if (arrValue.length > 1) {
-            for (let i = 0; i < arrValue.length; i++) {
-              let obj = {resId: item.resId, index: i, label: item.resId, value: arrValue[i], children: []};
-              let isAdd = true;
-              for (let h = 0; h < arr.length; h++) {
-                let node = arr [h];
-                if (node.value.name === arrValue[i].name) {
-                  isAdd = false;
-                }
-                if (node.resId === arrValue[i].resourceId && node.value.unexecute) {
-                  arr.splice(h, 1);
-                }
-              }
-              if (isAdd) {
-                arr.push(obj);
-              }
-            }
-          } else {
-            item.value = arrValue[0];
-          }
-        }
-        if (item.children && item.children.length > 0) {
-          this.setTreeValue(item.children);
-        }
-      })
+    compare() {
+      return function (a, b) {
+        let v1 = a.value.sort;
+        let v2 = b.value.sort;
+        return v1 - v2;
+      }
     },
     getType(type) {
       switch (type) {
@@ -174,13 +196,32 @@ export default {
       }
       return type;
     },
-    formatContent(hashTree, tree, fullPath) {
+    margeTransaction(item, arr) {
+      arr.forEach(subItem => {
+        if (item.resId === subItem.resourceId) {
+          item.value = subItem;
+          item.testing = false;
+          item.debug = true;
+        }
+        if (subItem.subRequestResults && subItem.subRequestResults.length > 0) {
+          this.margeTransaction(item, subItem.subRequestResults);
+        }
+      })
+    },
+    formatContent(hashTree, tree, fullPath, pid) {
       if (hashTree) {
         hashTree.forEach(item => {
           if (item.enable) {
             item.parentIndex = fullPath ? fullPath + "_" + item.index : item.index;
+            if (item.type && item.type === "MsUiCommand" && item.command === item.name) {
+              item.name = this.$t("ui." + item.name);
+            }
             let name = item.name ? item.name : this.getType(item.type);
-            let obj = {resId: item.resourceId + "_" + item.parentIndex, index: Number(item.index), label: name, value: {name: name, responseResult: {}, unexecute: true, testing: false}, children: [], unsolicited: true};
+            let id = item.type === 'JSR223Processor' || !item.id ? item.resourceId : item.id
+            let obj = {
+              pid: pid, resId: id + "_" + item.parentIndex, index: Number(item.index), label: name,
+              value: {name: name, responseResult: {}, unexecute: true, testing: false}, children: [], unsolicited: true
+            };
             tree.children.push(obj);
             if (this.stepFilter.get("AllSamplerProxy").indexOf(item.type) !== -1) {
               obj.unsolicited = false;
@@ -189,7 +230,7 @@ export default {
               this.content.scenarioTotal += 1;
             }
             if (item.hashTree && item.hashTree.length > 0 && this.stepFilter && this.stepFilter.get("AllSamplerProxy").indexOf(item.type) === -1) {
-              this.formatContent(item.hashTree, obj, item.parentIndex);
+              this.formatContent(item.hashTree, obj, item.parentIndex, obj.resId);
             }
           }
         })
@@ -203,8 +244,18 @@ export default {
         reset();
       });
     },
+    filter(index) {
+      if (index === "1") {
+        this.$refs.failsTree.filter(index);
+      } else if (this.activeName === "errorReport") {
+        this.$refs.errorReportTree.filter("errorReport");
+      } else if (this.activeName === "unExecute") {
+        this.$refs.unExecuteTree.filter("unexecute");
+      }
+    },
     handleClick(tab, event) {
-      this.isRequestResult = false
+      this.isRequestResult = false;
+      this.filter(tab.index);
     },
     exportReportReset() {
       this.$router.go(0);
@@ -233,244 +284,22 @@ export default {
       this.content.scenarioSuccess = 0;
       this.content.scenarioError = 0;
     },
-    initWebSocket() {
-      let protocol = "ws://";
-      if (window.location.protocol === 'https:') {
-        protocol = "wss://";
-      }
-      const uri = protocol + window.location.host + "/api/scenario/report/get/real/" + this.reportId;
-      this.websocket = new WebSocket(uri);
-      this.websocket.onmessage = this.onMessage;
-    },
-    onMessage(e) {
-      if (e.data) {
-        let data = JSON.parse(e.data);
-        this.formatResult(data);
-        if (data.end) {
-          this.removeReport();
-          this.getReport();
-          this.$emit('refresh', this.debugResult);
-        }
-      }
-    },
-    removeReport() {
-      let url = "/api/scenario/report/remove/real/" + this.reportId;
-      this.$get(url, response => {
-        scenario.$emit('hide', this.scenarioId);
-        this.$success(this.$t('schedule.event_success'));
-        this.websocket.close();
-        this.messageWebSocket.close();
-      });
-    },
-    getTransaction(transRequests, resMap) {
-      transRequests.forEach(subItem => {
-        if (subItem.method === 'Request') {
-          this.getTransaction(subItem.subRequestResults, resMap);
-        }
-        this.reqTotal++;
-        let key = subItem.resourceId;
-        if (resMap.get(key)) {
-          if (resMap.get(key).indexOf(subItem) === -1 && subItem.method !== 'Request') {
-            resMap.get(key).push(subItem);
-          }
-        } else {
-          resMap.set(key, [subItem]);
-        }
-        if (subItem.success) {
-          this.reqSuccess++;
-        } else {
-          this.reqError++;
-        }
-        if (subItem.startTime && Number(subItem.startTime) < this.startTime) {
-          this.startTime = subItem.startTime;
-        }
-        if (subItem.endTime && Number(subItem.endTime) > this.endTime) {
-          this.endTime = subItem.endTime;
-        }
-      })
-    },
-    formatResult(res) {
-      let resMap = new Map;
-      this.startTime = 99991611737506593;
-      this.endTime = 0;
-      this.clearDebug();
-      if (res && res.scenarios) {
-        res.scenarios.forEach(item => {
-          this.content.total += item.requestResults.length;
-          this.content.passAssertions += item.passAssertions
-          this.content.totalAssertions += item.totalAssertions;
-          if (item && item.requestResults) {
-            item.requestResults.forEach(req => {
-              req.responseResult.console = res.console;
-              if (req.method === 'Request' && req.subRequestResults && req.subRequestResults.length > 0) {
-                this.getTransaction(req.subRequestResults, resMap);
-              } else {
-                this.reqTotal++;
-                let key = req.resourceId;
-                if (resMap.get(key)) {
-                  if (resMap.get(key).indexOf(req) === -1) {
-                    resMap.get(key).push(req);
-                  }
-                } else {
-                  resMap.set(key, [req]);
-                }
-                if (req.success) {
-                  this.reqSuccess++;
-                } else {
-                  this.reqError++;
-                }
-                if (req.startTime && Number(req.startTime) < this.startTime) {
-                  this.startTime = req.startTime;
-                }
-                if (req.endTime && Number(req.endTime) > this.endTime) {
-                  this.endTime = req.endTime;
-                }
-              }
-            })
-          }
-        })
-      }
-      if (this.startTime < this.endTime) {
-        this.totalTime = this.endTime - this.startTime + 100;
-      }
-      this.debugResult = resMap;
-      this.setTreeValue(this.fullTreeNodes);
-      this.reload();
-    },
     reload() {
       this.loading = true;
       this.$nextTick(() => {
         this.loading = false;
       });
     },
-    getReport() {
-      let url = "/api/scenario/report/get/" + this.reportId;
-      this.$get(url, response => {
-        this.report = response.data || {};
-        if (response.data) {
-          try {
-            this.content = JSON.parse(this.report.content);
-            if (!this.content) {
-              this.content = {scenarios: []};
-            }
-          } catch (e) {
-            throw e;
-          }
-          this.getFails();
-        }
-      });
-    },
-    getFails() {
-      this.fails = [];
-      let array = [];
-      if (this.content.scenarios) {
-        this.content.scenarios.forEach((scenario) => {
-          let failScenario = Object.assign({}, scenario);
-          if (scenario.error > 0) {
-            this.fails.push(failScenario);
-            failScenario.requestResults = [];
-            scenario.requestResults.forEach((request) => {
-              if (!request.success) {
-                let failRequest = Object.assign({}, request);
-                failScenario.requestResults.push(failRequest);
-                array.push(request);
-              }
-            })
-          }
-        })
-        this.formatTree(array, this.failsTreeNodes);
-        this.recursiveSorting(this.failsTreeNodes);
-        this.exportFlag = true;
-      }
-    },
-    formatTree(array, tree) {
-      array.map((item) => {
-        let key = item.name;
-        let nodeArray = key.split('^@~@^');
-        let children = tree;
-        let scenarioId = "";
-        let scenarioName = "";
-        if (item.scenario) {
-          let scenarioArr = JSON.parse(item.scenario);
-          if (scenarioArr.length > 1) {
-            let scenarioIdArr = scenarioArr[0].split("_");
-            scenarioId = scenarioIdArr[0];
-            scenarioName = scenarioIdArr[1];
-          }
-        }
-        // 循环构建子节点
-        for (let i = 0; i < nodeArray.length; i++) {
-          if (!nodeArray[i]) {
-            continue;
-          }
-          let node = {
-            label: nodeArray[i],
-            value: item,
-          };
-          if (i !== nodeArray.length) {
-            node.children = [];
-          }
-
-          if (children.length === 0) {
-            children.push(node);
-          }
-
-          let isExist = false;
-          for (let j in children) {
-            if (children[j].label === node.label) {
-
-              let idIsPath = true;
-              //判断ID是否匹配  目前发现问题的只有重复场景，而重复场景是在第二个节点开始合并的。所以这里暂时只判断第二个场景问题。
-              //如果出现了其他问题，则需要检查其他问题的数据结构。暂时采用具体问题具体分析的策略
-              if (i === nodeArray.length - 2) {
-                idIsPath = false;
-                let childId = "";
-                let childName = "";
-                if (children[j].value && children[j].value.scenario) {
-                  let scenarioArr = JSON.parse(children[j].value.scenario);
-                  if (scenarioArr.length > 1) {
-                    let childArr = scenarioArr[0].split("_");
-                    childId = childArr[0];
-                    if (childArr.length > 1) {
-                      childName = childArr[1];
-                    }
-                  }
-                }
-                if (scenarioId === "") {
-                  idIsPath = true;
-                } else if (scenarioId === childId) {
-                  idIsPath = true;
-                } else if (scenarioName !== childName) {
-                  //如果两个名字不匹配则默认通过，不匹配ID
-                  idIsPath = true;
-                }
-              }
-              if (idIsPath) {
-                if (i !== nodeArray.length - 1 && !children[j].children) {
-                  children[j].children = [];
-                }
-                children = (i === nodeArray.length - 1 ? children : children[j].children);
-                isExist = true;
-                break;
-              }
-            }
-          }
-          if (!isExist) {
-            children.push(node);
-            if (i !== nodeArray.length - 1 && !children[children.length - 1].children) {
-              children[children.length - 1].children = [];
-            }
-            children = (i === nodeArray.length - 1 ? children : children[children.length - 1].children);
-          }
-        }
-      })
-    },
     recursiveSorting(arr) {
       for (let i in arr) {
-        if (arr[i]) {
-          arr[i].index = Number(i) + 1;
-          if (arr[i].children && arr[i].children.length > 0) {
-            this.recursiveSorting(arr[i].children);
+        let step = arr[i];
+        if (step) {
+          step.index = Number(i) + 1;
+          if (step.value) {
+            step.value.testing = false;
+          }
+          if (step.children && step.children.length > 0) {
+            this.recursiveSorting(step.children);
           }
         }
       }
@@ -499,13 +328,132 @@ export default {
       }
       const uri = protocol + window.location.host + "/ws/" + this.reportId;
       this.messageWebSocket = new WebSocket(uri);
-      this.messageWebSocket.onmessage = this.onMessage2;
+      //初始化心跳 目前ui的机制容易使得 ws 超时
+      if (this.isUi) {
+        this.initHeartBeat();
+      }
+      this.messageWebSocket.onmessage = this.onMessage;
+      this.messageWebSocket.onerror = this.cleanHeartBeat;
     },
+    getReport() {
+      let url = "/api/scenario/report/get/" + this.reportId;
+      if (this.report.reportType === "UI_INDEPENDENT") {
+        url += "?selectReportContent=true";
+      }
+      this.$get(url, response => {
+        this.report = response.data || {};
+        if (response.data) {
+          this.content = JSON.parse(response.data.content);
+          if (!this.content) {
+            this.content = {scenarios: []};
+          }
+          if (this.content.projectEnvMap) {
+            this.projectEnvMap = this.content.projectEnvMap;
+          }
+          this.content.error = this.content.error;
 
+          this.content.success = (this.content.total - this.content.error - this.content.errorCode - this.content.unExecute);
+          this.totalTime = this.content.totalTime;
+          this.resetLabel(this.content.steps);
+          if (this.report.reportType === "UI_INDEPENDENT") {
+            this.tempResult = this.content.steps;
+            //校对执行次序
+            try {
+              this.checkOrder(this.tempResult);
+              this.fullTreeNodes = this.tempResult;
+            } catch (e) {
+              this.fullTreeNodes = this.content.steps;
+            }
+          } else {
+            this.fullTreeNodes = this.content.steps;
+          }
+          this.recursiveSorting(this.fullTreeNodes);
+          this.reload();
+        }
+        if ("Running" !== this.report.status) {
+          this.$emit('finish');
+        }
+      });
+    },
+    checkOrder(origin) {
+      if (!origin) {
+        return;
+      }
+      if (Array.isArray(origin)) {
+        this.sortChildren(origin);
+        origin.forEach(v => {
+          if (v.children) {
+            this.checkOrder(v.children)
+          }
+        })
+      }
+    },
+    sortChildren(source) {
+      if (!source) {
+        return;
+      }
+      source.forEach(item => {
+        let children = item.children;
+        if (children && children.length > 0) {
+          let tempArr = new Array(children.length);
+          let tempMap = new Map();
+
+          for (let i = 0; i < children.length; i++) {
+            if (!children[i].value || !children[i].value.startTime || children[i].value.startTime === 0) {
+              //若没有value或未执行的，则step留在当前位置
+              tempArr[i] = children[i];
+              //进行标识
+              tempMap.set(children[i].stepId, children[i])
+            }
+          }
+
+          //过滤出还没有指定好位置的step
+          let arr = children.filter(m => {
+            return !tempMap.get(m.stepId);
+          }).sort((m, n) => {
+            //按时间排序
+            return m.value.startTime - n.value.startTime;
+          });
+
+          //找出arr(已经有序，从头取即可)中时间最小的插入 tempArr 可用位置
+          for (let j = 0, i = 0; j < tempArr.length; j++) {
+            if (!tempArr[j]) {
+              //占位
+              tempArr[j] = arr[i];
+              i++;
+            }
+            //重新排序
+            tempArr[j].index = j + 1;
+          }
+
+          //赋值
+          item.children = tempArr;
+        }
+      })
+    },
     runningNodeChild(arr, resourceId) {
       arr.forEach(item => {
         if (resourceId === item.resId) {
           item.value.testing = true;
+        } else if (resourceId && resourceId.startsWith("result_")) {
+          let data = JSON.parse(resourceId.substring(7));
+          if (data.method === 'Request' && data.subRequestResults && data.subRequestResults.length > 0) {
+            this.margeTransaction(item, data.subRequestResults);
+          } else if (item.resId === data.resourceId) {
+            if (item.value && item.value.id && !item.mark) {
+              let newItem = JSON.parse(JSON.stringify(item));
+              newItem.value = data;
+              newItem.mark = true;
+              newItem.testing = false;
+              newItem.index = item.index + 1;
+              newItem.debug = true;
+              arr.push(newItem);
+            } else {
+              item.value = data;
+              item.testing = false;
+              item.debug = true;
+            }
+          }
         }
         if (item.children && item.children.length > 0) {
           this.runningNodeChild(item.children, resourceId);
@@ -517,6 +465,21 @@ export default {
         this.fullTreeNodes.forEach(item => {
           if (resourceId === item.resId) {
             item.value.testing = true;
+          } else if (resourceId && resourceId.startsWith("result_")) {
+            let data = JSON.parse(resourceId.substring(7));
+            if (data.method === 'Request' && data.subRequestResults && data.subRequestResults.length > 0) {
+              data.subRequestResults.forEach(subItem => {
+                if (item.resId === subItem.resourceId) {
+                  item.value = subItem;
+                  item.testing = false;
+                  item.debug = true;
+                }
+              })
+            } else if (item.resId === data.resourceId) {
+              item.value = data;
+              item.testing = false;
+              item.debug = true;
+            }
           }
           if (item.children && item.children.length > 0) {
             this.runningNodeChild(item.children, resourceId);
@@ -524,11 +487,75 @@ export default {
         })
       }
     },
-    onMessage2(e) {
+    onMessage(e) {
       if (e.data) {
         this.runningEvaluation(e.data);
+        this.sort(this.fullTreeNodes);
+      }
+      if (e.data && e.data.indexOf("MS_TEST_END") !== -1) {
+        this.getReport();
+        this.messageWebSocket.close();
+        this.cleanHeartBeat();
+        this.$EventBus.$emit('hide', this.scenarioId);
+        this.$emit('refresh', this.debugResult);
       }
     },
+    sort(stepArray) {
+      for (let i in stepArray) {
+        stepArray[i].index = Number(i) + 1;
+        if (stepArray[i].children && stepArray[i].children.length > 0) {
+          this.sort(stepArray[i].children);
+        }
+      }
+    },
+    /**
+     *
+     * @param hashTree
+     */
+    resetLabel(hashTree) {
+      if (!hashTree || !hashTree.length) {
+        return;
+      }
+      for (let i = 0; i < hashTree.length; i++) {
+        if (hashTree[i].type && hashTree[i].type === 'MsUiCommand') {
+          let label = this.$t("ui." + hashTree[i].label) ? this.$t("ui." + hashTree[i].label) : hashTree[i].label;
+          if (label.indexOf("ui") == -1) {
+            hashTree[i].label = label;
+          }
+        } else if (hashTree[i].type && hashTree[i].type === 'UiScenario') {
+          if (hashTree[i].children) {
+            this.resetLabel(hashTree[i].children);
+          }
+        }
+      }
+    },
+    websocketKey() {
+      return "ui_ws_" + this.reportId;
+    },
+    initHeartBeat() {
+      if (!window.localStorage.getItem(this.websocketKey())) {
+        window.localStorage.setItem(this.websocketKey(), this.reportId);
+        window.heartBeatHandle = setInterval(this.heartBeat, 30000);
+      } else {
+        this.cleanHeartBeat();
+        this.initHeartBeat();
+      }
+    },
+    cleanHeartBeat() {
+      if (window.heartBeatHandle) {
+        clearInterval(window.heartBeatHandle);
+        if (window.localStorage.getItem(this.websocketKey())) {
+          window.localStorage.removeItem(this.websocketKey());
+        }
+      }
+    },
+    heartBeat() {
+      let msg = {
+        reportId: this.reportId,
+        content: "i'm alive"
+      };
+      this.messageWebSocket.send(JSON.stringify(msg));
+    }
   },
   computed: {
     projectId() {
@@ -578,6 +605,10 @@ export default {
 
 .scenario-result .icon.is-active {
   transform: rotate(90deg);
+}
+
+.report-body {
+  min-width: 750px !important;
 }
 
 </style>

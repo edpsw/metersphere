@@ -2,7 +2,8 @@
 
   <div class="card-container">
     <el-card class="card-content">
-      <el-button size="small" type="primary" class="ms-api-button" style="float: right;margin-right: 20px" @click="stop" v-if="isStop">
+      <el-button size="small" type="primary" class="ms-api-button" style="float: right;margin-right: 20px" @click="stop"
+                 v-if="isStop">
         {{ $t('report.stop_btn') }}
       </el-button>
       <div v-else>
@@ -23,15 +24,18 @@
         <ms-basis-parameters :request="request" @callback="runDebug" ref="requestForm"/>
         <!-- JDBC 请求返回数据 -->
         <p class="tip">{{ $t('api_test.definition.request.res_param') }} </p>
-        <ms-request-result-tail v-if="!loading" :response="responseData" :currentProtocol="currentProtocol" ref="debugResult"/>
+        <ms-request-result-tail v-if="!loading" :response="responseData" :currentProtocol="currentProtocol"
+                                ref="debugResult"/>
       </div>
-      <ms-jmx-step :request="request" :response="responseData"/>
 
       <!-- 执行组件 -->
-      <ms-run :debug="true" :reportId="reportId" :isStop="isStop" :run-data="runData" @runRefresh="runRefresh" ref="runTest"/>
+      <ms-run :debug="true" :reportId="reportId" :isStop="isStop" :run-data="runData" @runRefresh="runRefresh"
+              ref="runTest"/>
     </el-card>
     <div v-if="scenario">
-      <el-button style="float: right;margin: 20px" type="primary" @click="handleCommand('save_as_api')"> {{ $t('commons.save') }}</el-button>
+      <el-button style="float: right;margin: 20px" type="primary" @click="handleCommand('save_as_api')">
+        {{ $t('commons.save') }}
+      </el-button>
     </div>
     <!-- 加载用例 -->
     <ms-api-case-list @refreshModule="refreshModule" :loaded="false" ref="caseList"/>
@@ -50,9 +54,9 @@ import {createComponent} from "../jmeter/components";
 import {REQ_METHOD} from "../../model/JsonData";
 import MsRequestResultTail from "../response/RequestResultTail";
 import MsBasisParameters from "../request/database/BasisParameters";
-import MsJmxStep from "../step/JmxStep";
 import MsApiCaseList from "../case/ApiCaseList";
 import {TYPE_TO_C} from "@/business/components/api/automation/scenario/Setting";
+import {mergeRequestDocumentData} from "@/business/components/api/definition/api-definition";
 
 export default {
   name: "ApiConfig",
@@ -63,7 +67,6 @@ export default {
     MsResponseText,
     MsRun,
     MsBasisParameters,
-    MsJmxStep,
     MsApiCaseList
   },
   props: {
@@ -114,6 +117,9 @@ export default {
     } else {
       this.request = createComponent("JDBCSampler");
     }
+    if (!this.request.environmentId) {
+      this.request.environmentId = this.$store.state.useEnvironment;
+    }
   },
   watch: {
     debugResultId() {
@@ -122,6 +128,7 @@ export default {
   },
   methods: {
     handleCommand(e) {
+      mergeRequestDocumentData(this.request);
       if (e === "save_as") {
         this.saveAs();
       } else if (e === 'save_as_api') {
@@ -154,7 +161,9 @@ export default {
       this.responseData = data;
       this.loading = false;
       this.isStop = false;
-      this.$refs.debugResult.reload();
+      if (this.$refs.debugResult) {
+        this.$refs.debugResult.reload();
+      }
     },
     saveAsApi() {
       let obj = {request: this.request};

@@ -28,10 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.lang.reflect.InvocationTargetException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static io.metersphere.commons.constants.ResourceStatusEnum.*;
@@ -198,12 +195,6 @@ public class TestResourcePoolService {
         return nodeResourcePoolService.validate(testResourcePool);
     }
 
-    private void deleteTestResource(String testResourcePoolId) {
-        TestResourceExample testResourceExample = new TestResourceExample();
-        testResourceExample.createCriteria().andTestResourcePoolIdEqualTo(testResourcePoolId);
-        testResourceMapper.deleteByExample(testResourceExample);
-    }
-
     public TestResourcePool getResourcePool(String resourcePoolId) {
         return testResourcePoolMapper.selectByPrimaryKey(resourcePoolId);
     }
@@ -219,7 +210,7 @@ public class TestResourcePoolService {
             }
             try {
                 validateTestResourcePool(pool);
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 LogUtil.error(e.getMessage(), e);
                 pool.setStatus(INVALID.name());
                 pool.setUpdateTime(System.currentTimeMillis());
@@ -287,5 +278,17 @@ public class TestResourcePoolService {
             return JSON.toJSONString(details);
         }
         return null;
+    }
+
+    public List<TestResourcePoolDTO> listWsValidQuotaResourcePools(String workspaceId) {
+        QuotaService quotaService = CommonBeanFactory.getBean(QuotaService.class);
+        List<TestResourcePoolDTO> list = listValidResourcePools();
+        if (quotaService != null) {
+            Set<String> pools = quotaService.getQuotaWsResourcePools(workspaceId);
+            if (!pools.isEmpty()) {
+                return list.stream().filter(pool -> pools.contains(pool.getId())).collect(Collectors.toList());
+            }
+        }
+        return list;
     }
 }

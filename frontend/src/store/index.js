@@ -20,7 +20,6 @@ const state = {
 
   testReviewSelectNode: {},
   testReviewSelectNodeIds: [],
-  testReviewModuleOptions: [],
   useEnvironment: "",
   testPlanViewSelectNode: {},
   selectStep: {},
@@ -30,10 +29,28 @@ const state = {
   // 当前项目是否勾选自定义ID
   currentProjectIsCustomNum: false,
   testCaseTemplate: {},
-  scenarioMap: new Map(),
+  scenarioEnvMap: new Map(),
   apiMap: new Map(),
   apiStatus: new Map(),
-  testCaseMap: new Map()
+  apiCaseMap: new Map(),
+  testCaseMap: new Map(),
+  curTabId: null,
+  testCaseDefaultValue: {},
+  forceRerenderIndex: "",
+  currentScenario: {},
+  scenarioDefinition: {},
+  selectCommand: {},
+  //按照type分组的指令
+  groupedCmd: {},
+  selectUiGroup: '',
+  librarySelectElement: {},
+  uiElementLibraryModuleIds: null,
+  uiElementLibraryElements: null,
+  refreshUiScenario: false,
+  showLicenseCountWarning: false,
+  temWorkspaceId: null,
+  fileDownloadList: [], // 文件下载进度列表,
+  appFixed: null,
 }
 
 const store = new Vuex.Store({

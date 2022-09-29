@@ -231,6 +231,7 @@
         <el-row>
           <el-col :span="24">
             <ms-chart ref="chart2"
+                      v-if="refresh"
                       class="chart-config"
                       :options="totalOption"
                       @datazoom="changeDataZoom"
@@ -240,6 +241,7 @@
         <el-row>
           <el-col :offset="2" :span="20">
             <el-table
+              v-if="refresh"
               :data="tableData"
               stripe
               border
@@ -293,10 +295,7 @@
 
 <script>
 import MsChart from "@/business/components/common/chart/MsChart";
-import {
-  getPerformanceReportDetailContent,
-  getSharePerformanceReportDetailContent,
-} from "@/network/load-test";
+import {getPerformanceReportDetailContent, getSharePerformanceReportDetailContent,} from "@/network/load-test";
 
 const color = ['#60acfc', '#32d3eb', '#5bc49f', '#feb64d', '#ff7c7c', '#9287e7', '#ca8622', '#bda29a', '#6e7074', '#546570', '#c4ccd3'];
 
@@ -341,6 +340,7 @@ export default {
         label: 'label'
       },
       init: false,
+      refresh: true,
       tableData: [],
       baseOption: {
         color: color,
@@ -438,20 +438,15 @@ export default {
       }
     },
     handleChecked(name) {
-      // let minus = this.checkOptions[name].filter((v) => {
-      //   return this.checkList[name].indexOf(v) === -1;
-      // })
-      // let groupName = this.$t('load_test.report.' + name) + ': ';
-      // for (const m of minus) {
-      //   this.chartData = this.chartData.filter(c => c.groupName !== groupName + m);
-      // }
-      // this.totalOption = this.generateOption(this.baseOption, this.chartData);
-      // this.getChart(name, this.checkList[name]);
+
       this.getTotalChart();
+
+      this.refresh = false;
+      this.$nextTick(() => {
+        this.refresh = true;
+      });
     },
     initTableData() {
-      // this.init = true;
-
       for (const name of CHART_MAP) {
         this.getCheckOptions(name);
       }
@@ -462,7 +457,7 @@ export default {
       if (this.planReportTemplate) {
         let data = this.planReportTemplate.checkOptions[reportKey];
         this.handleGetCheckOptions(data, reportKey);
-      } else if (this.isShare){
+      } else if (this.isShare) {
         return getSharePerformanceReportDetailContent(this.shareId, reportKey, this.id).then(res => {
           this.handleGetCheckOptions(res.data.data, reportKey);
         });
@@ -493,7 +488,7 @@ export default {
         let chars = [];
         for (let name in this.checkList) {
           let data = this.planReportTemplate.checkOptions[name];
-          chars.push({data, 'reportKey' : name});
+          chars.push({data, 'reportKey': name});
         }
         this.handleGetTotalChart(chars);
       } else {
@@ -512,7 +507,12 @@ export default {
     },
     handleGetTotalChart(res) {
       res = res.filter(v => !!v);
-      // console.log(res);
+      if (res.length === 0) {
+        this.refresh = false;
+        this.result.loading = false;
+      } else {
+        this.refresh = true;
+      }
       for (let i = 0; i < res.length; i++) {
         if (i === 0) {
           this.baseOption.yAxis.push({
@@ -544,7 +544,7 @@ export default {
         return;
       }
       this.totalOption = {};
-      if (this.isShare){
+      if (this.isShare) {
         return getSharePerformanceReportDetailContent(this.shareId, reportKey, this.id).then(res => {
           return this.handleGetChart(res.data.data, reportKey, checkList);
         });
@@ -593,28 +593,6 @@ export default {
         item.groupName = this.$t('load_test.report.' + reportKey) + ': ' + item.groupName;
       });
       return {data, reportKey};
-      // if (this.baseOption.yAxis.length === 0) {
-      //   this.baseOption.yAxis.push({
-      //     name: this.$t('load_test.report.' + reportKey),
-      //     type: 'value',
-      //     min: 0,
-      //     position: 'left',
-      //     boundaryGap: [0, '100%']
-      //   });
-      // } else {
-      //   this.baseOption.yAxis.push({
-      //     name: this.$t('load_test.report.' + reportKey),
-      //     type: 'value',
-      //     min: 0,
-      //     position: 'right',
-      //     nameRotate: 20,
-      //     offset: (this.baseOption.yAxis.length - 1) * 50,
-      //     boundaryGap: [0, '100%']
-      //   });
-      //   this.baseOption.grid.right = (this.baseOption.yAxis.length - 1) * 5 + '%';
-      // }
-      // let yAxisIndex = this.baseOption.yAxis.length - 1;
-      // this.totalOption = this.generateOption(this.baseOption, data, yAxisIndex);
     },
     generateOption(option, data, yAxisIndex) {
       let chartData = data;
@@ -714,7 +692,11 @@ export default {
     }
   },
   created() {
-    this.id = this.$route.path.split('/')[4];
+    if (this.report) {
+      this.id = this.report.id;
+    } else {
+      this.id = this.$route.path.split('/')[4];
+    }
     this.initTableData();
   },
   watch: {

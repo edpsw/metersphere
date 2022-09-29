@@ -150,8 +150,7 @@ export default {
         'beanshell',
         "python",
         "groovy",
-        "nashornScript",
-        "rhinoScript"
+        "javascript"
       ],
       codeEditModeMap: {
         beanshell: 'java',
@@ -159,6 +158,7 @@ export default {
         groovy: 'java',
         nashornScript: 'javascript',
         rhinoScript: 'javascript',
+        javascript: 'javascript',
       },
       response: {},
       request: {},
@@ -171,6 +171,7 @@ export default {
       this.activeName = "code";
       this.visible = true;
       this.form.type = "beanshell";
+      this.runResult.loading = false;
       if (data && data.id) {
         // 重新加载自定义函数对象，列表中没有查询大字段数据
         this.initFunc(data.id);
@@ -210,12 +211,9 @@ export default {
       }
     },
     handleCodeTemplate(code) {
-      if (!this.form.script) {
-        this.form.script = code;
-      } else {
-        this.form.script = this.form.script + '\n' + code;
+      if (this.$refs.codeEdit) {
+        this.$refs.codeEdit.insert(code);
       }
-      this.reloadCodeEdit();
     },
     reload() {
       this.isFormAlive = false;
@@ -331,6 +329,7 @@ export default {
 
 .script-index {
   margin-top: 10px;
+  width: 230px;
 }
 
 .show-menu {

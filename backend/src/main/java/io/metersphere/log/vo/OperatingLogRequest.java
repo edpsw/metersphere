@@ -22,13 +22,15 @@ public class OperatingLogRequest implements Serializable {
 
     private Long endTime;
 
-    private String operModule;
+    private List<String> operModule;
 
     private String operTitle;
 
     private List<Long> times;
 
     private List<String> projectIds;
+
+    private List<String> workspaceIds;
 
     private List<String> modules;
 

@@ -12,7 +12,6 @@ import {
   HTTPsamplerFiles,
   HTTPSamplerProxy,
   IfController as JMXIfController,
-  TransactionController as JMXTransactionController,
   JDBCDataSource,
   JDBCSampler,
   JSONPathAssertion,
@@ -103,6 +102,7 @@ export const ASSERTION_TYPE = {
   DURATION: "Duration",
   JSR223: "JSR223",
   XPATH2: "XPath2",
+  DOCUMENT: "Document",
 }
 
 export const ASSERTION_REGEX_SUBJECT = {
@@ -126,8 +126,7 @@ export class BaseConfig {
         if (!(this[name] instanceof Array)) {
           if (notUndefined === true) {
             this[name] = options[name] === undefined ? this[name] : options[name];
-          }
-          else {
+          } else {
             this[name] = options[name];
           }
         }
@@ -782,8 +781,35 @@ export class Assertions extends BaseConfig {
     this.xpath2 = [];
     this.duration = undefined;
     this.enable = true;
+    this.document = {type: "JSON", data: {xmlFollowAPI: false, jsonFollowAPI: false, json: [], xml: []}, enable: true};
     this.set(options);
     this.sets({text: Text, regex: Regex, jsonPath: JSONPath, jsr223: AssertionJSR223, xpath2: XPath2}, options);
+  }
+
+  initOptions(options) {
+    options = options || {};
+    options.duration = new Duration(options.duration);
+    return options;
+  }
+}
+
+export class AssertionDocument extends BaseConfig {
+  constructor(options) {
+    super();
+    this.id = uuid();
+    this.name = "root";
+    this.status = true;
+    this.groupId = "";
+    this.rowspan = 1;
+    this.include = false;
+    this.typeVerification = false;
+    this.type = "object";
+    this.enable = true;
+    this.arrayVerification = false;
+    this.contentVerifications = "none";
+    this.expectedOutcome = "";
+    this.children = [];
+    this.set(options);
   }
 
   initOptions(options) {
@@ -807,7 +833,7 @@ export class AssertionJSR223 extends AssertionType {
     this.operator = undefined;
     this.value = undefined;
     this.desc = undefined;
-
+    this.enable = true;
     this.name = undefined;
     this.script = undefined;
     this.scriptLanguage = "beanshell";
@@ -825,7 +851,7 @@ export class Text extends AssertionType {
     this.subject = undefined;
     this.condition = undefined;
     this.value = undefined;
-
+    this.enable = true;
     this.set(options);
   }
 }
@@ -846,7 +872,7 @@ export class JSR223Processor extends BaseConfig {
     this.resourceId = uuid();
     this.active = false;
     this.type = "JSR223Processor";
-    this.label="";
+    this.label = "";
     this.script = undefined;
     this.scriptLanguage = "beanshell";
     this.enable = true;
@@ -877,6 +903,7 @@ export class Regex extends AssertionType {
     this.expression = undefined;
     this.description = undefined;
     this.assumeSuccess = false;
+    this.enable = true;
 
     this.set(options);
   }
@@ -892,7 +919,7 @@ export class JSONPath extends AssertionType {
     this.expression = undefined;
     this.expect = undefined;
     this.description = undefined;
-
+    this.enable = true;
     this.set(options);
   }
 
@@ -910,6 +937,7 @@ export class XPath2 extends AssertionType {
     super(ASSERTION_TYPE.XPATH2);
     this.expression = undefined;
     this.description = undefined;
+    this.enable = true;
     this.set(options);
   }
 
@@ -937,6 +965,7 @@ export class Extract extends BaseConfig {
     super();
     this.resourceId = uuid();
     this.type = "Extract";
+    this.xpathType = 'html';
     this.regex = [];
     this.json = [];
     this.xpath = [];
@@ -967,7 +996,6 @@ export class ExtractCommon extends ExtractType {
     this.expression = undefined;
     this.description = undefined;
     this.multipleMatching = undefined;
-
     this.set(options);
   }
 
@@ -1102,6 +1130,9 @@ export class TransactionController extends Controller {
     this.type = "TransactionController";
     this.name;
     this.hashTree = [];
+    this.generateParentSample = true;
+    this.includeTimers = true;
+
     this.set(options);
   }
 
@@ -1114,8 +1145,8 @@ export class TransactionController extends Controller {
 
   label() {
     if (this.isValid()) {
-      let label = this.$t('api_test.automation.transcation_controller');
-      if(this.name != null && this.name !== ""){
+      let label = this.$t('api_test.automation.transaction_controller');
+      if (this.name != null && this.name !== "") {
         label = this.name;
       }
       return label;

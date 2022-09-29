@@ -23,7 +23,7 @@ export default {
     return {
       result: {},
       loading: false,
-      runId: "",
+      requestResult: "",
       reqNumber: 0,
       websocket: {}
     }
@@ -32,7 +32,7 @@ export default {
   watch: {
     // 初始化
     reportId() {
-      this.run()
+      this.debugSocket()
     },
     isStop() {
       if (!this.isStop && this.websocket && this.websocket.close instanceof Function) {
@@ -41,21 +41,30 @@ export default {
     }
   },
   methods: {
-    initWebSocket() {
+    onOpen() {
+      this.run();
+    },
+    onDebugMessage(e) {
+      if (e.data && e.data.startsWith("result_")) {
+        try {
+          let data = e.data.substring(7);
+          this.websocket.close();
+          this.$emit('runRefresh', JSON.parse(data));
+        } catch (e) {
+          this.websocket.close();
+          this.$emit('runRefresh', "");
+        }
+      }
+    },
+    debugSocket() {
       let protocol = "ws://";
       if (window.location.protocol === 'https:') {
         protocol = "wss://";
       }
-      const uri = protocol + window.location.host + "/api/definition/run/report/" + this.runId + "/debug";
+      const uri = protocol + window.location.host + "/ws/" + this.reportId;
       this.websocket = new WebSocket(uri);
-      this.websocket.onmessage = this.onMessage;
-    },
-    onMessage(e) {
-      if (e.data) {
-        let data = JSON.parse(e.data);
-        this.websocket.close();
-        this.$emit('runRefresh', data);
-      }
+      this.websocket.onmessage = this.onDebugMessage;
+      this.websocket.onopen = this.onOpen;
     },
     sort(stepArray) {
       if (stepArray) {
@@ -93,8 +102,7 @@ export default {
       let url = "/custom/func/run";
       reqObj.reportId = this.reportId;
       this.$post(url, reqObj, res => {
-        this.runId = res.data;
-        this.initWebSocket();
+        this.requestResult = res.data;
       }, () => {
         this.$emit('errorRefresh', {});
       })

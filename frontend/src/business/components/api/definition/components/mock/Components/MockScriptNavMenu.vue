@@ -107,14 +107,25 @@ export default {
     _parseRequestObj(data) {
       let requestHeaders = new Map();
       let requestArguments = new Map();
+      let requestRest = new Map();
       let requestMethod = "";
       let requestBody = "";
+      let requestBodyKvs = new Map();
+      let bodyType = "";
       let requestPath = "";
       let request = JSON.parse(data.request);
       // 拼接发送请求需要的参数
       requestPath = request.path;
       requestMethod = request.method;
       let headers = request.headers;
+      let rest = request.rest;
+      if (rest && rest.length > 0) {
+        rest.forEach(r => {
+          if (r.enable) {
+            requestRest.set(r.name, r.value);
+          }
+        })
+      }
       if (headers && headers.length > 0) {
         headers.forEach(header => {
           if (header.name) {
@@ -133,8 +144,16 @@ export default {
       let body = request.body;
       if (body.json) {
         requestBody = body.raw;
+        bodyType = "json";
+      } else if (body.kvs) {
+        bodyType = "kvs";
+        body.kvs.forEach(arg => {
+          if (arg.name) {
+            requestBodyKvs.set(arg.name, arg.value);
+          }
+        })
       }
-      return {requestPath, requestHeaders, requestMethod, requestBody, requestArguments}
+      return {requestPath, requestHeaders, requestMethod, requestBody, requestBodyKvs, bodyType, requestArguments, requestRest}
     },
     apiClose() {
 
@@ -151,7 +170,7 @@ export default {
         if (this.language !== 'beanshell' && this.language !== 'groovy') {
           if (obj.title === this.$t('api_test.request.processor.code_add_report_length') ||
             obj.title === this.$t('api_test.request.processor.code_hide_report_length')) {
-            this.$warning("无对应的 "+ this.language +" 代码模版！");
+            this.$warning(this.$t('commons.no_corresponding') + " " + this.language + " " + this.$t('commons.code_template') + "！");
             return;
           }
         }

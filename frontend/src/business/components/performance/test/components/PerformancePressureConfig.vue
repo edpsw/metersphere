@@ -2,34 +2,31 @@
   <div v-loading="result.loading" class="pressure-config-container">
     <el-row>
       <el-col>
-        <el-form :inline="true">
+        <el-form :inline="true" :disabled="isReadOnly">
           <el-form-item :label="$t('load_test.select_resource_pool')">
-            <el-select v-model="resourcePool" :disabled="isReadOnly" size="mini" @change="resourcePoolChange">
+            <el-select v-model="resourcePool" size="mini" @change="resourcePoolChange">
               <el-option
-                  v-for="item in resourcePools"
-                  :key="item.id"
-                  :label="item.name"
-                  :disabled="!item.performance"
-                  :value="item.id">
+                v-for="item in resourcePools"
+                :key="item.id"
+                :label="item.name"
+                :disabled="!item.performance"
+                :value="item.id">
               </el-option>
             </el-select>
           </el-form-item>
           <el-form-item :label="$t('load_test.serialize_threadgroups')">
             <el-switch v-model="serializeThreadGroups"/>
           </el-form-item>
-          <br>
           <el-form-item :label="$t('load_test.autostop_threadgroups')">
             <el-switch v-model="autoStop"/>
           </el-form-item>
-          <el-form-item :label="$t('load_test.reaches_duration')">
+          <el-form-item v-if="autoStop" :label="$t('load_test.reaches_duration')">
             <el-input-number controls-position="right"
-                             :disabled="isReadOnly || !autoStop"
                              v-model="autoStopDelay"
                              :min="1"
                              :max="9999"
                              size="mini"/>
           </el-form-item>
-          <el-form-item :label="$t('load_test.autostop_delay')"/>
         </el-form>
       </el-col>
     </el-row>
@@ -53,13 +50,13 @@
                     {{ $t('load_test.thread_num') }}{{ threadGroup.threadNumber }},
                     {{ $t('load_test.duration') }}:
                     <span v-if="threadGroup.durationHours">
-                      {{ threadGroup.durationHours }}{{ $t('schedule.cron.hours') }}
+                      {{ threadGroup.durationHours }}{{ $t('load_test.hours') }}
                     </span>
                     <span v-if="threadGroup.durationMinutes">
-                      {{ threadGroup.durationMinutes }}{{ $t('schedule.cron.minutes') }}
+                      {{ threadGroup.durationMinutes }}{{ $t('load_test.minutes') }}
                     </span>
                     <span v-if="threadGroup.durationSeconds">
-                      {{ threadGroup.durationSeconds }}{{ $t('schedule.cron.seconds') }}
+                      {{ threadGroup.durationSeconds }}{{ $t('load_test.seconds') }}
                     </span>
                   </el-tag>
                   <el-tag type="primary" size="mini" v-if="threadGroup.threadType === 'ITERATION'">
@@ -69,82 +66,40 @@
                 </el-col>
               </el-row>
             </template>
-            <el-form :inline="true">
+            <el-form :inline="true" label-width="100px" :disabled="isReadOnly">
               <el-form-item :label="$t('load_test.thread_num')">
                 <el-input-number controls-position="right"
-                                 :disabled="isReadOnly"
+
                                  v-model="threadGroup.threadNumber"
                                  @change="calculateTotalChart()"
                                  :min="1"
                                  :max="maxThreadNumbers"
                                  size="mini"/>
               </el-form-item>
+              <br>
               <el-form-item :label="$t('load_test.on_sample_error')">
-                <el-select v-model="threadGroup.onSampleError" :disabled="isReadOnly" size="mini">
+                <el-select v-model="threadGroup.onSampleError" size="mini">
                   <el-option
-                      v-for="item in onSampleErrors"
-                      :key="item.value"
-                      :label="item.label"
-                      :value="item.value">
+                    v-for="item in onSampleErrors"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value">
                   </el-option>
                 </el-select>
               </el-form-item>
               <br>
-              <el-form-item>
-                <el-radio-group v-model="threadGroup.threadType" @change="calculateTotalChart()">
-                  <el-radio label="DURATION">{{ $t('load_test.by_duration') }}</el-radio>
-                  <el-radio label="ITERATION">{{ $t('load_test.by_iteration') }}</el-radio>
+              <el-form-item :label="$t('load_test.run_mode')">
+                <el-radio-group v-model="threadGroup.threadType"
+                                @change="calculateTotalChart()"
+                                size="mini">
+                  <el-radio-button label="DURATION">{{ $t('load_test.by_duration') }}</el-radio-button>
+                  <el-radio-button label="ITERATION">{{ $t('load_test.by_iteration') }}</el-radio-button>
                 </el-radio-group>
               </el-form-item>
-              <br>
               <div v-if="threadGroup.threadType === 'DURATION'">
-                <el-form-item>
-                  <el-input-number controls-position="right"
-                                   :disabled="isReadOnly"
-                                   v-model="threadGroup.durationHours"
-                                   :min="0"
-                                   :max="9999"
-                                   @change="calculateTotalChart()"
-                                   size="mini"/>
-                </el-form-item>
-                <el-form-item :label="$t('schedule.cron.hours')"/>
-                <el-form-item>
-                  <el-input-number controls-position="right"
-                                   :disabled="isReadOnly"
-                                   v-model="threadGroup.durationMinutes"
-                                   :min="0"
-                                   :max="59"
-                                   @change="calculateTotalChart()"
-                                   size="mini"/>
-                </el-form-item>
-                <el-form-item :label="$t('schedule.cron.minutes')"/>
-                <el-form-item>
-                  <el-input-number controls-position="right"
-                                   :disabled="isReadOnly"
-                                   v-model="threadGroup.durationSeconds"
-                                   :min="0"
-                                   :max="59"
-                                   @change="calculateTotalChart()"
-                                   size="mini"/>
-                </el-form-item>
-                <el-form-item :label="$t('schedule.cron.seconds')"/>
-                <br>
-                <el-form-item :label="$t('load_test.rps_limit')">
-                  <el-switch v-model="threadGroup.rpsLimitEnable" @change="calculateTotalChart()"/>
-                  &nbsp;
-                  <el-input-number controls-position="right"
-                                   :disabled="isReadOnly || !threadGroup.rpsLimitEnable"
-                                   v-model="threadGroup.rpsLimit"
-                                   @change="calculateTotalChart()"
-                                   :min="1"
-                                   :max="99999"
-                                   size="mini"/>
-                </el-form-item>
-                <br>
                 <div v-if="threadGroup.tgType === 'com.blazemeter.jmeter.threads.concurrency.ConcurrencyThreadGroup'">
-                  <el-form-item :label="$t('load_test.ramp_up_time_within')">
+                  <el-form-item label="Ramp-Up">
                     <el-input-number controls-position="right"
-                                     :disabled="isReadOnly"
                                      :min="1"
                                      v-if="rampUpTimeVisible"
                                      :max="getDuration(threadGroup)"
@@ -152,22 +107,20 @@
                                      @change="calculateTotalChart()"
                                      size="mini"/>
                   </el-form-item>
-                  <el-form-item :label="$t('load_test.ramp_up_time_minutes')">
+                  <el-form-item label="Step" label-width="50px">
                     <el-input-number controls-position="right"
-                                     :disabled="isReadOnly"
                                      :min="1"
                                      :max="Math.min(threadGroup.threadNumber, threadGroup.rampUpTime)"
                                      v-model="threadGroup.step"
                                      @change="calculateTotalChart()"
                                      size="mini"/>
                   </el-form-item>
-                  <el-form-item :label="$t('load_test.ramp_up_time_times')"/>
                 </div>
 
                 <div v-if="threadGroup.tgType === 'ThreadGroup'">
-                  <el-form-item :label="$t('load_test.ramp_up_time_within')">
+                  <el-form-item label="Ramp-Up">
                     <el-input-number controls-position="right"
-                                     :disabled="isReadOnly"
+
                                      v-if="rampUpTimeVisible"
                                      :min="1"
                                      :max="getDuration(threadGroup)"
@@ -175,40 +128,109 @@
                                      @change="calculateTotalChart()"
                                      size="mini"/>
                   </el-form-item>
-                  <el-form-item :label="$t('load_test.ramp_up_time_seconds')"/>
                 </div>
 
               </div>
               <div v-if="threadGroup.threadType === 'ITERATION'">
                 <el-form-item :label="$t('load_test.iterate_num')">
                   <el-input-number controls-position="right"
-                                   :disabled="isReadOnly"
                                    v-model="threadGroup.iterateNum"
                                    :min="1"
                                    :max="9999999"
                                    @change="calculateTotalChart()"
-                                   size="mini"/>
+                                   size="mini"/> &nbsp;
+                  <el-tooltip :content="$t('load_test.by_iteration_tip')"
+                              effect="light"
+                              trigger="hover">
+                    <i class="el-icon-info"></i>
+                  </el-tooltip>
                 </el-form-item>
-                <br>
-                <el-form-item :label="$t('load_test.rps_limit')">
-                  <el-switch v-model="threadGroup.rpsLimitEnable" @change="calculateTotalChart()"/>
-                  &nbsp;
+                <el-form-item label="Ramp-Up">
                   <el-input-number controls-position="right"
-                                   :disabled="isReadOnly || !threadGroup.rpsLimitEnable"
-                                   v-model="threadGroup.rpsLimit"
-                                   :min="1"
-                                   :max="99999"
-                                   size="mini"/>
-                </el-form-item>
-                <br>
-                <el-form-item :label="$t('load_test.ramp_up_time_within')">
-                  <el-input-number controls-position="right"
-                                   :disabled="isReadOnly"
                                    :min="1"
                                    v-model="threadGroup.iterateRampUp"
                                    size="mini"/>
                 </el-form-item>
-                <el-form-item :label="$t('load_test.ramp_up_time_seconds')"/>
+                <br>
+              </div>
+              <el-form-item :label="$t('load_test.duration')">
+                <el-input-number controls-position="right"
+
+                                 v-model="threadGroup.durationHours"
+                                 :min="0"
+                                 :max="9999"
+                                 @change="calculateTotalChart()"
+                                 size="mini"/>
+              </el-form-item>
+              <el-form-item :label="$t('load_test.hours')" label-width="20px"/>
+              <el-form-item>
+                <el-input-number controls-position="right"
+
+                                 v-model="threadGroup.durationMinutes"
+                                 :min="0"
+                                 :max="59"
+                                 @change="calculateTotalChart()"
+                                 size="mini"/>
+              </el-form-item>
+              <el-form-item :label="$t('load_test.minutes')" label-width="20px"/>
+              <el-form-item>
+                <el-input-number controls-position="right"
+                                 v-model="threadGroup.durationSeconds"
+                                 :min="0"
+                                 :max="59"
+                                 @change="calculateTotalChart()"
+                                 size="mini"/>
+              </el-form-item>
+              <el-form-item :label="$t('load_test.seconds')" label-width="20px"/>
+              <br>
+              <el-form-item :label="$t('load_test.rps_limit_enable')">
+                <el-switch v-model="threadGroup.rpsLimitEnable" @change="calculateTotalChart()"/>
+              </el-form-item>
+              <el-form-item :label="$t('load_test.rps_limit')">
+                <el-input-number controls-position="right"
+                                 :disabled="isReadOnly || !threadGroup.rpsLimitEnable"
+                                 v-model="threadGroup.rpsLimit"
+                                 :min="1"
+                                 :max="99999"
+                                 size="mini"/>
+              </el-form-item>
+              <!-- 资源池自己配置各个节点的并发 -->
+              <div v-if="resourcePoolType === 'NODE'">
+                <el-form-item :label="$t('load_test.resource_strategy')">
+                  <el-radio-group v-model="threadGroup.strategy" size="mini">
+                    <el-radio-button label="auto">{{ $t('load_test.auto_ratio') }}</el-radio-button>
+                    <el-radio-button label="specify">{{ $t('load_test.specify_resource') }}</el-radio-button>
+                    <el-radio-button label="custom">{{ $t('load_test.custom_ratio') }}</el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
+                <div v-if="threadGroup.strategy === 'auto'"></div>
+                <div v-else-if="threadGroup.strategy === 'specify'">
+                  <el-form-item :label="$t('load_test.specify_resource')">
+                    <el-select v-model="threadGroup.resourceNodeIndex" size="mini">
+                      <el-option
+                        v-for="(node, index) in resourceNodes"
+                        :key="node.ip"
+                        :label="node.ip"
+                        :value="index">
+                      </el-option>
+                    </el-select>
+                  </el-form-item>
+                </div>
+                <div v-else>
+                  <el-table class="adjust-table" :data="threadGroup.resourceNodes" :max-height="200">
+                    <el-table-column type="index" width="50"/>
+                    <el-table-column prop="ip" label="IP"/>
+                    <el-table-column prop="maxConcurrency" :label="$t('test_resource_pool.max_threads')"/>
+                    <el-table-column prop="ratio" :label="$t('test_track.home.percentage')">
+                      <template v-slot:default="{row}">
+                        <el-input-number size="mini" v-model="row.ratio"
+
+                                         :min="0" :step=".1" controls-position="right"
+                                         :max="1"></el-input-number>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </div>
               </div>
             </el-form>
           </el-collapse-item>
@@ -216,7 +238,7 @@
       </el-col>
       <el-col :span="12">
         <div class="title">{{ $t('load_test.pressure_prediction_chart') }}</div>
-        <ms-chart class="chart-container" ref="chart1" :options="options" :autoresize="true"></ms-chart>
+        <ms-chart v-if="rampUpTimeVisible" class="chart-container" ref="chart1" :options="options" :autoresize="true"/>
       </el-col>
     </el-row>
   </div>
@@ -225,7 +247,7 @@
 <script>
 import MsChart from "@/business/components/common/chart/MsChart";
 import {findThreadGroup} from "@/business/components/performance/test/model/ThreadGroup";
-import {hasPermission} from "@/common/js/utils";
+import {getCurrentProjectID} from "@/common/js/utils";
 
 const HANDLER = "handler";
 const THREAD_GROUP_TYPE = "tgType";
@@ -249,14 +271,13 @@ const THREAD_TYPE = "threadType";
 const ITERATE_NUM = "iterateNum";
 const ENABLED = "enabled";
 const DELETED = "deleted";
+const STRATEGY = "strategy";
+const RESOURCE_NODE_INDEX = "resourceNodeIndex";
+const RATIOS = "ratios";
 
-const hexToRgba = function (hex, opacity) {
-  return 'rgba(' + parseInt('0x' + hex.slice(1, 3)) + ',' + parseInt('0x' + hex.slice(3, 5)) + ','
-      + parseInt('0x' + hex.slice(5, 7)) + ',' + opacity + ')';
-};
 const hexToRgb = function (hex) {
   return 'rgb(' + parseInt('0x' + hex.slice(1, 3)) + ',' + parseInt('0x' + hex.slice(3, 5))
-      + ',' + parseInt('0x' + hex.slice(5, 7)) + ')';
+    + ',' + parseInt('0x' + hex.slice(5, 7)) + ')';
 };
 
 export default {
@@ -268,7 +289,24 @@ export default {
     },
     testId: {
       type: String
-    }
+    },
+    reportId: {
+      type: String
+    },
+    report: {
+      type: Object
+    },
+    isReadOnly: {
+      type: Boolean,
+      default() {
+        return false;
+      }
+    },
+    isShare: Boolean,
+    shareId: String,
+    planReportTemplate: {
+      type: Object
+    },
   },
   data() {
     return {
@@ -281,14 +319,16 @@ export default {
       rpsLimitEnable: false,
       options: {},
       resourcePool: null,
+      setPoolNull: false,
       resourcePools: [],
+      resourceNodes: [],
+      resourcePoolType: null,
       activeNames: ["0"],
       threadGroups: [],
-      maxThreadNumbers: 5000,
+      maxThreadNumbers: 500000,
       serializeThreadGroups: false,
       autoStop: false,
       autoStopDelay: 30,
-      isReadOnly: false,
       rampUpTimeVisible: true,
     };
   },
@@ -306,18 +346,30 @@ export default {
   mounted() {
     if (this.testId) {
       this.getJmxContent();
+    } else if (this.reportId) {
+      this.getJmxContent();
     } else {
       this.calculateTotalChart();
     }
-    this.resourcePool = this.test.testResourcePoolId;
+    if (this.test) {
+      this.resourcePool = this.test.testResourcePoolId;
+    }
+    if (this.report) {
+      this.resourcePool = this.report.testResourcePoolId;
+    }
     this.getResourcePools();
-    this.isReadOnly = !hasPermission('PROJECT_PERFORMANCE_TEST:READ+EDIT');
   },
   watch: {
-    test(n) {
-      if (n.testResourcePoolId) {
-        this.resourcePool = n.testResourcePoolId;
-      }
+    test: {
+      handler(n) {
+        if (n.testResourcePoolId) {
+          // 如果已经因为资源池无效将资源池ID置空，则不再进行赋值操作
+          if (!this.setPoolNull) {
+            this.resourcePool = n.testResourcePoolId;
+          }
+        }
+      },
+      deep: true,
     },
     testId() {
       if (this.testId) {
@@ -327,142 +379,265 @@ export default {
       }
       this.getResourcePools();
     },
+    reportId() {
+      if (this.reportId) {
+        this.getJmxContent();
+      } else {
+        this.calculateTotalChart();
+      }
+      this.getResourcePools();
+    },
+    report() {
+      this.resourcePool = this.report.testResourcePoolId;
+    },
+    planReportTemplate: {
+      handler() {
+        if (this.planReportTemplate) {
+          let {resourcePools, testResourcePoolId} = this.planReportTemplate;
+          this.resourcePools = resourcePools;
+          this.resourcePool = testResourcePoolId;
+          this.handleResourcePool(resourcePools);
+          this.getJmxContent();
+        }
+      },
+      deep: true
+    }
   },
   methods: {
     getResourcePools() {
-      this.result = this.$get('/testresourcepool/list/quota/valid', response => {
-        this.resourcePools = response.data;
-        // 如果当前的资源池无效 设置 null
-        if (response.data.filter(p => p.id === this.resourcePool).length === 0) {
-          this.resourcePool = null;
-        }
-
-        this.resourcePoolChange();
+      let url = '/testresourcepool/list/quota/valid';
+      if (this.isShare) {
+        url = '/share/testresourcepool/list/quota/valid';
+      }
+      if (!getCurrentProjectID() && !this.isShare) {
+        return;
+      }
+      this.result = this.$get(url, response => {
+        this.handleResourcePool(response.data);
       });
     },
+    handleResourcePool(data) {
+      this.resourcePools = data;
+      // 如果当前的资源池无效 设置 null
+      if (data.filter(p => p.id === this.resourcePool).length === 0) {
+        this.resourcePool = null;
+        // 标记因资源池无效而将资源池ID置为null
+        this.setPoolNull = true;
+      }
+      this.resourcePoolChange();
+    },
+    handleLoadConfig(data) {
+      for (let i = 0; i < this.threadGroups.length; i++) {
+        data[i].forEach(item => {
+          switch (item.key) {
+            case TARGET_LEVEL:
+              this.threadGroups[i].threadNumber = item.value;
+              break;
+            case RAMP_UP:
+              this.threadGroups[i].rampUpTime = item.value;
+              break;
+            case ITERATE_RAMP_UP:
+              this.threadGroups[i].iterateRampUp = item.value;
+              break;
+            case DURATION:
+              this.threadGroups[i].duration = item.value;
+              break;
+            case DURATION_HOURS:
+              this.threadGroups[i].durationHours = item.value;
+              break;
+            case DURATION_MINUTES:
+              this.threadGroups[i].durationMinutes = item.value;
+              break;
+            case DURATION_SECONDS:
+              this.threadGroups[i].durationSeconds = item.value;
+              break;
+            case UNIT:
+              this.threadGroups[i].unit = item.value;
+              break;
+            case STEPS:
+              this.threadGroups[i].step = item.value;
+              break;
+            case RPS_LIMIT:
+              this.threadGroups[i].rpsLimit = item.value;
+              break;
+            case RPS_LIMIT_ENABLE:
+              this.threadGroups[i].rpsLimitEnable = item.value;
+              break;
+            case THREAD_TYPE:
+              this.threadGroups[i].threadType = item.value;
+              break;
+            case ITERATE_NUM:
+              this.threadGroups[i].iterateNum = item.value;
+              break;
+            case ENABLED:
+              this.threadGroups[i].enabled = item.value;
+              break;
+            case DELETED:
+              this.threadGroups[i].deleted = item.value;
+              break;
+            case HANDLER:
+              this.threadGroups[i].handler = item.value;
+              break;
+            case THREAD_GROUP_TYPE:
+              this.threadGroups[i].tgType = item.value;
+              break;
+            case ON_SAMPLE_ERROR:
+              this.threadGroups[i].onSampleError = item.value;
+              break;
+            case STRATEGY:
+              this.threadGroups[i].strategy = item.value;
+              break;
+            case RESOURCE_NODE_INDEX:
+              this.threadGroups[i].resourceNodeIndex = item.value;
+              break;
+            case RATIOS:
+              this.threadGroups[i].ratios = item.value;
+              break;
+            case SERIALIZE_THREAD_GROUPS:
+              this.serializeThreadGroups = item.value;// 所有的线程组值一样
+              break;
+            case AUTO_STOP:
+              this.autoStop = item.value;// 所有的线程组值一样
+              break;
+            case AUTO_STOP_DELAY:
+              this.autoStopDelay = item.value;// 所有的线程组值一样
+              break;
+            default:
+              break;
+          }
+          //
+          this.$set(this.threadGroups[i], "unit", this.threadGroups[i].unit || 'S');
+          this.$set(this.threadGroups[i], "threadType", this.threadGroups[i].threadType || 'DURATION');
+          this.$set(this.threadGroups[i], "iterateNum", this.threadGroups[i].iterateNum || 1);
+          this.$set(this.threadGroups[i], "iterateRampUp", this.threadGroups[i].iterateRampUp || 10);
+          this.$set(this.threadGroups[i], "enabled", this.threadGroups[i].enabled || 'true');
+          this.$set(this.threadGroups[i], "deleted", this.threadGroups[i].deleted || 'false');
+          this.$set(this.threadGroups[i], "onSampleError", this.threadGroups[i].onSampleError || 'continue');
+        });
+      }
+      for (let i = 0; i < this.threadGroups.length; i++) {
+        let tg = this.threadGroups[i];
+        tg.durationHours = Math.floor(tg.duration / 3600);
+        tg.durationMinutes = Math.floor((tg.duration / 60 % 60));
+        tg.durationSeconds = Math.floor((tg.duration % 60));
+      }
+      this.resourcePoolChange();
+      this.calculateTotalChart();
+    },
     getLoadConfig() {
-      this.$get('/performance/get-load-config/' + this.testId, (response) => {
+      let url = '';
+      if (this.testId) {
+        url = '/performance/get-load-config/' + this.testId;
+      }
+      if (this.reportId) {
+        url = '/performance/report/get-load-config/' + this.reportId;
+      }
+      if (this.planReportTemplate) {
+        let {loadConfiguration} = this.planReportTemplate;
+        if (loadConfiguration) {
+          this.handleLoadConfig(JSON.parse(loadConfiguration));
+        }
+        return;
+      }
+      if (!url) {
+        return;
+      }
+      if (this.isShare) {
+        url = '/share/performance/report/get-load-config/' + this.reportId;
+      }
+      this.$get(url, (response) => {
         if (response.data) {
           let data = JSON.parse(response.data);
-          for (let i = 0; i < data.length; i++) {
-            let d = data[i];
-            d.forEach(item => {
-              switch (item.key) {
-                case TARGET_LEVEL:
-                  this.threadGroups[i].threadNumber = item.value;
-                  break;
-                case RAMP_UP:
-                  this.threadGroups[i].rampUpTime = item.value;
-                  break;
-                case ITERATE_RAMP_UP:
-                  this.threadGroups[i].iterateRampUp = item.value;
-                  break;
-                case DURATION:
-                  this.threadGroups[i].duration = item.value;
-                  break;
-                case DURATION_HOURS:
-                  this.threadGroups[i].durationHours = item.value;
-                  break;
-                case DURATION_MINUTES:
-                  this.threadGroups[i].durationMinutes = item.value;
-                  break;
-                case DURATION_SECONDS:
-                  this.threadGroups[i].durationSeconds = item.value;
-                  break;
-                case UNIT:
-                  this.threadGroups[i].unit = item.value;
-                  break;
-                case STEPS:
-                  this.threadGroups[i].step = item.value;
-                  break;
-                case RPS_LIMIT:
-                  this.threadGroups[i].rpsLimit = item.value;
-                  break;
-                case RPS_LIMIT_ENABLE:
-                  this.threadGroups[i].rpsLimitEnable = item.value;
-                  break;
-                case THREAD_TYPE:
-                  this.threadGroups[i].threadType = item.value;
-                  break;
-                case ITERATE_NUM:
-                  this.threadGroups[i].iterateNum = item.value;
-                  break;
-                case ENABLED:
-                  this.threadGroups[i].enabled = item.value;
-                  break;
-                case DELETED:
-                  this.threadGroups[i].deleted = item.value;
-                  break;
-                case HANDLER:
-                  this.threadGroups[i].handler = item.value;
-                  break;
-                case THREAD_GROUP_TYPE:
-                  this.threadGroups[i].tgType = item.value;
-                  break;
-                case ON_SAMPLE_ERROR:
-                  this.threadGroups[i].onSampleError = item.value;
-                  break;
-                case SERIALIZE_THREAD_GROUPS:
-                  this.serializeThreadGroups = item.value;// 所有的线程组值一样
-                  break;
-                case AUTO_STOP:
-                  this.autoStop = item.value;// 所有的线程组值一样
-                  break;
-                case AUTO_STOP_DELAY:
-                  this.autoStopDelay = item.value;// 所有的线程组值一样
-                  break;
-                default:
-                  break;
-              }
-              //
-              this.$set(this.threadGroups[i], "unit", this.threadGroups[i].unit || 'S');
-              this.$set(this.threadGroups[i], "threadType", this.threadGroups[i].threadType || 'DURATION');
-              this.$set(this.threadGroups[i], "iterateNum", this.threadGroups[i].iterateNum || 1);
-              this.$set(this.threadGroups[i], "iterateRampUp", this.threadGroups[i].iterateRampUp || 10);
-              this.$set(this.threadGroups[i], "enabled", this.threadGroups[i].enabled || 'true');
-              this.$set(this.threadGroups[i], "deleted", this.threadGroups[i].deleted || 'false');
-              this.$set(this.threadGroups[i], "onSampleError", this.threadGroups[i].onSampleError || 'continue');
-            });
-          }
-          for (let i = 0; i < this.threadGroups.length; i++) {
-            let tg = this.threadGroups[i];
-            tg.durationHours = Math.floor(tg.duration / 3600);
-            tg.durationMinutes = Math.floor((tg.duration / 60 % 60));
-            tg.durationSeconds = Math.floor((tg.duration % 60));
-          }
-          this.calculateTotalChart();
+          this.handleLoadConfig(data);
         }
       });
     },
     getJmxContent() {
+      let url = '';
       if (this.testId) {
-        let threadGroups = [];
-        this.$get('/performance/get-jmx-content/' + this.testId, (response) => {
-          response.data.forEach(d => {
-            threadGroups = threadGroups.concat(findThreadGroup(d.jmx, d.name));
-            threadGroups.forEach(tg => {
-              tg.options = {};
-            });
-          });
-          this.threadGroups = threadGroups;
-          this.$emit('fileChange', threadGroups);
-          this.getLoadConfig();
-        });
+        url = '/performance/get-jmx-content/' + this.testId;
       }
+      if (this.reportId) {
+        url = '/performance/report/get-jmx-content/' + this.reportId;
+      }
+      let threadGroups = [];
+      if (this.planReportTemplate) {
+        let {fixJmxContent} = this.planReportTemplate;
+        this.handlePlanReportJmxContent(fixJmxContent, threadGroups);
+        return;
+      }
+      if (!url) {
+        return;
+      }
+      if (this.isShare) {
+        url = '/share/performance/report/get-jmx-content/' + this.reportId;
+      }
+      this.$get(url, (response) => {
+        response.data.forEach(d => {
+          threadGroups = threadGroups.concat(findThreadGroup(d.jmx, d.name));
+          threadGroups.forEach(tg => {
+            tg.options = {};
+          });
+        });
+        this.threadGroups = threadGroups;
+        this.$emit('fileChange', threadGroups);
+        this.getLoadConfig();
+      });
+    },
+    handlePlanReportJmxContent(fixJmxContent, threadGroups) {
+      fixJmxContent.forEach(d => {
+        threadGroups = threadGroups.concat(findThreadGroup(d.jmx, d.name));
+        threadGroups.forEach(tg => {
+          tg.options = {};
+        });
+      });
+      this.threadGroups = threadGroups;
+      this.$emit('fileChange', threadGroups);
+      this.getLoadConfig();
     },
     resourcePoolChange() {
       let result = this.resourcePools.filter(p => p.id === this.resourcePool);
       if (result.length === 1) {
         let threadNumber = 0;
+        this.resourceNodes = [];
+        this.resourcePoolType = result[0].type;
         result[0].resources.forEach(resource => {
-          threadNumber += JSON.parse(resource.configuration).maxConcurrency;
+          let config = JSON.parse(resource.configuration);
+          threadNumber += config.maxConcurrency;
+          this.resourceNodes.push(config);
         });
         this.$set(this, 'maxThreadNumbers', threadNumber);
         this.threadGroups.forEach(tg => {
           if (tg.threadNumber > threadNumber) {
             this.$set(tg, "threadNumber", threadNumber);
           }
+          let tgRatios = tg.ratios;
+          let resourceNodes = JSON.parse(JSON.stringify(this.resourceNodes));
+          let ratios = resourceNodes.map(n => n.maxConcurrency).reduce((total, curr) => {
+            total += curr;
+            return total;
+          }, 0);
+          let preSum = 0;
+          for (let i = 0; i < resourceNodes.length; i++) {
+            let n = resourceNodes[i];
+            if (resourceNodes.length === tgRatios.length) {
+              n.ratio = tgRatios[i];
+              continue;
+            }
+
+            if (i === resourceNodes.length - 1) {
+              n.ratio = (1 - preSum).toFixed(2);
+            } else {
+              n.ratio = (n.maxConcurrency / ratios).toFixed(2);
+              preSum += Number.parseFloat(n.ratio);
+            }
+          }
+          this.$set(tg, "resourceNodes", resourceNodes);
+          if (tg.resourceNodeIndex > resourceNodes.length - 1) {
+            this.$set(tg, "resourceNodeIndex", 0);
+          }
         });
+
         this.calculateTotalChart();
       }
     },
@@ -497,15 +672,15 @@ export default {
         let tg = handler.threadGroups[i];
 
         if (tg.enabled === 'false' ||
-            tg.deleted === 'true' ||
-            tg.threadType === 'ITERATION') {
+          tg.deleted === 'true' ||
+          tg.threadType === 'ITERATION') {
           continue;
         }
         if (this.getDuration(tg) < tg.rampUpTime) {
           tg.rampUpTime = tg.duration;
         }
         if (tg.rampUpTime < tg.step) {
-          tg.step = tg.rampUpTime;
+          tg.step = tg.rampUpTime || 1; // 至少1步
         }
         let seriesData = {
           name: tg.attributes.testname,
@@ -514,6 +689,7 @@ export default {
           smooth: false,
           symbolSize: 5,
           showSymbol: false,
+          sampling: 'lttb',
           itemStyle: {
             color: hexToRgb(color[i % color.length]),
             borderColor: 'rgba(137,189,2,0.27)',
@@ -521,6 +697,10 @@ export default {
           },
         };
 
+        if (tg.rampUpTime > 10000) {
+          this.$warning(this.$t('load_test.ramp_up_tips'));
+          return;
+        }
 
         let timePeriod = Math.floor(tg.rampUpTime / tg.step);
         let timeInc = timePeriod;
@@ -582,7 +762,6 @@ export default {
         handler.options.xAxis.data = handler.options.xAxis.data.sort((a, b) => a - b);
         handler.options.series.push(seriesData);
       }
-      // console.log(JSON.stringify(handler.options));
     },
     validConfig() {
       if (!this.resourcePool) {
@@ -597,11 +776,23 @@ export default {
         tg.durationMinutes = tg.durationMinutes || 0;
         tg.durationSeconds = tg.durationSeconds || 0;
         this.getDuration(tg);
-        if (tg.enabled === 'false' ) {
+        if (tg.enabled === 'false') {
           continue;
         }
+
+        if (tg.strategy === "custom") {
+          let sum = tg.resourceNodes.map(n => n.ratio).reduce((total, curr) => {
+            total += curr;
+            return total;
+          }, 0);
+          if (sum !== 1) {
+            this.$warning(this.$t('load_test.pressure_config_custom_error'));
+            return false;
+          }
+        }
+
         if (!tg.threadNumber || !tg.duration
-            || !tg.rampUpTime || !tg.step || !tg.iterateNum) {
+          || !tg.rampUpTime || !tg.step || !tg.iterateNum) {
           this.$warning(this.$t('load_test.pressure_config_params_is_empty'));
           this.$emit('changeActive', '1');
           return false;
@@ -622,6 +813,13 @@ export default {
     getDuration(tg) {
       tg.duration = tg.durationHours * 60 * 60 + tg.durationMinutes * 60 + tg.durationSeconds;
       return tg.duration;
+    },
+    getRatios(tg) {
+      if (tg.resourceNodes) {
+        return tg.resourceNodes.map(node => node.ratio);
+      } else {
+        return [];
+      }
     },
     convertProperty() {
       /// todo：下面4个属性是jmeter ConcurrencyThreadGroup plugin的属性，这种硬编码不太好吧，在哪能转换这种属性？
@@ -648,6 +846,9 @@ export default {
           {key: ENABLED, value: this.threadGroups[i].enabled},
           {key: DELETED, value: this.threadGroups[i].deleted},
           {key: ON_SAMPLE_ERROR, value: this.threadGroups[i].onSampleError},
+          {key: STRATEGY, value: this.threadGroups[i].strategy},
+          {key: RESOURCE_NODE_INDEX, value: this.threadGroups[i].resourceNodeIndex},
+          {key: RATIOS, value: this.getRatios(this.threadGroups[i])},
           {key: THREAD_GROUP_TYPE, value: this.threadGroups[i].tgType},
           {key: SERIALIZE_THREAD_GROUPS, value: this.serializeThreadGroups},
           {key: AUTO_STOP, value: this.autoStop},
@@ -714,5 +915,13 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.duration-input .el-input-number--mini {
+  width: 100px;
+}
+
+.el-select--mini {
+  width: 130px;
 }
 </style>

@@ -39,14 +39,34 @@ module.exports = {
       template: "src/template/report/plan/share/share-plan-report.html",
       filename: "share-plan-report.html",
     },
-    planReport: {
+    sharePerformanceReport: {
+      entry: "src/template/report/performance/share/share-performance-report.js",
+      template: "src/template/report/performance/share/share-performance-report.html",
+      filename: "share-performance-report.html",
+    },
+    shareApiReport: {
+      entry: "src/template/report/api/share/share-api-report.js",
+      template: "src/template/report/api/share/share-api-report.html",
+      filename: "share-api-report.html",
+    },
+    shareUiReport: {
+      entry: "src/template/report/ui/share/share-ui-report.js",
+      template: "src/template/report/ui/share/share-ui-report.html",
+      filename: "share-ui-report.html",
+    },
+    enterpriseReport: {
+      entry: "src/template/enterprise/share/share-enterprise-report.js",
+      template: "src/template/enterprise/share/share-enterprise-report.html",
+      filename: "share-enterprise-report.html",
+    },
+    planReport: { //这个配置要放最后，不然会导致测试计划导出报告没有将css和js引入html，原因没具体研究
       entry: "src/template/report/plan/plan-report.js",
       template: "src/template/report/plan/plan-report.html",
       filename: "plan-report.html",
-    },
+    }
   },
   configureWebpack: {
-    devtool: 'source-map',
+    devtool: 'cheap-module-source-map',
     resolve: {
       alias: {
         '@': resolve('src')
@@ -54,6 +74,23 @@ module.exports = {
     },
   },
   chainWebpack: config => {
+    // svg rule loader
+    config.module
+      .rule('svg')
+      .exclude.add(resolve('src/assets/module'))
+      .end()
+
+    config.module
+      .rule('icons')
+      .test(/\.svg$/)
+      .include.add(resolve('src/assets/module'))
+      .end()
+      .use('svg-sprite-loader')
+      .loader('svg-sprite-loader')
+      .options({
+        symbolId: 'icon-[name]'
+      })
+
     // 报告模板打包成一个html
     config.plugin('html-planReport')
       .tap(args => {
@@ -61,9 +98,9 @@ module.exports = {
         return args;
       });
     config.plugin('inline-source-html-planReport')
-        .after('html-planReport')
-        .use(HtmlWebpackInlineSourcePlugin);
-
+      .after('html-planReport')
+      .use(HtmlWebpackInlineSourcePlugin);
     config.plugins.delete('prefetch');
+
   }
 };

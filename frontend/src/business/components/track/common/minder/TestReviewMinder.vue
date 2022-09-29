@@ -5,7 +5,7 @@
     :data-map="dataMap"
     :tags="tags"
     :tag-enable="true"
-    minder-key="testReview"
+    minder-key="REVIEW_CASE"
     :select-node="selectNode"
     :distinct-tags="[...tags, $t('test_track.plan.plan_status_prepare')]"
     :ignore-num="true"
@@ -24,6 +24,7 @@ import {
   tagBatch
 } from "@/business/components/track/common/minder/minderUtils";
 import {getReviewCasesForMinder} from "@/network/testCase";
+import {setPriorityView} from "vue-minder-editor-plus/src/script/tool/utils";
 export default {
 name: "TestReviewMinder",
   components: {MsModuleMinder},
@@ -48,6 +49,7 @@ name: "TestReviewMinder",
     condition: Object
   },
   mounted() {
+    this.setIsChange(false);
     if (this.selectNode && this.selectNode.data) {
       if (this.$refs.minder) {
         let importJson = this.$refs.minder.getImportJsonBySelectNode(this.selectNode.data);
@@ -61,6 +63,9 @@ name: "TestReviewMinder",
       if (this.$refs.minder) {
         this.$refs.minder.handleNodeSelect(this.selectNode);
       }
+    },
+    treeNodes() {
+      this.$refs.minder.initData();
     }
   },
   computed: {
@@ -81,9 +86,18 @@ name: "TestReviewMinder",
           let level = Number.parseInt(even.commandArgs);
           handleExpandToLevel(level, even.minder.getRoot(), this.getParam(), getReviewCasesForMinder, this.setParamCallback);
         }
-      });
 
-      tagBatch([...this.tags, this.$t('test_track.plan.plan_status_prepare')]);
+        if (even.commandName.toLocaleLowerCase() === 'resource') {
+          // 设置完标签后，优先级显示有问题，重新设置下
+          setTimeout(() => setPriorityView(true, 'P'), 100);
+          this.setIsChange(true);
+        }
+      });
+      tagBatch([...this.tags, this.$t('test_track.plan.plan_status_prepare')], {
+        param: this.getParam(),
+        getCaseFuc: getReviewCasesForMinder,
+        setParamCallback: this.setParamCallback
+      });
     },
     getParam() {
       return {
@@ -110,6 +124,7 @@ name: "TestReviewMinder",
       this.buildSaveCase(data.root, saveCases);
       this.result = this.$post('/test/review/case/minder/edit/' + this.reviewId, saveCases, () => {
         this.$success(this.$t('commons.save_success'));
+        this.setIsChange(false);
       });
     },
     buildSaveCase(root, saveCases) {
@@ -143,6 +158,9 @@ name: "TestReviewMinder",
       }
       saveCases.push(testCase);
     },
+    setIsChange(isChanged) {
+      this.$store.commit('setIsTestCaseMinderChanged', isChanged);
+    }
   }
 }
 </script>

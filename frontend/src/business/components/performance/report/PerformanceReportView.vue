@@ -2,8 +2,8 @@
   <ms-container>
     <ms-main-container>
       <el-card v-loading="result.loading">
-        <el-row>
-          <el-col :span="16">
+        <el-row :gutter="10">
+          <el-col :span="14">
             <el-row>
               <el-breadcrumb separator-class="el-icon-arrow-right">
                 <el-breadcrumb-item :to="{ path: '/performance/test/' + this.projectId }">{{ projectName }}
@@ -30,6 +30,25 @@
                          v-permission="['PROJECT_PERFORMANCE_REPORT:READ+EXPORT']">
                 {{ $t('test_track.plan_view.export_report') }}
               </el-button>
+              <el-popover
+                v-permission="['PROJECT_PERFORMANCE_REPORT:READ+EXPORT']"
+                style="padding: 0 10px;"
+                placement="bottom"
+                width="300">
+                <p>{{ shareUrl }}</p>
+                <span style="color: red;float: left;margin-left: 10px;" v-if="application.typeValue">{{
+                    $t('commons.validity_period') + application.typeValue
+                  }}</span>
+                <div style="text-align: right; margin: 0">
+                  <el-button type="primary" size="mini" :disabled="!shareUrl"
+                             v-clipboard:copy="shareUrl">{{ $t("commons.copy") }}
+                  </el-button>
+                </div>
+                <el-button slot="reference" :disabled="isReadOnly" type="danger" plain size="mini"
+                           @click="handleShare(report)">
+                  {{ $t('test_track.plan_view.share_report') }}
+                </el-button>
+              </el-popover>
               <el-button :disabled="report.status !== 'Completed'" type="default" plain
                          size="mini" v-permission="['PROJECT_PERFORMANCE_REPORT:READ+COMPARE']"
                          @click="compareReports()">
@@ -43,22 +62,37 @@
               </el-button>
             </el-row>
           </el-col>
-          <el-col :span="6">
-            <span class="ms-report-time-desc">
-              {{ $t('report.test_duration', [this.minutes, this.seconds]) }}
-            </span>
-            <span class="ms-report-time-desc" v-if="startTime !== '0'">
-              {{ $t('report.test_start_time') }}：{{ startTime | timestampFormatDate }}
-            </span>
-            <span class="ms-report-time-desc" v-else>
-              {{ $t('report.test_start_time') }}：-
-            </span>
-            <span class="ms-report-time-desc" v-if="report.status === 'Completed' && endTime !== '0'">
-              {{ $t('report.test_end_time') }}：{{ endTime | timestampFormatDate }}
-            </span>
-            <span class="ms-report-time-desc" v-else>
-              {{ $t('report.test_end_time') }}：-
-            </span>
+          <el-col :span="8">
+            <div style="float: right;">
+              <span class="ms-report-time-desc">
+                {{ $t('report.test_duration', [this.minutes, this.seconds]) }}
+              </span>
+              <span class="ms-report-time-desc" v-if="startTime !== '0'">
+                {{ $t('report.test_start_time') }}：{{ startTime | timestampFormatDate }}
+              </span>
+              <span class="ms-report-time-desc" v-else>
+                {{ $t('report.test_start_time') }}：-
+              </span>
+              <span class="ms-report-time-desc" v-if="report.status === 'Completed' && endTime !== '0'">
+                {{ $t('report.test_end_time') }}：{{ endTime | timestampFormatDate }}
+              </span>
+              <span class="ms-report-time-desc" v-else>
+                {{ $t('report.test_end_time') }}：-
+              </span>
+            </div>
+            <div style="float: right;margin-right: 10px;">
+              <div v-if="showProjectEnv" type="flex">
+                <span> {{ $t('commons.environment') + ':' }} </span>
+                <div v-for="(values,key) in projectEnvMap" :key="key" style="margin-right: 10px">
+                  {{ key + ":" }}
+                  <ms-tag v-for="(item,index) in values" :key="index" type="success" :content="item"
+                          style="margin-left: 2px"/>
+                </div>
+                <div v-show="showMoreProjectEnvMap">
+                  <el-link icon="el-icon-more" @click="showAllProjectInfo"></el-link>
+                </div>
+              </div>
+            </div>
           </el-col>
           <el-col :span="2">
             <el-select v-model="refreshTime"
@@ -82,9 +116,6 @@
         <el-divider/>
         <div ref="resume">
           <el-tabs v-model="active">
-            <el-tab-pane :label="$t('load_test.pressure_config')">
-              <ms-performance-pressure-config :is-read-only="true" :report="report"/>
-            </el-tab-pane>
             <el-tab-pane :label="$t('report.test_overview')">
               <ms-report-test-overview :report="report" ref="testOverview"/>
             </el-tab-pane>
@@ -103,10 +134,14 @@
             <el-tab-pane :label="$t('report.test_monitor_details')">
               <monitor-card :report="report"/>
             </el-tab-pane>
+            <el-tab-pane :label="$t('report.test_config')">
+              <ms-test-configuration :test="test" :report-id="reportId"/>
+            </el-tab-pane>
           </el-tabs>
         </div>
 
         <ms-performance-report-export :title="reportName" id="performanceReportExport" v-show="reportExportVisible"
+                                      :project-env-map="projectEnvMap"
                                       :report="report"/>
 
       </el-card>
@@ -120,6 +155,7 @@
           </el-button>
         </div>
       </el-dialog>
+      <project-environment-dialog ref="projectEnvDialog"></project-environment-dialog>
     </ms-main-container>
     <same-test-reports ref="compareReports"/>
   </ms-container>
@@ -131,21 +167,24 @@ import MsReportLogDetails from './components/LogDetails';
 import MsReportRequestStatistics from './components/RequestStatistics';
 import MsReportTestDetails from './components/TestDetails';
 import MsReportTestOverview from './components/TestOverview';
-import MsPerformancePressureConfig from "./components/PerformancePressureConfig";
 import MsContainer from "../../common/components/MsContainer";
 import MsMainContainer from "../../common/components/MsMainContainer";
-
-import {exportPdf, hasPermission} from "@/common/js/utils";
+import MsTag from "@/business/components/common/components/MsTag";
+import {exportPdf, getCurrentProjectID, hasPermission, operationConfirm} from "@/common/js/utils";
 import html2canvas from 'html2canvas';
 import MsPerformanceReportExport from "./PerformanceReportExport";
 import {Message} from "element-ui";
 import SameTestReports from "@/business/components/performance/report/components/SameTestReports";
 import MonitorCard from "@/business/components/performance/report/components/MonitorCard";
+import MsTestConfiguration from "@/business/components/performance/report/components/TestConfiguration";
+import {generateShareInfoWithExpired} from "@/network/share";
+import ProjectEnvironmentDialog from "@/business/components/common/dialog/ProjectEnvironmentDialog";
 
 
 export default {
   name: "PerformanceReportView",
   components: {
+    MsTestConfiguration,
     MonitorCard,
     SameTestReports,
     MsPerformanceReportExport,
@@ -156,7 +195,8 @@ export default {
     MsContainer,
     MsMainContainer,
     MsReportTestDetails,
-    MsPerformancePressureConfig
+    MsTag,
+    ProjectEnvironmentDialog
   },
   props: {
     perReportId: String
@@ -164,7 +204,7 @@ export default {
   data() {
     return {
       result: {},
-      active: '1',
+      active: '0',
       reportId: '',
       status: '',
       reportName: '',
@@ -182,7 +222,10 @@ export default {
       websocket: null,
       dialogFormVisible: false,
       reportExportVisible: false,
-      testPlan: {testResourcePoolId: null},
+      test: {testResourcePoolId: null},
+      projectEnvMap: null,
+      showMoreProjectEnvMap: false,
+      allProjectEnvMap: null,
       refreshTime: localStorage.getItem("reportRefreshTime") || "10",
       refreshTimes: [
         {value: '1', label: '1s'},
@@ -195,9 +238,19 @@ export default {
         {value: '300', label: '5m'}
       ],
       testDeleted: false,
+      shareUrl: "",
+      application: {}
     };
   },
+  computed:{
+    showProjectEnv() {
+      return this.projectEnvMap && JSON.stringify(this.projectEnvMap) !== '{}';
+    },
+  },
   methods: {
+    showAllProjectInfo() {
+      this.$refs.projectEnvDialog.open(this.allProjectEnvMap);
+    },
     initBreadcrumb(callback) {
       if (this.reportId) {
         this.result = this.$get("/performance/report/test/pro/info/" + this.reportId, res => {
@@ -284,22 +337,16 @@ export default {
       this.dialogFormVisible = false;
     },
     rerun(testId) {
-      this.$confirm(this.$t('report.test_rerun_confirm'), '', {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
+      operationConfirm(this.$t('report.test_rerun_confirm'), () => {
         this.result = this.$post('/performance/run', {id: testId, triggerMode: 'MANUAL'}, (response) => {
           this.reportId = response.data;
           this.$router.push({path: '/performance/report/view/' + this.reportId});
           this.clearData();
         });
-      }).catch(() => {
       });
     },
     onOpen() {
       this.refresh();
-      // window.console.log("socket opening.");
     },
     onError(e) {
       // window.console.error(e)
@@ -308,13 +355,12 @@ export default {
       this.$set(this.report, "refresh", e.data); // 触发刷新
       if (e.data.startsWith('Error')) {
         this.$set(this.report, "status", 'Error');
-        this.$warning(e.data);
+        this.$error(e.data);
         return;
       }
       this.$set(this.report, "status", 'Running');
       this.status = 'Running';
       this.initReportTimeInfo();
-      // window.console.log('receive a message:', e.data);
     },
     onClose(e) {
       if (e.code === 1005) {
@@ -324,7 +370,6 @@ export default {
       this.$set(this.report, "refresh", Math.random()); // 触发刷新
       this.$set(this.report, "status", 'Completed');
       this.initReportTimeInfo();
-      // window.console.log("socket closed.");
     },
     handleExport(name) {
       this.result.loading = true;
@@ -333,7 +378,7 @@ export default {
 
       this.$nextTick(function () {
         setTimeout(() => {
-          let ids = ['testOverview', 'testDetails', 'requestStatistics', 'errorLog'];
+          let ids = ['testOverview', 'testDetails', 'requestStatistics', 'errorLog', 'monitorCard'];
           let promises = [];
           ids.forEach(id => {
             let promise = html2canvas(document.getElementById(id), {scale: 2});
@@ -344,6 +389,34 @@ export default {
             reset();
           });
         }, 1000);
+      });
+    },
+    handleShare(report) {
+      this.getProjectApplication();
+      let pram = {};
+      pram.customData = report.id;
+      pram.shareType = 'PERFORMANCE_REPORT';
+      generateShareInfoWithExpired(pram, (data) => {
+        let thisHost = window.location.host;
+        this.shareUrl = thisHost + "/sharePerformanceReport" + data.shareUrl;
+      });
+    },
+    getProjectApplication() {
+      this.$get('/project_application/get/' + getCurrentProjectID() + "/PERFORMANCE_SHARE_REPORT_TIME", res => {
+        if (res.data) {
+          let quantity = res.data.typeValue.substring(0, res.data.typeValue.length - 1);
+          let unit = res.data.typeValue.substring(res.data.typeValue.length - 1);
+          if (unit === 'H') {
+            res.data.typeValue = quantity + this.$t('commons.date_unit.hour');
+          } else if (unit === 'D') {
+            res.data.typeValue = quantity + this.$t('commons.date_unit.day');
+          } else if (unit === 'M') {
+            res.data.typeValue = quantity + this.$t('commons.workspace_unit') + this.$t('commons.date_unit.month');
+          } else if (unit === 'Y') {
+            res.data.typeValue = quantity + this.$t('commons.date_unit.year');
+          }
+          this.application = res.data;
+        }
       });
     },
     exportReportReset() {
@@ -382,7 +455,7 @@ export default {
       let testId = this.report.testId;
       let reportId = this.report.id;
       let resourceIndex = 0;
-      let ratio = "1.0";
+      let ratio = "-1";
       let config = {
         url: `/jmeter/download?testId=${testId}&ratio=${ratio}&reportId=${reportId}&resourceIndex=${resourceIndex}`,
         method: 'get',
@@ -408,17 +481,32 @@ export default {
     compareReports() {
       this.$refs.compareReports.open(this.report);
     },
+    isProjectEnvShowMore(projectEnvMap) {
+      this.showMoreProjectEnvMap = false;
+      this.projectEnvMap = {};
+      if (projectEnvMap) {
+        let keySize = 0;
+        for (let key in projectEnvMap) {
+          keySize++;
+          if (keySize > 1) {
+            this.showMoreProjectEnvMap = true;
+            return;
+          } else {
+            this.projectEnvMap = {};
+            this.$set(this.projectEnvMap, key, projectEnvMap[key]);
+          }
+        }
+      }
+    },
     getReport(reportId) {
       this.result = this.$get("/performance/report/" + reportId, res => {
         let data = res.data;
         if (data) {
+          this.allProjectEnvMap = data.projectEnvMap;
+          this.isProjectEnvShowMore(data.projectEnvMap);
           this.status = data.status;
-          this.$set(this.report, "id", data.id);
-          this.$set(this.report, "status", data.status);
-          this.$set(this.report, "testId", data.testId);
-          this.$set(this.report, "name", data.name);
-          this.$set(this.report, "createTime", data.createTime);
-          this.$set(this.report, "loadConfiguration", data.loadConfiguration);
+          this.$set(this, "report", data);
+          this.$set(this.test, "testResourcePoolId", data.testResourcePoolId);
           this.checkReportStatus(data.status);
           if (this.status === "Completed" || this.status === "Running") {
             this.initReportTimeInfo();
@@ -442,26 +530,37 @@ export default {
         }
       }
       localStorage.setItem("reportRefreshTime", this.refreshTime);
-    }
+    },
+    handleProjectChange() {
+      if (this.$route.name === 'perReportView') {
+        this.$router.push('/performance/report/all');
+      }
+    },
   },
   created() {
     this.isReadOnly = !hasPermission('PROJECT_PERFORMANCE_REPORT:READ+DELETE');
     this.reportId = this.$route.path.split('/')[4];
-    if (!this.reportId && this.perReportId) {
+    if (this.perReportId) {
       this.reportId = this.perReportId;
     }
     this.getReport(this.reportId);
+    this.$EventBus.$on('projectChange', this.handleProjectChange);
+  },
+  destroyed() {
+    this.$EventBus.$off('projectChange', this.handleProjectChange);
   },
   watch: {
     '$route'(to) {
       if (to.name === "perReportView") {
         this.reportId = to.path.split('/')[4];
+        if (this.perReportId) {
+          this.reportId = this.perReportId;
+        }
         this.getReport(this.reportId);
         this.initBreadcrumb((response) => {
           this.initReportTimeInfo();
         });
       } else {
-        // console.log("close socket.");
         this.websocket.close(); //离开路由之后断开websocket连接
       }
     },

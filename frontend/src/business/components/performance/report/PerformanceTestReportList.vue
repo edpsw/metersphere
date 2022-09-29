@@ -6,121 +6,151 @@
           <ms-table-header :condition.sync="condition" @search="search"
                            :show-create="false"/>
         </template>
+        <ms-table
+          v-loading="result.loading"
+          :data="tableData"
+          :condition="condition"
+          :page-size="pageSize"
+          :total="total"
+          :operators="operators"
+          :screenHeight="screenHeight"
+          :fields.sync="fields"
+          :field-key="tableHeaderKey"
+          :remember-order="true"
+          row-key="id"
+          :row-order-group-id="projectId"
+          :batch-operators="buttons"
+          operator-width="130px"
+          :screen-height="screenHeight"
+          @refresh="search"
+          ref="table">
+          <span v-for="(item, index) in fields" :key="index">
+            <ms-table-column
+              :field="item"
+              :fields-width="fieldsWidth"
+              prop="testName"
+              :label="$t('report.test_name')"
+              show-overflow-tooltip>
+            </ms-table-column>
+            <ms-table-column
+              prop="name"
+              sortable
+              :label="$t('commons.name')"
+              :show-overflow-tooltip="false"
+              :field="item"
+              :fields-width="fieldsWidth"
+              :editable="true"
+              :edit-content="$t('report.rename_report')"
+              @editColumn="openReNameDialog"
+              @click="handleView($event)"
+              min-width="200px">
+            </ms-table-column>
+            <ms-table-column
+              v-if="versionEnable"
+              :label="$t('project.version.name')"
+              :filters="versionFilters"
+              min-width="100px"
+              :field="item"
+              :fields-width="fieldsWidth"
+              prop="versionId">
+              <template v-slot:default="scope">
+                <span>{{ scope.row.versionName }}</span>
+              </template>
+            </ms-table-column>
+            <ms-table-column
+              prop="userName"
+              :field="item"
+              :fields-width="fieldsWidth"
+              :label="$t('report.user_name')"
+              show-overflow-tooltip>
+            </ms-table-column>
+            <ms-table-column
+              prop="maxUsers"
+              :field="item"
+              :fields-width="fieldsWidth"
+              min-width="65"
+              :label="$t('report.max_users')">
+            </ms-table-column>
+            <ms-table-column
+              min-width="100"
+              :field="item"
+              :fields-width="fieldsWidth"
+              prop="avgResponseTime"
+              :label="$t('report.response_time')">
+            </ms-table-column>
+            <ms-table-column
+              prop="tps"
+              :field="item"
+              :fields-width="fieldsWidth"
+              label="TPS">
+            </ms-table-column>
+            <ms-table-column
+              min-width="100"
+              :field="item"
+              :fields-width="fieldsWidth"
+              show-overflow-tooltip
+              prop="testStartTime"
+              :label="$t('report.test_start_time') ">
+              <template v-slot:default="scope">
+                <span v-if="scope.row.testStartTime > 0">{{ scope.row.testStartTime | timestampFormatDate }}</span>
+              </template>
+            </ms-table-column>
+            <ms-table-column
+              min-width="100"
+              show-overflow-tooltip
+              :field="item"
+              :fields-width="fieldsWidth"
+              prop="testEndTime"
+              :label="$t('report.test_end_time')">
+              <template v-slot:default="scope">
+                <span v-if="scope.row.status === 'Completed'">{{ scope.row.testEndTime | timestampFormatDate }}</span>
+              </template>
+            </ms-table-column>
+            <ms-table-column
+              min-width="90"
+              prop="testDuration"
+              :field="item"
+              :fields-width="fieldsWidth"
+              :label="$t('report.test_execute_time')">
+              <template v-slot:default="scope">
+                <span v-if="scope.row.status === 'Completed'">
+                  {{ scope.row.minutes }}{{ $t('schedule.cron.minutes') }}
+                  {{ scope.row.seconds }}{{ $t('schedule.cron.seconds') }}
+                </span>
+              </template>
+            </ms-table-column>
+            <ms-table-column
+              prop="triggerMode"
+              :field="item"
+              :fields-width="fieldsWidth"
+              :label="$t('test_track.report.list.trigger_mode')"
+              min-width="90"
+              :filters="triggerFilters"
+            >
+              <template v-slot:default="scope">
+                <report-trigger-mode-item :trigger-mode="scope.row.triggerMode"/>
+              </template>
+            </ms-table-column>
+            <ms-table-column
+              prop="status"
+              :field="item"
+              :fields-width="fieldsWidth"
+              :filters="statusFilters"
+              :label="$t('commons.status')">
+              <template v-slot:default="{row}">
+                <ms-performance-report-status :row="row"/>
+              </template>
+            </ms-table-column>
+          </span>
 
-        <el-table v-loading="result.loading"
-                  border :data="tableData" class="adjust-table test-content"
-                  @select-all="handleSelectAll"
-                  @select="handleSelect"
-                  @sort-change="sort"
-                  @filter-change="filter"
-                  :height="screenHeight"
-        >
-          <el-table-column
-            type="selection"/>
-          <el-table-column width="40" :resizable="false" align="center">
-            <template v-slot:default="scope">
-              <show-more-btn :is-show="scope.row.showMore" :buttons="buttons" :size="selectRows.size"/>
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="testName"
-            :label="$t('report.test_name')"
-            show-overflow-tooltip>
-          </el-table-column>
-          <el-table-column
-            prop="name"
-            :label="$t('commons.name')"
-            show-overflow-tooltip>
-            <template v-slot:default="scope">
-              <span @click="handleView(scope.row)" style="cursor: pointer;">{{ scope.row.name }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="userName"
-            :label="$t('report.user_name')"
-            show-overflow-tooltip>
-          </el-table-column>
-          <el-table-column
-            prop="maxUsers"
-            width="65"
-            :label="$t('report.max_users')">
-          </el-table-column>
-          <el-table-column
-            width="100"
-            prop="avgResponseTime"
-            :label="$t('report.response_time')">
-          </el-table-column>
-          <el-table-column
-            prop="tps"
-            label="TPS">
-          </el-table-column>
-          <el-table-column
-            width="100"
-            prop="testStartTime"
-            :label="$t('report.test_start_time') ">
-            <template v-slot:default="scope">
-              <span v-if="scope.row.testStartTime > 0">{{ scope.row.testStartTime | timestampFormatDate }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column
-            width="100"
-            prop="testEndTime"
-            :label="$t('report.test_end_time')">
-            <template v-slot:default="scope">
-              <span v-if="scope.row.status === 'Completed'">{{ scope.row.testEndTime | timestampFormatDate }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column
-            width="90"
-            prop="testDuration"
-            :label="$t('report.test_execute_time')">
-            <template v-slot:default="scope">
-              <span v-if="scope.row.status === 'Completed'">
-                {{ scope.row.minutes }}{{ $t('schedule.cron.minutes') }}
-                {{ scope.row.seconds }}{{ $t('schedule.cron.seconds') }}
-              </span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="triggerMode" :label="$t('test_track.report.list.trigger_mode')"
-                           column-key="triggerMode"
-                           :filters="triggerFilters">
-            <template v-slot:default="scope">
-              <report-trigger-mode-item :trigger-mode="scope.row.triggerMode"/>
-            </template>
-          </el-table-column>
-          <el-table-column
-            prop="status"
-            column-key="status"
-            :filters="statusFilters"
-            :label="$t('commons.status')">
-            <template v-slot:default="{row}">
-              <ms-performance-report-status :row="row"/>
-            </template>
-          </el-table-column>
-          <el-table-column
-            width="180"
-            :label="$t('commons.operating')">
-            <template v-slot:default="scope">
-              <ms-table-operator-button :tip="$t('test_track.module.rename')" icon="el-icon-edit"
-                                        v-permission="['PROJECT_PERFORMANCE_REPORT:READ+DELETE']"
-                                        @exec="handleRename(scope.row)" type="success"/>
-              <ms-table-operator-button :tip="$t('api_report.detail')" icon="el-icon-s-data"
-                                        v-permission="['PROJECT_PERFORMANCE_REPORT:READ']"
-                                        @exec="handleView(scope.row)" type="primary"/>
-              <ms-table-operator-button :tip="$t('load_test.report.diff')" icon="el-icon-s-operation"
-                                        v-permission="['PROJECT_PERFORMANCE_REPORT:READ+COMPARE']"
-                                        @exec="handleDiff(scope.row)" type="warning"/>
-              <ms-table-operator-button :tip="$t('api_report.delete')"
-                                        v-permission="['PROJECT_PERFORMANCE_REPORT:READ+DELETE']"
-                                        icon="el-icon-delete" @exec="handleDelete(scope.row)" type="danger"/>
-            </template>
-          </el-table-column>
-        </el-table>
+        </ms-table>
         <ms-table-pagination :change="initTableData" :current-page.sync="currentPage" :page-size.sync="pageSize"
                              :total="total"/>
       </el-card>
     </ms-main-container>
     <same-test-reports ref="compareReports"/>
+    <ms-rename-report-dialog ref="renameDialog" @submit="rename"></ms-rename-report-dialog>
+
   </ms-container>
 </template>
 
@@ -129,19 +159,30 @@ import MsTablePagination from "../../common/pagination/TablePagination";
 import MsContainer from "../../common/components/MsContainer";
 import MsMainContainer from "../../common/components/MsMainContainer";
 import MsPerformanceReportStatus from "./PerformanceReportStatus";
-import {getCurrentProjectID, getCurrentWorkspaceId} from "@/common/js/utils";
+import {getCurrentProjectID, getCurrentWorkspaceId, hasLicense} from "@/common/js/utils";
 import MsTableOperatorButton from "../../common/components/MsTableOperatorButton";
 import ReportTriggerModeItem from "../../common/tableItem/ReportTriggerModeItem";
 import {REPORT_CONFIGS} from "../../common/components/search/search-components";
 import MsTableHeader from "../../common/components/MsTableHeader";
 import ShowMoreBtn from "../../track/case/components/ShowMoreBtn";
-import {_filter, _sort,saveLastTableSortField,getLastTableSortField} from "@/common/js/tableUtils";
+import {
+  _filter,
+  _sort,
+  buildBatchParam, getCustomTableHeader,
+  getCustomTableWidth,
+  getLastTableSortField,
+  saveLastTableSortField
+} from "@/common/js/tableUtils";
 import MsDialogFooter from "@/business/components/common/components/MsDialogFooter";
 import SameTestReports from "@/business/components/performance/report/components/SameTestReports";
+import MsRenameReportDialog from "@/business/components/common/components/report/MsRenameReportDialog";
+import MsTableColumn from "@/business/components/common/components/table/MsTableColumn";
+import MsTable from "@/business/components/common/components/table/MsTable";
 
 export default {
   name: "PerformanceTestReportList",
   components: {
+    MsTable,
     SameTestReports,
     MsDialogFooter,
     MsTableHeader,
@@ -152,14 +193,18 @@ export default {
     MsContainer,
     MsMainContainer,
     ShowMoreBtn,
+    MsRenameReportDialog,
+    MsTableColumn,
   },
   created: function () {
     this.testId = this.$route.path.split('/')[3];
     this.initTableData();
+    this.getVersionOptions();
+    this.checkVersionEnable();
   },
   data() {
     return {
-      tableHeaderKey:"PERFORMANCE_REPORT_TABLE",
+      tableHeaderKey: "PERFORMANCE_REPORT_TABLE",
       result: {},
       deletePath: "/performance/report/delete/",
       condition: {
@@ -167,13 +212,12 @@ export default {
       },
       projectId: null,
       tableData: [],
-      multipleSelection: [],
       currentPage: 1,
       pageSize: 10,
       total: 0,
       loading: false,
       testId: null,
-      screenHeight: 'calc(100vh - 200px)',
+      screenHeight: 'calc(100vh - 160px)',
       statusFilters: [
         {text: 'Starting', value: 'Starting'},
         {text: 'Running', value: 'Running'},
@@ -184,14 +228,46 @@ export default {
       triggerFilters: [
         {text: this.$t('commons.trigger_mode.manual'), value: 'MANUAL'},
         {text: this.$t('commons.trigger_mode.schedule'), value: 'SCHEDULE'},
+        {text: this.$t('commons.trigger_mode.test_plan_schedule'), value: 'TEST_PLAN_SCHEDULE'},
+        {text: this.$t('commons.trigger_mode.test_plan_api'), value: 'TEST_PLAN_API'},
         {text: this.$t('commons.trigger_mode.api'), value: 'API'},
+        {text: this.$t('commons.trigger_mode.case'), value: 'CASE'},
+        {text: this.$t('api_test.automation.batch_execute'), value: 'BATCH'},
       ],
       buttons: [
         {
           name: this.$t('report.batch_delete'), handleClick: this.handleBatchDelete
         }
       ],
+      operators: [
+        {
+          tip: this.$t('api_report.detail'),
+          icon: "el-icon-s-data",
+          exec: this.handleView,
+          type: 'primary',
+          permissions: ['PROJECT_PERFORMANCE_REPORT:READ']
+        },
+        {
+          tip: this.$t('load_test.report.diff'),
+          icon: "el-icon-s-operation",
+          type: "warning",
+          exec: this.handleDiff,
+          permissions: ['PROJECT_PERFORMANCE_REPORT:READ+COMPARE']
+        }, {
+          tip: this.$t('commons.delete'),
+          icon: "el-icon-delete",
+          type: "danger",
+          exec: this.handleDelete,
+          permissions: ['PROJECT_PERFORMANCE_REPORT:READ+DELETE']
+        }
+      ],
       selectRows: new Set(),
+      versionFilters: [],
+      versionOptions: [],
+      currentVersion: '',
+      versionEnable: false,
+      fields: getCustomTableHeader('PERFORMANCE_REPORT_TABLE'),
+      fieldsWidth: getCustomTableWidth('PERFORMANCE_REPORT_TABLE'),
     };
   },
   watch: {
@@ -274,9 +350,6 @@ export default {
     buildPagePath(path) {
       return path + "/" + this.currentPage + "/" + this.pageSize;
     },
-    handleSelectionChange(val) {
-      this.multipleSelection = val;
-    },
     handleRename(report) {
       this.$prompt(this.$t('commons.input_name'), '', {
         confirmButtonText: this.$t('commons.confirm'),
@@ -330,54 +403,58 @@ export default {
         this.condition.orders = [];
       }
       _sort(column, this.condition);
-      this.saveSortField(this.tableHeaderKey,this.condition.orders);
+      this.saveSortField(this.tableHeaderKey, this.condition.orders);
       this.initTableData();
     },
     filter(filters) {
       _filter(filters, this.condition);
       this.initTableData();
     },
-    handleSelect(selection, row) {
-      if (this.selectRows.has(row)) {
-        this.$set(row, "showMore", false);
-        this.selectRows.delete(row);
-      } else {
-        this.$set(row, "showMore", true);
-        this.selectRows.add(row);
-      }
-    },
-    saveSortField(key,orders){
-      saveLastTableSortField(key,JSON.stringify(orders));
-    },
-    handleSelectAll(selection) {
-      if (selection.length > 0) {
-        this.tableData.forEach(item => {
-          this.$set(item, "showMore", true);
-          this.selectRows.add(item);
-        });
-      } else {
-        this.selectRows.clear();
-        this.tableData.forEach(row => {
-          this.$set(row, "showMore", false);
-        });
-      }
+    saveSortField(key, orders) {
+      saveLastTableSortField(key, JSON.stringify(orders));
     },
     handleBatchDelete() {
       this.$alert(this.$t('report.delete_batch_confirm') + "？", '', {
         confirmButtonText: this.$t('commons.confirm'),
         callback: (action) => {
           if (action === 'confirm') {
-            let ids = [];
-            this.selectRows.forEach(row => {
-              ids.push(row.id);
-            });
-            this.result = this.$post("/performance/report/batch/delete", {ids: ids}, () => {
+            let param = buildBatchParam(this, this.$refs.table.selectIds);
+            this.result = this.$post("/performance/report/batch/delete", param, () => {
+              this.$success(this.$t('commons.delete_success'));
               this.initTableData();
             });
-
-            this.$success(this.$t('commons.delete_success'));
           }
         },
+      });
+    },
+    getVersionOptions() {
+      if (hasLicense()) {
+        this.$get('/project/version/get-project-versions/' + getCurrentProjectID(), response => {
+          this.versionOptions = response.data;
+          this.versionFilters = response.data.map(u => {
+            return {text: u.name, value: u.id};
+          });
+        });
+      }
+    },
+    checkVersionEnable() {
+      if (!getCurrentProjectID()) {
+        return;
+      }
+      if (hasLicense()) {
+        this.$get('/project/version/enable/' + getCurrentProjectID(), response => {
+          this.versionEnable = response.data;
+        });
+      }
+    },
+    openReNameDialog($event) {
+      this.$refs.renameDialog.open($event);
+    },
+    rename(data) {
+      this.$post("/performance/report/rename", data, () => {
+        this.$success(this.$t("organization.integration.successful_operation"));
+        this.initTableData();
+        this.$refs.renameDialog.close();
       });
     }
   }
@@ -389,4 +466,10 @@ export default {
 .test-content {
   width: 100%;
 }
+
+
+.table-card >>> .el-input__icon {
+  line-height: 23px;
+}
+
 </style>

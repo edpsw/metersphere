@@ -1,6 +1,6 @@
 <template>
   <div>
-    <el-button type="primary" @click="relateTestCase">{{$t('test_track.review_view.relevance_case')}}</el-button>
+    <el-button type="primary" size="small" @click="relateTestCase">{{$t('test_track.review_view.relevance_case')}}</el-button>
 
     <ms-table
       v-loading="result.loading"
@@ -47,12 +47,16 @@
         prop="projectName">
       </ms-table-column>
 
+      <ms-table-column v-if="isXpack"
+        :label="$t('commons.version')"
+        prop="versionName">
+      </ms-table-column>
     </ms-table>
 
     <test-case-relate-list
+      :test-case-contain-ids="testCaseContainIds"
       @refresh="initTableData"
       @save="handleRelate"
-      :test-case-contain-ids="testCaseContainIds"
       ref="testCaseRelevance"/>
   </div>
 
@@ -64,6 +68,7 @@ import MsTableColumn from "@/business/components/common/components/table/MsTable
 import PriorityTableItem from "@/business/components/track/common/tableItems/planview/PriorityTableItem";
 import TypeTableItem from "@/business/components/track/common/tableItems/planview/TypeTableItem";
 import TestCaseRelateList from "@/business/components/track/issue/TestCaseRelateList";
+import {hasLicense} from "@/common/js/utils";
 export default {
   name: "TestCaseIssueList",
   components: {TestCaseRelateList, TypeTableItem, PriorityTableItem, MsTableColumn, MsTable},
@@ -71,22 +76,30 @@ export default {
     return {
       result: {},
       tableData: [],
+      deleteIds: new Set(),
+      addIds: new Set(),
+      testCaseContainIds: new Set(),
       operators: [
         {
           tip: this.$t('commons.delete'), icon: "el-icon-delete", type: "danger",
           exec: this.handleDelete
         }
       ],
+      isXpack: false,
     };
   },
   props: {
     issuesId: String,
-    testCaseContainIds: Set,
   },
   methods: {
     handleDelete(item, index) {
       this.testCaseContainIds.delete(item.id);
       this.tableData.splice(index, 1);
+      this.deleteIds.add(item.id);
+    },
+    clear() {
+      this.addIds.clear();
+      this.deleteIds.clear();
     },
     initTableData() {
       this.tableData = [];
@@ -108,12 +121,15 @@ export default {
     },
     handleRelate(selectRows) {
       let selectData = Array.from(selectRows);
-      selectData.forEach(item => {
-        if (item.id) {
-          this.testCaseContainIds.add(item.id);
+      selectRows.forEach(i => {
+        if (i.id) {
+          this.testCaseContainIds.add(i.id);
         }
+        this.deleteIds.delete(i.id);
+        this.addIds.add(i.id);
       });
       this.tableData.push(...selectData);
+      this.testCaseContainIds = new Set();
     },
   }
 }

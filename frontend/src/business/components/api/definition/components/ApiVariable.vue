@@ -55,18 +55,9 @@
           </el-autocomplete>
         </el-col>
 
-        <el-col class="item">
-          <el-input v-model="item.description" size="small" maxlength="200"
-                    :placeholder="$t('commons.description')" show-word-limit>
-          </el-input>
-
-          <el-autocomplete :disabled="isReadOnly" v-if="suggestions" v-model="item.name" size="small"
-                           :fetch-suggestions="querySearch" @change="change" :placeholder="keyText" show-word-limit/>
-
-        </el-col>
 
         <el-col v-if="isActive && item.type === 'file'" class="item">
-          <ms-api-body-file-upload :parameter="item"/>
+          <ms-api-body-file-upload :parameter="item" :id="id"/>
         </el-col>
 
         <el-col v-if="type === 'body'" class="item kv-select">
@@ -91,11 +82,14 @@
     <ms-api-variable-advance ref="variableAdvance" :environment="environment" :scenario="scenario"
                              :append-to-body="appendDialogToBody"
                              :parameters="parameters"
-                             :current-item="currentItem"/>
+                             :current-item="currentItem"
+                             :scenario-definition="scenarioDefinition"
+                             @advancedRefresh="reload"/>
+
     <ms-api-variable-json :append-to-body="appendDialogToBody" ref="variableJson" @callback="callback"/>
 
-    <api-variable-setting :append-to-body="appendDialogToBody"
-      ref="apiVariableSetting"/>
+    <api-variable-setting :append-to-body="appendDialogToBody" :suggestions="suggestions"
+                          ref="apiVariableSetting"/>
 
   </div>
 </template>
@@ -106,7 +100,6 @@ import {JMETER_FUNC, MOCKJS_FUNC} from "@/common/js/constants";
 import MsApiVariableAdvance from "./ApiVariableAdvance";
 import MsApiVariableJson from "./ApiVariableJson";
 import MsApiBodyFileUpload from "./body/ApiBodyFileUpload";
-import {REQUIRED} from "../model/JsonData";
 import Vue from 'vue';
 import ApiVariableSetting from "@/business/components/api/definition/components/ApiVariableSetting";
 
@@ -114,10 +107,20 @@ export default {
   name: "MsApiVariable",
   components: {ApiVariableSetting, MsApiBodyFileUpload, MsApiVariableAdvance, MsApiVariableJson},
   props: {
+    id: String,
+    urlEncode: {
+      type: Boolean,
+      default: false
+    },
     keyPlaceholder: String,
     valuePlaceholder: String,
     description: String,
-    parameters: Array,
+    parameters: {
+      type: Array,
+      default() {
+        return [];
+      }
+    },
     rest: Array,
     environment: Object,
     scenario: Scenario,
@@ -140,7 +143,8 @@ export default {
       default: true
     },
     suggestions: Array,
-    withMorSetting: Boolean
+    withMorSetting: Boolean,
+    scenarioDefinition: Array,
   },
   data() {
     return {
@@ -197,9 +201,21 @@ export default {
     },
     change: function () {
       let isNeedCreate = true;
+      let removeIndexArr = [];
+      this.parameters.forEach((item, index) => {
+        if ((!item.name || item.name === '') && (!item.value || item.value === '') && (!item.files || item.files.length === 0)) {
+          // 多余的空行
+          removeIndexArr.push(index);
+        }
+      });
+      if (removeIndexArr.length > 0) {
+        for (let i = removeIndexArr.length - 1; i >= 0; i--) {
+          this.remove(removeIndexArr[i]);
+        }
+      }
       let removeIndex = -1;
       this.parameters.forEach((item, index) => {
-        if (!item.name && !item.value) {
+        if ((!item.name || item.name === '') && (!item.value || item.value === '') && (!item.files || item.files.length === 0)) {
           // 多余的空行
           if (index !== this.parameters.length - 1) {
             removeIndex = index;
@@ -208,11 +224,14 @@ export default {
           isNeedCreate = false;
         }
       });
+
       if (isNeedCreate) {
         this.parameters.push(new KeyValue({
           type: 'text',
           enable: true,
+          urlEncode: this.urlEncode,
           uuid: this.uuid(),
+          required: false,
           contentType: 'text/plain'
         }));
       }
@@ -248,13 +267,18 @@ export default {
     },
     advanced(item) {
       if (item.type === 'json') {
+        this.appendDialogToBody = true;
         this.$refs.variableJson.open(item);
         this.currentItem = item;
       } else {
-        this.$refs.variableAdvance.open();
         this.currentItem = item;
+        // 场景编辑参数设置冒泡，调用父组件的参数设置打开方法
+        if (this.scenarioDefinition != undefined) {
+          this.$emit('editScenarioAdvance', this.currentItem);
+        } else {
+          this.$refs.variableAdvance.open();
+        }
       }
-
     },
     typeChange(item) {
       if (item.type === 'file') {
@@ -288,14 +312,15 @@ export default {
     callback(item) {
       this.currentItem.value = item;
       this.currentItem = null;
-    }
+    },
   },
   created() {
     if (this.parameters.length === 0 || this.parameters[this.parameters.length - 1].name) {
       this.parameters.push(new KeyValue({
         type: 'text',
         enable: true,
-        required: true,
+        required: false,
+        urlEncode: this.urlEncode,
         uuid: this.uuid(),
         contentType: 'text/plain'
       }));
@@ -318,7 +343,7 @@ export default {
 }
 
 .kv-select {
-  width: 50%;
+  width: 30%;
 }
 
 .el-autocomplete {

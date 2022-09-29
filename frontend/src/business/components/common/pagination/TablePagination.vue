@@ -3,6 +3,7 @@
     <div class="table-page">
       <el-pagination
         background
+        :pager-count="5"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
         :current-page="currentPage"
@@ -31,7 +32,7 @@
       pageSizes: {
         type: Array,
         default: function () {
-          return [5, 10, 20, 50, 100]
+          return [5, 10, 20, 50]
         }
       },
       total: {

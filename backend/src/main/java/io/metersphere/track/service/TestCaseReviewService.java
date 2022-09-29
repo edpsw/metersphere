@@ -26,16 +26,19 @@ import io.metersphere.notice.sender.NoticeModel;
 import io.metersphere.notice.service.NoticeSendService;
 import io.metersphere.service.SystemParameterService;
 import io.metersphere.service.UserService;
+import io.metersphere.track.dto.CountMapDTO;
+import io.metersphere.track.dto.TestCaseDTO;
 import io.metersphere.track.dto.TestCaseReviewDTO;
-import io.metersphere.track.dto.TestReviewCaseDTO;
 import io.metersphere.track.dto.TestReviewDTOWithMetric;
 import io.metersphere.track.request.testreview.*;
+import org.apache.commons.beanutils.BeanMap;
 import org.apache.commons.beanutils.BeanUtils;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.spring.SqlSessionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -116,38 +119,11 @@ public class TestCaseReviewService {
     }
 
     //评审内容
-    private Map<String, String> getReviewParamMap(SaveTestCaseReviewRequest reviewRequest) {
-        Long startTime = reviewRequest.getCreateTime();
-        Long endTime = reviewRequest.getEndTime();
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        String start = null;
-        String sTime = String.valueOf(startTime);
-        String eTime = String.valueOf(endTime);
-        if (!sTime.equals("null")) {
-            start = sdf.format(new Date(Long.parseLong(sTime)));
-        }
-        String end = null;
-        if (!eTime.equals("null")) {
-            end = sdf.format(new Date(Long.parseLong(eTime)));
-        }
-
-        Map<String, String> paramMap = new HashMap<>();
+    private Map getReviewParamMap(TestCaseReview review) {
+        Map paramMap = new HashMap<>();
         BaseSystemConfigDTO baseSystemConfigDTO = systemParameterService.getBaseInfo();
         paramMap.put("url", baseSystemConfigDTO.getUrl());
-        paramMap.put("creator", reviewRequest.getCreator());
-        paramMap.put("name", reviewRequest.getName());
-        paramMap.put("start", start);
-        paramMap.put("end", end);
-        paramMap.put("id", reviewRequest.getId());
-        String status = "";
-        if (StringUtils.equals(TestPlanStatus.Underway.name(), reviewRequest.getStatus())) {
-            status = "进行中";
-        } else if (StringUtils.equals(TestPlanStatus.Prepare.name(), reviewRequest.getStatus())) {
-            status = "未开始";
-        } else if (StringUtils.equals(TestPlanStatus.Completed.name(), reviewRequest.getStatus())) {
-            status = "已完成";
-        }
-        paramMap.put("status", status);
+        paramMap.putAll(new BeanMap(review));
         return paramMap;
     }
 
@@ -236,7 +212,7 @@ public class TestCaseReviewService {
         testCaseReview.setUpdateTime(System.currentTimeMillis());
         checkCaseReviewExist(testCaseReview);
         testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
-        return testCaseReview;
+        return testCaseReviewMapper.selectByPrimaryKey(testCaseReview.getId());
     }
 
     private void editCaseReviewer(SaveTestCaseReviewRequest testCaseReview) {
@@ -263,7 +239,7 @@ public class TestCaseReviewService {
         testCaseReviewUsersMapper.deleteByExample(example);
     }
 
-    private void editCaseRevieweFollow(SaveTestCaseReviewRequest testCaseReview) {
+    public void editCaseRevieweFollow(SaveTestCaseReviewRequest testCaseReview) {
         // 要更新的follows
         List<String> follows = testCaseReview.getFollowIds();
         if (CollectionUtils.isNotEmpty(follows)) {
@@ -359,7 +335,7 @@ public class TestCaseReviewService {
 
         // 如果是关联全部指令则根据条件查询未关联的案例
         if (testCaseIds.get(0).equals("all")) {
-            List<TestCase> testCases = extTestCaseMapper.getTestCaseByNotInReview(request.getRequest());
+            List<TestCaseDTO> testCases = extTestCaseMapper.getTestCaseByNotInReview(request.getRequest());
             if (!testCases.isEmpty()) {
                 testCaseIds = testCases.stream().map(testCase -> testCase.getId()).collect(Collectors.toList());
             }
@@ -382,72 +358,18 @@ public class TestCaseReviewService {
                 caseReview.setUpdateTime(System.currentTimeMillis());
                 caseReview.setReviewId(request.getReviewId());
                 caseReview.setStatus(TestCaseReviewStatus.Prepare.name());
+                caseReview.setIsDel(false);
                 caseReview.setOrder(nextOrder);
                 batchMapper.insert(caseReview);
-                nextOrder += 5000;
+                nextOrder += ServiceUtils.ORDER_STEP;
             }
         }
 
         sqlSession.flushStatements();
-        //同步添加关联的接口和测试用例
-     /*   if(request.getChecked()){
-            if (!testCaseIds.isEmpty()) {
-                testCaseIds.forEach(caseId -> {
-                    TestCaseWithBLOBs testDtail=testCaseMapper.selectByPrimaryKey(caseId);
-                    if(StringUtils.equals(testDtail.getType(), TestCaseStatus.performance.name())){
-                        TestCaseReviewLoad t=new TestCaseReviewLoad();
-                        t.setId(UUID.randomUUID().toString());
-                        t.setTestCaseReviewId(request.getReviewId());
-                        t.setLoadCaseId(testDtail.getTestId());
-                        t.setCreateTime(System.currentTimeMillis());
-                        t.setUpdateTime(System.currentTimeMillis());
-                        TestCaseReviewLoadExample example=new TestCaseReviewLoadExample();
-                        example.createCriteria().andTestCaseReviewIdEqualTo(request.getReviewId()).andLoadCaseIdEqualTo(t.getLoadCaseId());
-                        if (testCaseReviewLoadMapper.countByExample(example) <=0) {
-                            testCaseReviewLoadMapper.insert(t);
-                        }
+        if (sqlSession != null && sqlSessionFactory != null) {
+            SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+        }
 
-                    }
-                    if(StringUtils.equals(testDtail.getType(),TestCaseStatus.testcase.name())){
-                        TestCaseReviewApiCase t=new TestCaseReviewApiCase();
-                        ApiTestCaseWithBLOBs apitest=apiTestCaseMapper.selectByPrimaryKey(testDtail.getTestId());
-                        ApiDefinitionWithBLOBs apidefinition=apiDefinitionMapper.selectByPrimaryKey(apitest.getApiDefinitionId());
-                        t.setId(UUID.randomUUID().toString());
-                        t.setTestCaseReviewId(request.getReviewId());
-                        t.setApiCaseId(testDtail.getTestId());
-                        t.setEnvironmentId(apidefinition.getEnvironmentId());
-                        t.setCreateTime(System.currentTimeMillis());
-                        t.setUpdateTime(System.currentTimeMillis());
-                        TestCaseReviewApiCaseExample example=new TestCaseReviewApiCaseExample();
-                        example.createCriteria().andTestCaseReviewIdEqualTo(request.getReviewId()).andApiCaseIdEqualTo(t.getApiCaseId());
-                        if(testCaseReviewApiCaseMapper.countByExample(example)<=0){
-                            testCaseReviewApiCaseMapper.insert(t);
-                        }
-
-                    }
-                    if(StringUtils.equals(testDtail.getType(),TestCaseStatus.automation.name())){
-                        TestCaseReviewScenario t=new TestCaseReviewScenario();
-                        ApiScenarioWithBLOBs testPlanApiScenario=apiScenarioMapper.selectByPrimaryKey(testDtail.getTestId());
-                        t.setId(UUID.randomUUID().toString());
-                        t.setTestCaseReviewId(request.getReviewId());
-                        t.setApiScenarioId(testDtail.getTestId());
-                        t.setLastResult(testPlanApiScenario.getLastResult());
-                        t.setPassRate(testPlanApiScenario.getPassRate());
-                        t.setReportId(testPlanApiScenario.getReportId());
-                        t.setStatus(testPlanApiScenario.getStatus());
-                        t.setCreateTime(System.currentTimeMillis());
-                        t.setUpdateTime(System.currentTimeMillis());
-                        TestCaseReviewScenarioExample example=new TestCaseReviewScenarioExample();
-                        example.createCriteria().andTestCaseReviewIdEqualTo(request.getReviewId()).andApiScenarioIdEqualTo(t.getApiScenarioId());
-                        if(testCaseReviewScenarioMapper.countByExample(example)<=0){
-                            testCaseReviewScenarioMapper.insert(t);
-                        }
-
-                    }
-
-                });
-            }
-        }*/
         TestCaseReview testCaseReview = testCaseReviewMapper.selectByPrimaryKey(request.getReviewId());
         if (StringUtils.equals(testCaseReview.getStatus(), TestCaseReviewStatus.Prepare.name())
                 || StringUtils.equals(testCaseReview.getStatus(), TestCaseReviewStatus.Completed.name())) {
@@ -472,16 +394,14 @@ public class TestCaseReviewService {
         TestCaseReview testCaseReview = new TestCaseReview();
         testCaseReview.setId(reviewId);
 
-        for (String status : statusList) {
-            if (StringUtils.equals(status, TestReviewCaseStatus.Prepare.name())) {
-                testCaseReview.setStatus(TestCaseReviewStatus.Underway.name());
-                testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
-                return;
-            } else if (StringUtils.equals(status, TestReviewCaseStatus.UnPass.name())) {
-                testCaseReview.setStatus(TestCaseReviewStatus.Finished.name());
-                testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
-                return;
-            }
+        if (statusList.contains(TestReviewCaseStatus.Prepare.name())) {
+            testCaseReview.setStatus(TestCaseReviewStatus.Underway.name());
+            testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
+            return;
+        } else if(statusList.contains(TestReviewCaseStatus.UnPass.name())){
+            testCaseReview.setStatus(TestCaseReviewStatus.Finished.name());
+            testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
+            return;
         }
         testCaseReview.setStatus(TestCaseReviewStatus.Completed.name());
         testCaseReviewMapper.updateByPrimaryKeySelective(testCaseReview);
@@ -492,13 +412,12 @@ public class TestCaseReviewService {
             try {
                 BeanUtils.copyProperties(testCaseReviewRequest, _testCaseReview);
                 String context = getReviewContext(testCaseReviewRequest, NoticeConstants.Event.UPDATE);
-                Map<String, Object> paramMap = new HashMap<>(getReviewParamMap(testCaseReviewRequest));
+                Map<String, Object> paramMap = new HashMap<>(getReviewParamMap(_testCaseReview));
                 paramMap.put("operator", SessionUtils.getUser().getName());
                 NoticeModel noticeModel = NoticeModel.builder()
                         .operator(SessionUtils.getUserId())
                         .context(context)
                         .subject("测试评审通知")
-                        .mailTemplate("track/ReviewEnd")
                         .paramMap(paramMap)
                         .event(NoticeConstants.Event.COMPLETE)
                         .status(TestCaseReviewStatus.Completed.name())
@@ -526,25 +445,11 @@ public class TestCaseReviewService {
         request.setProjectId(projectId);
         request.setReviewIds(extTestReviewCaseMapper.findRelateTestReviewId(user.getId(), workspaceId, projectId));
 
-        List<String> projectIds = extProjectMapper.getProjectIdByWorkspaceId(workspaceId);
-
         List<TestReviewDTOWithMetric> testReviews = extTestCaseReviewMapper.listRelate(request);
-
-        Map<String, List<TestReviewCaseDTO>> testCaseMap = new HashMap<>();
-        listTestCaseByProjectIds(projectIds).forEach(testCase -> {
-            List<TestReviewCaseDTO> list = testCaseMap.get(testCase.getReviewId());
-            if (list == null) {
-                list = new ArrayList<>();
-                list.add(testCase);
-                testCaseMap.put(testCase.getReviewId(), list);
-            } else {
-                list.add(testCase);
-            }
-        });
 
         if (!CollectionUtils.isEmpty(testReviews)) {
             testReviews.forEach(testReview -> {
-                List<TestReviewCaseDTO> testCases = testCaseMap.get(testReview.getId());
+                List<CountMapDTO> countMapDTOS = extTestReviewCaseMapper.getStatusMapByReviewId(testReview.getId());
 
                 TestCaseReviewUsersExample testCaseReviewUsersExample = new TestCaseReviewUsersExample();
                 testCaseReviewUsersExample.createCriteria().andReviewIdEqualTo(testReview.getId());
@@ -561,18 +466,15 @@ public class TestCaseReviewService {
                 testReview.setReviewed(0);
                 testReview.setTotal(0);
                 testReview.setPass(0);
-                if (testCases != null) {
-                    testReview.setTotal(testCases.size());
-                    testCases.forEach(testCase -> {
-                        if (!StringUtils.equals(testCase.getReviewStatus(), TestReviewCaseStatus.Prepare.name())) {
-                            testReview.setReviewed(testReview.getReviewed() + 1);
-                        }
-                        if (StringUtils.equals(testCase.getReviewStatus(), TestReviewCaseStatus.Pass.name())) {
-                            testReview.setPass(testReview.getPass() + 1);
-                        }
-                    });
-                }
-
+                countMapDTOS.forEach(item -> {
+                    testReview.setTotal(testReview.getTotal() + item.getValue());
+                    if (!StringUtils.equals(item.getKey(), TestReviewCaseStatus.Prepare.name())) {
+                        testReview.setReviewed(testReview.getReviewed() + item.getValue());
+                    }
+                    if (StringUtils.equals(item.getKey(), TestReviewCaseStatus.Pass.name())) {
+                        testReview.setPass(testReview.getPass() + item.getValue());
+                    }
+                });
             });
         }
         return testReviews;
@@ -581,7 +483,7 @@ public class TestCaseReviewService {
     private String getReviewName(List<String> userIds, String projectId) {
         QueryMemberRequest queryMemberRequest = new QueryMemberRequest();
         queryMemberRequest.setProjectId(projectId);
-        Map<String, String> userMap = userService.getProjectMember(queryMemberRequest)
+        Map<String, String> userMap = userService.getProjectMemberList(queryMemberRequest)
                 .stream().collect(Collectors.toMap(User::getId, User::getName));
         StringBuilder stringBuilder = new StringBuilder();
         String name = "";
@@ -597,13 +499,6 @@ public class TestCaseReviewService {
             }
         }
         return name;
-    }
-
-    private List<TestReviewCaseDTO> listTestCaseByProjectIds(List<String> projectIds) {
-        if (CollectionUtils.isEmpty(projectIds)) {
-            return new ArrayList<>();
-        }
-        return extTestReviewCaseMapper.listTestCaseByProjectIds(projectIds);
     }
 
     /*编辑，新建，完成,删除通知内容*/
@@ -688,7 +583,7 @@ public class TestCaseReviewService {
         List<String> testCaseIds = request.getTestCaseIds();
         List<String> names = new ArrayList<>();
         if (testCaseIds.get(0).equals("all")) {
-            List<TestCase> testCases = extTestCaseMapper.getTestCaseByNotInReview(request.getRequest());
+            List<TestCaseDTO> testCases = extTestCaseMapper.getTestCaseByNotInReview(request.getRequest());
             if (!testCases.isEmpty()) {
                 names = testCases.stream().map(TestCase::getName).collect(Collectors.toList());
                 testCaseIds = testCases.stream().map(testCase -> testCase.getId()).collect(Collectors.toList());

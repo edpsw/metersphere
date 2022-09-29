@@ -1,21 +1,24 @@
 <template>
-  <el-form :model="ruleForm" :rules="rules" ref="editPasswordForm" label-width="100px" class="demo-ruleForm">
-    <el-form-item :label="$t('member.old_password')" prop="password" style="margin-bottom: 29px">
-      <el-input v-model="ruleForm.password" autocomplete="off" show-password/>
-    </el-form-item>
-    <el-form-item :label="$t('member.new_password')" prop="newpassword">
-      <el-input v-model="ruleForm.newpassword" autocomplete="off" show-password/>
-    </el-form-item>
-    <el-form-item :label="$t('member.repeat_password')" prop="repeatPassword">
-      <el-input v-model="ruleForm.repeatPassword" autocomplete="off" show-password/>
-    </el-form-item>
-    <el-form-item>
-      <el-button @click="cancel">{{$t('commons.cancel')}}</el-button>
-      <el-button type="primary" @click="updatePassword('editPasswordForm')" @keydown.enter.native.prevent>{{$t('commons.confirm')}}</el-button>
-    </el-form-item>
-  </el-form>
+  <div>
+    <el-form :model="ruleForm" :rules="rules" ref="editPasswordForm" label-width="120px" class="demo-ruleForm" size="small">
+      <el-form-item :label="$t('member.old_password')" prop="password" style="margin-bottom: 29px">
+        <el-input v-model="ruleForm.password" autocomplete="off" show-password/>
+      </el-form-item>
+      <el-form-item :label="$t('member.new_password')" prop="newpassword">
+        <el-input v-model="ruleForm.newpassword" autocomplete="off" show-password/>
+      </el-form-item>
+      <el-form-item :label="$t('member.repeat_password')" prop="repeatPassword">
+        <el-input v-model="ruleForm.repeatPassword" autocomplete="off" show-password/>
+      </el-form-item>
+      <el-form-item>
+        <el-button @click="cancel">{{$t('commons.cancel')}}</el-button>
+        <el-button type="primary" @click="updatePassword('editPasswordForm')" @keydown.enter.native.prevent>{{$t('commons.confirm')}}</el-button>
+      </el-form-item>
+    </el-form>
+  </div>
 </template>
 <script>
+
 import {logout} from "@/network/user";
 
 export default {
@@ -54,7 +57,7 @@ export default {
   },
   methods:{
     cancel() {
-      return
+      this.$emit("cancel");
     },
     confirm() {
       this.$emit("confirm");
@@ -67,8 +70,12 @@ export default {
             return;
           }
           this.result = this.$post(this.updatePasswordPath, this.ruleForm, response => {
-            this.$success(this.$t('commons.modify_success'));
-            logout();
+            if(!response.data){
+              this.$error(this.$t('commons.personal_password_info'));
+            }else {
+              this.$success(this.$t('commons.modify_success'));
+              logout();
+            }
           });
         } else {
           return false;
@@ -76,7 +83,6 @@ export default {
       });
     },
   }
-
 }
 </script>
 <style scoped>

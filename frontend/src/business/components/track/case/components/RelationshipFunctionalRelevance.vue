@@ -5,6 +5,7 @@
       :get-table-data="getTestCases"
       :get-node-tree="getTreeNodes"
       :save="saveCaseRelevance"
+      :version-enable="versionEnable"
       ref="functionalRelevance">
     </functional-relevance>
 </template>
@@ -14,7 +15,7 @@
 import {buildPagePath, getPageDate, getPageInfo} from "@/common/js/tableUtils";
 import {TEST_PLAN_RELEVANCE_FUNC_CONFIGS} from "@/business/components/common/components/search/search-components";
 import FunctionalRelevance from "@/business/components/track/plan/view/comonents/functional/FunctionalRelevance";
-import {getTestCaseNodes} from "@/network/testCase";
+import {getTestCaseNodesByCaseFilter} from "@/network/testCase";
 
 export default {
   name: "RelationshipFunctionalRelevance",
@@ -35,6 +36,7 @@ export default {
       type: String
     },
     relationshipType: String,
+    versionEnable: Boolean
   },
   watch: {
     caseId() {
@@ -55,8 +57,9 @@ export default {
       }
       param.id = this.caseId;
       param.type = 'TEST_CASE';
+      param.condition = this.page.condition;
 
-      vueObj.result = this.$post('/relationship/edge/save/batch', param, () => {
+      vueObj.result = this.$post('/test/case/relationship/add', param, () => {
         vueObj.isSaving = false;
         this.$success(this.$t('commons.save_success'));
         vueObj.$refs.baseRelevance.close();
@@ -83,7 +86,7 @@ export default {
       });
     },
     getTreeNodes(vueObj) {
-      vueObj.$refs.nodeTree.result = getTestCaseNodes(vueObj.projectId, data => {
+      vueObj.nodeResult = getTestCaseNodesByCaseFilter(vueObj.projectId, {}, data => {
         vueObj.treeNodes = data;
         vueObj.selectNodeIds = [];
       });

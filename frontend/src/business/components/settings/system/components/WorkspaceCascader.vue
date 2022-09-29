@@ -102,11 +102,12 @@ export default {
     open() {
       listenGoBack(this.close);
       this.dialogVisible = true;
+      this.selectedUserGroup = "";
       this.rules.workspace[0].message = this.$t('user.select_workspace');
     },
     confirm() {
       if (!this.selectedUserGroup) {
-        this.$warning(this.$t('user.select_workspace'));
+        this.$warning(this.$t('user.select_group'));
         return;
       }
       this.$refs.ruleForm.validate((valid) => {
@@ -124,14 +125,14 @@ export default {
       });
     },
     getWorkspace(resolve) {
-      this.$get("workspace/list/", res => {
+      this.$get("workspace/list", res => {
         let data = res.data ? res.data : [];
         data.forEach(d => d.leaf = true);
         resolve(data);
       })
     },
     getWorkspaceUserGroup() {
-      this.$post("/user/group/get", {type: GROUP_WORKSPACE}, (res) => {
+      this.$post("/user/group/get", {type: GROUP_WORKSPACE, onlyQueryGlobal: true}, (res) => {
         this.workspaceUserGroups = res.data ? res.data : [];
       })
     }

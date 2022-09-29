@@ -1,11 +1,11 @@
 <template>
-  <test-plan-report-container id='summary' :title="'报告总结'">
+  <test-plan-report-container id='summary' :title="$t('test_track.report.report_summary')">
     <template v-slot:title>
-      <el-link class="edit-link" v-if="!isTemplate && !isShare && !isEdit" @click="isEdit = true">
-        编辑
+      <el-link class="edit-link" v-if="!isTemplate && !isShare && !isDb && !isEdit" @click="isEdit = true">
+        <i class="el-icon-edit">{{ $t('commons.edit') }}</i>
       </el-link>
       <el-link class="edit-link" v-if="!isTemplate && !isShare && !isDb && isEdit" @click="saveSummary">
-        保存
+        <i class="el-icon-circle-check">{{ $t('commons.save') }}</i>
       </el-link>
     </template>
     <el-form class="form-info" v-loading="result.loading">

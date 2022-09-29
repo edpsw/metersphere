@@ -57,5 +57,15 @@ public class ApiScenario implements Serializable {
 
     private Long order;
 
+    private String environmentType;
+
+    private String environmentGroupId;
+
+    private String versionId;
+
+    private String refId;
+
+    private Boolean latest;
+
     private static final long serialVersionUID = 1L;
 }

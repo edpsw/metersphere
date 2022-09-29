@@ -1,8 +1,44 @@
 <template>
   <ms-container>
-    <ms-main-container>
+    <el-main>
       <el-card v-loading="result.loading" v-if="show">
-        <el-row>
+
+        <el-row v-if="isShare">
+          <el-col :span="24">
+            <div style="float:left;">
+              <div>
+                <span class="ms-report-time-desc-share">{{ $t('commons.name') }}：{{ report.name }}</span>
+                <span class="ms-report-time-desc-share">{{ $t('commons.executor') }}：{{ report.userName }}</span>
+              </div>
+              <div>
+                <span class="ms-report-time-desc-share">{{ $t('report.test_duration', [minutes, seconds]) }}</span>
+                <span class="ms-report-time-desc-share" v-if="startTime !== '0'">
+                  {{ $t('report.test_start_time') }}：{{ startTime | timestampFormatDate }}
+              </span>
+                <span class="ms-report-time-desc-share" v-else>{{ $t('report.test_start_time') }}：-</span>
+                <span class="ms-report-time-desc-share" v-if="report.status === 'Completed' && endTime !== '0'">
+                  {{ $t('report.test_end_time') }}：{{ endTime | timestampFormatDate }}
+              </span>
+                <span class="ms-report-time-desc-share" v-else>{{ $t('report.test_end_time') }}：- </span>
+              </div>
+            </div>
+            <div style="float: right;margin-right: 10px;">
+              <div v-if="showProjectEnv" type="flex">
+                <span> {{ $t('commons.environment') + ':' }} </span>
+                <div v-for="(values,key) in projectEnvMap" :key="key" style="margin-right: 10px">
+                  {{ key + ":" }}
+                  <ms-tag v-for="(item,index) in values" :key="index" type="success" :content="item"
+                          style="margin-left: 2px"/>
+                </div>
+                <div v-show="showMoreProjectEnvMap">
+                  <el-link icon="el-icon-more" @click="showAllProjectInfo"></el-link>
+                </div>
+              </div>
+            </div>
+          </el-col>
+        </el-row>
+
+        <el-row v-else>
           <el-col :span="16">
             <el-row v-if="!isPlanReport">
               <el-breadcrumb separator-class="el-icon-arrow-right">
@@ -13,7 +49,7 @@
                 <el-breadcrumb-item>{{ reportName }}</el-breadcrumb-item>
               </el-breadcrumb>
             </el-row>
-            <el-row class="ms-report-view-btns"  v-if="!isPlanReport">
+            <el-row class="ms-report-view-btns" v-if="!isPlanReport">
               <el-button :disabled="isReadOnly || report.status !== 'Running'" type="primary" plain size="mini"
                          @click="dialogFormVisible=true">
                 {{ $t('report.test_stop_now') }}
@@ -27,31 +63,51 @@
             </el-row>
           </el-col>
           <el-col :span="8">
-            <span class="ms-report-time-desc">
-              {{ $t('report.test_duration', [minutes, seconds]) }}
+            <div v-if="isPlanReport" style="float: right;margin-right: 10px;">
+              <div v-if="showProjectEnv" type="flex">
+                <span> {{ $t('commons.environment') + ':' }} </span>
+                <div v-for="(values,key) in projectEnvMap" :key="key" style="margin-right: 10px">
+                  {{ key + ":" }}
+                  <ms-tag v-for="(item,index) in values" :key="index" type="success" :content="item"
+                          style="margin-left: 2px"/>
+                </div>
+                <div v-show="showMoreProjectEnvMap">
+                  <el-link icon="el-icon-more" @click="showAllProjectInfo"></el-link>
+                </div>
+              </div>
+            </div>
+            <div style="float: left">
+              <span class="ms-report-time-desc">
+              {{
+                  $t('report.test_duration', [templateMinutes ? templateMinutes : minutes,
+                    templateSeconds ? templateSeconds : seconds])
+                }}
             </span>
-            <span class="ms-report-time-desc" v-if="startTime !== '0'">
+              <span class="ms-report-time-desc" v-if="startTime !== '0'">
               {{ $t('report.test_start_time') }}：{{ startTime | timestampFormatDate }}
             </span>
-            <span class="ms-report-time-desc" v-else>
+              <span class="ms-report-time-desc" v-else-if="planReportTemplate && planReportTemplate.startTime">
+              {{ $t('report.test_start_time') }}：{{ planReportTemplate.startTime | timestampFormatDate }}
+            </span>
+              <span class="ms-report-time-desc" v-else>
               {{ $t('report.test_start_time') }}：-
             </span>
-            <span class="ms-report-time-desc" v-if="report.status === 'Completed' && endTime !== '0'">
+              <span class="ms-report-time-desc" v-if="report.status === 'Completed' && endTime !== '0'">
               {{ $t('report.test_end_time') }}：{{ endTime | timestampFormatDate }}
             </span>
-            <span class="ms-report-time-desc" v-else>
+              <span class="ms-report-time-desc" v-else-if="planReportTemplate && planReportTemplate.endTime">
+              {{ $t('report.test_end_time') }}：{{ planReportTemplate.endTime | timestampFormatDate }}
+            </span>
+              <span class="ms-report-time-desc" v-else>
               {{ $t('report.test_end_time') }}：-
             </span>
+            </div>
           </el-col>
         </el-row>
 
         <el-divider/>
         <div ref="resume">
           <el-tabs v-model="active">
-            <el-tab-pane :label="$t('load_test.pressure_config')">
-              <ms-performance-pressure-config :is-share="isShare" :plan-report-template="planReportTemplate"
-                                              :share-id="shareId" :is-read-only="true" :report="report"/>
-            </el-tab-pane>
             <el-tab-pane :label="$t('report.test_overview')">
               <ms-report-test-overview :report="report" :is-share="isShare" :plan-report-template="planReportTemplate"
                                        :share-id="shareId" ref="testOverview"/>
@@ -61,7 +117,8 @@
                                       :share-id="shareId" ref="testDetails"/>
             </el-tab-pane>
             <el-tab-pane :label="$t('report.test_request_statistics')">
-              <ms-report-request-statistics :report="report" :is-share="isShare" :plan-report-template="planReportTemplate"
+              <ms-report-request-statistics :report="report" :is-share="isShare"
+                                            :plan-report-template="planReportTemplate"
                                             :share-id="shareId" ref="requestStatistics"/>
             </el-tab-pane>
             <el-tab-pane :label="$t('report.test_error_log')">
@@ -69,21 +126,28 @@
                                    :share-id="shareId" ref="errorLog"/>
             </el-tab-pane>
             <el-tab-pane :label="$t('report.test_log_details')">
-              <ms-report-log-details  :report="report" :is-share="isShare" :plan-report-template="planReportTemplate"
+              <ms-report-log-details :report="report" :is-share="isShare" :plan-report-template="planReportTemplate"
                                      :share-id="shareId"/>
             </el-tab-pane>
             <el-tab-pane :label="$t('report.test_monitor_details')">
               <monitor-card :report="report" :is-share="isShare" :plan-report-template="planReportTemplate"
                             :share-id="shareId"/>
             </el-tab-pane>
+            <el-tab-pane :label="$t('report.test_config')">
+              <ms-test-configuration :report-id="reportId" :report="report"
+                                     :plan-report-template="planReportTemplate"
+                                     :is-share="isShare" :share-id="shareId"/>
+            </el-tab-pane>
           </el-tabs>
         </div>
 
-        <ms-performance-report-export v-if="!isShare && !planReportTemplate" :title="reportName" id="performanceReportExport" v-show="reportExportVisible"
+        <ms-performance-report-export v-if="!isShare && !planReportTemplate" :title="reportName"
+                                      id="performanceReportExport" v-show="reportExportVisible"
                                       :report="report"/>
 
       </el-card>
-      <el-dialog :title="$t('report.test_stop_now_confirm')" :visible.sync="dialogFormVisible" width="30%" :append-to-body="true">
+      <el-dialog :title="$t('report.test_stop_now_confirm')" :visible.sync="dialogFormVisible" width="30%"
+                 :append-to-body="true">
         <p v-html="$t('report.force_stop_tips')"/>
         <p v-html="$t('report.stop_tips')"/>
         <div slot="footer" class="dialog-footer">
@@ -93,7 +157,8 @@
           </el-button>
         </div>
       </el-dialog>
-    </ms-main-container>
+      <project-environment-dialog ref="projectEnvDialog"></project-environment-dialog>
+    </el-main>
   </ms-container>
 </template>
 
@@ -109,20 +174,23 @@ import MsReportRequestStatistics from "@/business/components/performance/report/
 import MsReportTestOverview from "@/business/components/performance/report/components/TestOverview";
 import MsContainer from "@/business/components/common/components/MsContainer";
 import MsMainContainer from "@/business/components/common/components/MsMainContainer";
-import MsPerformancePressureConfig from "@/business/components/performance/report/components/PerformancePressureConfig";
 import MonitorCard from "@/business/components/performance/report/components/MonitorCard";
 import MsReportTestDetails from '@/business/components/performance/report/components/TestDetails';
+import ProjectEnvironmentDialog from "@/business/components/common/dialog/ProjectEnvironmentDialog";
+import MsTag from "@/business/components/common/components/MsTag";
 import {
   getPerformanceReport,
   getPerformanceReportTime,
   getSharePerformanceReport,
   getSharePerformanceReportTime
 } from "@/network/load-test";
+import MsTestConfiguration from "@/business/components/performance/report/components/TestConfiguration";
 
 
 export default {
   name: "LoadCaseReportView",
   components: {
+    MsTestConfiguration,
     MonitorCard,
     MsPerformanceReportExport,
     MsReportErrorLog,
@@ -132,12 +200,13 @@ export default {
     MsReportTestDetails,
     MsContainer,
     MsMainContainer,
-    MsPerformancePressureConfig
+    ProjectEnvironmentDialog,
+    MsTag,
   },
   data() {
     return {
       result: {},
-      active: '1',
+      active: '0',
       status: '',
       reportName: '',
       testId: '',
@@ -149,13 +218,17 @@ export default {
       minutes: '0',
       seconds: '0',
       title: 'Logging',
+      projectEnvMap: null,
+      showMoreProjectEnvMap: false,
+      allProjectEnvMap: null,
       report: {},
       websocket: null,
       dialogFormVisible: false,
       reportExportVisible: false,
       testPlan: {testResourcePoolId: null},
       show: true,
-    }
+      test: {testResourcePoolId: null},
+    };
   },
   props: {
     reportId: String,
@@ -173,7 +246,46 @@ export default {
       this.init();
     }
   },
+  computed: {
+    showProjectEnv() {
+      return this.projectEnvMap && JSON.stringify(this.projectEnvMap) !== '{}';
+    },
+    templateMinutes() {
+      if (this.planReportTemplate && this.planReportTemplate.duration) {
+        let duration = this.planReportTemplate.duration;
+        return Math.floor(duration / 60);
+      }
+      return null;
+    },
+    templateSeconds() {
+      if (this.planReportTemplate && this.planReportTemplate.duration) {
+        let duration = this.planReportTemplate.duration;
+        return duration % 60;
+      }
+      return null;
+    }
+  },
   methods: {
+    showAllProjectInfo() {
+      this.$refs.projectEnvDialog.open(this.allProjectEnvMap);
+    },
+    isProjectEnvShowMore(projectEnvMap) {
+      this.showMoreProjectEnvMap = false;
+      this.projectEnvMap = {};
+      if (projectEnvMap) {
+        let keySize = 0;
+        for (let key in projectEnvMap) {
+          keySize++;
+          if (keySize > 1) {
+            this.showMoreProjectEnvMap = true;
+            return;
+          } else {
+            this.projectEnvMap = {};
+            this.$set(this.projectEnvMap, key, projectEnvMap[key]);
+          }
+        }
+      }
+    },
     initBreadcrumb(callback) {
       if (this.isPlanReport) {
         return;
@@ -191,7 +303,7 @@ export default {
           } else {
             this.$error(this.$t('report.not_exist'));
           }
-        })
+        });
       }
     },
     initReportTimeInfo() {
@@ -261,10 +373,14 @@ export default {
       }
     },
     clearData() {
+      this.show = false;
       this.startTime = '0';
       this.endTime = '0';
       this.minutes = '0';
       this.seconds = '0';
+      this.$nextTick(() => {
+        this.show = true;
+      });
     },
     stopTest(forceStop) {
       this.result = this.$get('/performance/stop/' + this.reportId + '/' + forceStop, () => {
@@ -277,26 +393,9 @@ export default {
       });
       this.dialogFormVisible = false;
     },
-    rerun(testId) {
-      this.$confirm(this.$t('report.test_rerun_confirm'), '', {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
-        // this.result = this.$post('/performance/run', {id: testId, triggerMode: 'MANUAL'}, (response) => {
-        //   this.reportId = response.data;
-        //   this.$router.push({path: '/performance/report/view/' + this.reportId});
-        //   // 注册 socket
-        //   this.initWebSocket();
-        // })
-      }).catch(() => {
-      });
-    },
     onOpen() {
-      // window.console.log("socket opening.");
     },
     onError(e) {
-      // window.console.error(e)
     },
     onMessage(e) {
       this.$set(this.report, "refresh", e.data); // 触发刷新
@@ -308,7 +407,6 @@ export default {
       this.$set(this.report, "status", 'Running');
       this.status = 'Running';
       this.initReportTimeInfo();
-      // window.console.log('receive a message:', e.data);
     },
     onClose(e) {
       if (e.code === 1005) {
@@ -318,7 +416,6 @@ export default {
       this.$set(this.report, "refresh", Math.random()); // 触发刷新
       this.$set(this.report, "status", 'Completed');
       this.initReportTimeInfo();
-      // window.console.log("socket closed.");
     },
     handleExport(name) {
       this.result.loading = true;
@@ -360,10 +457,10 @@ export default {
           aTag.download = this.reportName + ".jtl";
           aTag.href = URL.createObjectURL(blob);
           aTag.click();
-          URL.revokeObjectURL(aTag.href)
+          URL.revokeObjectURL(aTag.href);
         } else {
           // IE10+下载
-          navigator.msSaveBlob(blob, this.filename)
+          navigator.msSaveBlob(blob, this.filename);
         }
       }).catch(e => {
         let text = e.response.data.text();
@@ -376,7 +473,7 @@ export default {
       this.clearData();
       if (this.planReportTemplate) {
         this.handleInit(this.planReportTemplate);
-      } else if (this.isShare){
+      } else if (this.isShare) {
         this.result = getSharePerformanceReport(this.shareId, this.reportId, data => {
           this.handleInit(data);
         });
@@ -388,11 +485,11 @@ export default {
     },
     handleInit(data) {
       if (data) {
+        this.allProjectEnvMap = data.projectEnvMap;
+        this.isProjectEnvShowMore(data.projectEnvMap);
         this.status = data.status;
-        this.$set(this.report, "id", this.reportId);
-        this.$set(this.report, "status", data.status);
-        this.$set(this.report, "testId", data.testId);
-        this.$set(this.report, "loadConfiguration", data.loadConfiguration);
+        this.$set(this, "report", data);
+        this.$set(this.test, "testResourcePoolId", data.testResourcePoolId);
         this.checkReportStatus(data.status);
         if (this.status === "Completed" || this.status === "Running") {
           this.initReportTimeInfo();
@@ -407,7 +504,7 @@ export default {
   created() {
     this.init();
   }
-}
+};
 </script>
 
 <style scoped>
@@ -420,6 +517,12 @@ export default {
   text-align: left;
   display: block;
   color: #5C7878;
+}
+
+.ms-report-time-desc-share {
+  text-align: left;
+  color: #5C7878;
+  padding-right: 20px;
 }
 
 .report-export .el-card {

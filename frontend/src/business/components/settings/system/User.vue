@@ -4,7 +4,7 @@
     <el-card class="table-card">
       <template v-slot:header>
         <ms-table-header :create-permission="['SYSTEM_USER:READ+CREATE']" :condition.sync="condition" @search="search"
-                         @import="importUserDialogOpen" :show-import="true" :import-tip="$t('commons.import_user')"
+                         @import="importUserDialogOpen" :show-import="true" :upload-permission="['SYSTEM_USER:READ+IMPORT']" :import-tip="$t('commons.import_user')"
                          :tip="$t('commons.search_by_name_or_id')" @create="create"
                          :create-tip="$t('user.create')" :title="$t('commons.user')"/>
       </template>
@@ -12,6 +12,8 @@
       <el-table border class="adjust-table ms-select-all-fixed" :data="tableData" style="width: 100%"
                 @select-all="handleSelectAll"
                 @select="handleSelect"
+                @sort-change="sort"
+                :header-cell-class-name="handleHeadAddClass"
                 :height="screenHeight"
                 ref="userTable">
         <el-table-column type="selection" width="50"/>
@@ -37,7 +39,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="email" :label="$t('commons.email')"/>
-        <el-table-column prop="status" :label="$t('commons.status')" width="120">
+        <el-table-column prop="status" :label="$t('commons.status')" width="120" sortable="custom">
           <template v-slot:default="scope">
             <el-switch :disabled="currentUserId === scope.row.id" v-model="scope.row.status"
                        inactive-color="#DCDFE6"
@@ -47,7 +49,7 @@
             />
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" :label="$t('commons.create_time')">
+        <el-table-column prop="createTime" :label="$t('commons.create_time')" sortable="custom">
           <template v-slot:default="scope">
             <span>{{ scope.row.createTime | timestampFormatDate }}</span>
           </template>
@@ -98,7 +100,8 @@
       </span>
     </el-dialog>
     <user-import ref="userImportDialog" @refreshAll="search"></user-import>
-    <project-cascader :title="batchAddTitle" @confirm="cascaderConfirm" ref="cascaderDialog"></project-cascader>
+    <batch-to-project-group-cascader :title="batchAddTitle" @confirm="cascaderConfirm"
+                                     :cascader-level="2" ref="cascaderDialog"/>
     <workspace-cascader :title="addToWorkspaceTitle" @confirm="cascaderConfirm" ref="workspaceCascader"></workspace-cascader>
     <group-cascader :title="$t('user.add_user_group_batch')" @confirm="cascaderConfirm" ref="groupCascaderDialog"></group-cascader>
     <edit-user ref="editUser" @refresh="search"/>
@@ -106,21 +109,26 @@
 </template>
 
 <script>
-import MsCreateBox from "../CreateBox";
 import MsTablePagination from "../../common/pagination/TablePagination";
 import MsTableHeader from "../../common/components/MsTableHeader";
 import MsTableOperator from "../../common/components/MsTableOperator";
 import MsDialogFooter from "../../common/components/MsDialogFooter";
 import MsTableOperatorButton from "../../common/components/MsTableOperatorButton";
-import {getCurrentProjectID, listenGoBack, removeGoBackListener} from "@/common/js/utils";
+import {
+  getCurrentProjectID,
+  getCurrentUser,
+  listenGoBack,
+  operationConfirm,
+  removeGoBackListener
+} from "@/common/js/utils";
 import MsRolesTag from "../../common/components/MsRolesTag";
-import {getCurrentUser} from "@/common/js/utils";
 import {PHONE_REGEX} from "@/common/js/regex";
 import UserImport from "@/business/components/settings/system/components/UserImport";
 import MsTableHeaderSelectPopover from "@/business/components/common/components/table/MsTableHeaderSelectPopover";
 import {
   _handleSelect,
   _handleSelectAll,
+  _sort,
   getSelectDataCounts,
   setUnSelectIds,
   toggleAllSelection
@@ -128,18 +136,19 @@ import {
 import UserCascader from "@/business/components/settings/system/components/UserCascader";
 import ShowMoreBtn from "@/business/components/track/case/components/ShowMoreBtn";
 import EditUser from "@/business/components/settings/system/EditUser";
-import ProjectCascader from "@/business/components/settings/system/components/ProjectCascader";
 import GroupCascader from "@/business/components/settings/system/components/GroupCascader";
 import {logout} from "@/network/user";
 import WorkspaceCascader from "@/business/components/settings/system/components/WorkspaceCascader";
+import BatchToProjectGroupCascader from "@/business/components/settings/system/components/BatchToProjectGroupCascader";
+import {Message} from "element-ui";
 
 export default {
   name: "MsUser",
   components: {
+    BatchToProjectGroupCascader,
     WorkspaceCascader,
     GroupCascader,
     EditUser,
-    MsCreateBox,
     MsTablePagination,
     MsTableHeader,
     MsTableOperator,
@@ -149,7 +158,6 @@ export default {
     UserImport,
     MsTableHeaderSelectPopover,
     UserCascader,
-    ProjectCascader,
     ShowMoreBtn
   },
   inject: [
@@ -195,7 +203,7 @@ export default {
         }]
       },
       changePasswordUser: '',
-      screenHeight: 'calc(100vh - 195px)',
+      screenHeight: 'calc(100vh - 155px)',
       checkPasswordForm: {},
       ruleForm: {},
       buttons: [
@@ -295,17 +303,11 @@ export default {
       listenGoBack(this.handleClose);
     },
     del(row) {
-      this.$confirm(this.$t('user.delete_confirm'), '', {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
+      operationConfirm(this.$t('user.delete_confirm'), () => {
         this.result = this.$get(this.deletePath + encodeURIComponent(row.id), () => {
           this.$success(this.$t('commons.delete_success'));
           this.search();
         });
-      }).catch(() => {
-        this.$info(this.$t('commons.delete_cancel'));
       });
     },
     createUser(createUserForm) {
@@ -421,11 +423,6 @@ export default {
     handleSelectionChange(val) {
       this.multipleSelection = val;
     },
-    getWsList() {
-      this.$get("/workspace/list", response => {
-        this.$set(this.form, "wsList", response.data);
-      })
-    },
     importUserDialogOpen(){
       this.$refs.userImportDialog.open();
     },
@@ -498,19 +495,48 @@ export default {
       param.condition = this.condition;
       return param;
     },
+    sort(column) {
+      if (this.condition.orders) {
+        let index = this.condition.orders.findIndex(o => o.name.replace('_', '').toLowerCase() === column.column.property.toLowerCase());
+        if (index !== -1) {
+          this.condition.orders.splice(index, 1);
+        }
+      }
+      _sort(column, this.condition);
+      this.clearSelectRows();
+      this.search();
+    },
+    handleHeadAddClass({column}) {
+      if (!column || !column.property || !column.sortable || !this.condition.orders) {
+        return;
+      }
+      let order = this.condition.orders.find(o => o.name.replace('_', '').toLowerCase() === column.property.toLowerCase());
+      if (!order) {
+        return;
+      }
+      if (!order.type) {
+        column.order = '';
+      } else {
+        column.order = order.type === 'desc' ? 'descending' : 'ascending';
+      }
+    },
+    clearSelectRows() {
+      this.selectRows.clear();
+      this.selectIds = [];
+      if(!this.condition.selectAll){
+        this.condition.selectAll = false;
+        this.condition.unSelectIds = [];
+      }
+      this.selectDataCounts = 0;
+      if (this.$refs.userTable) {
+        this.$refs.userTable.clearSelection();
+      }
+    },
   }
 }
 </script>
 
 <style scoped>
-/*/deep/ .el-table__fixed-right {*/
-/*  height: 100% !important;*/
-/*}*/
-
-/*/deep/ .el-table__fixed {*/
-/*  height: 110px !important;*/
-/*}*/
-
 /deep/ .ms-select-all-fixed th:first-child.el-table-column--selection {
   margin-top: 0px;
 }

@@ -37,5 +37,9 @@ public class TestPlanReport implements Serializable {
 
     private Boolean isNew;
 
+    private Boolean isUiScenarioExecuting;
+
+    private String runInfo;
+
     private static final long serialVersionUID = 1L;
 }

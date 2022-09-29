@@ -1,6 +1,6 @@
 <template>
   <div>
-    <el-button class="add-btn" v-permission="['PROJECT_TRACK_PLAN:READ+RELEVANCE_OR_CANCEL']" :disabled="readOnly" type="primary" size="mini" @click="appIssue">{{ $t('test_track.issue.add_issue') }}</el-button>
+    <el-button class="add-btn" v-permission="['PROJECT_TRACK_PLAN:READ+RELEVANCE_OR_CANCEL']" :disabled="readOnly" type="primary" size="mini" @click="addIssue">{{ $t('test_track.issue.add_issue') }}</el-button>
     <el-button class="add-btn" v-permission="['PROJECT_TRACK_PLAN:READ+RELEVANCE_OR_CANCEL']"  :disabled="readOnly" type="primary" size="mini" @click="relateIssue">{{ $t('test_track.case.relate_issue') }}</el-button>
     <el-tooltip class="item" v-permission="['PROJECT_TRACK_PLAN:READ+RELEVANCE_OR_CANCEL']"  effect="dark"
                 :content="$t('test_track.issue.platform_tip')"
@@ -85,8 +85,19 @@
       </span>
     </ms-table>
 
-    <test-plan-issue-edit :plan-id="planId" :case-id="caseId" @refresh="getIssues" ref="issueEdit"/>
-    <IssueRelateList :is-third-part="isThirdPart" :case-id="caseId"  @refresh="getIssues" ref="issueRelate"/>
+    <test-plan-issue-edit
+      :plan-case-id="planCaseId"
+      :plan-id="planId"
+      :case-id="caseId"
+      @refresh="getIssues"
+      ref="issueEdit"/>
+
+    <IssueRelateList
+      :plan-case-id="planCaseId"
+      :case-id="caseId"
+      :not-in-ids="notInIds"
+      @refresh="getIssues"
+      ref="issueRelate"/>
   </div>
 </template>
 
@@ -97,9 +108,10 @@ import MsTableColumn from "@/business/components/common/components/table/MsTable
 import IssueDescriptionTableItem from "@/business/components/track/issue/IssueDescriptionTableItem";
 import {ISSUE_STATUS_MAP} from "@/common/js/table-constants";
 import IssueRelateList from "@/business/components/track/case/components/IssueRelateList";
-import {getIssuesByCaseId} from "@/network/Issue";
-import {getIssueTemplate} from "@/network/custom-field-template";
+import {deleteIssueRelate, getIssuePartTemplateWithProject, getIssuesByCaseId} from "@/network/Issue";
 import {getCustomFieldValue, getTableHeaderWithCustomFields} from "@/common/js/tableUtils";
+import {LOCAL} from "@/common/js/constants";
+import {getCurrentProjectID, getCurrentWorkspaceId} from "@/common/js/utils";
 export default {
   name: "TestCaseIssueRelate",
   components: {IssueRelateList, IssueDescriptionTableItem, MsTableColumn, MsTable, TestPlanIssueEdit},
@@ -120,44 +132,59 @@ export default {
           exec: this.deleteIssue
         }
       ],
-      status: []
+      status: [],
+      issueRelateVisible: false
     }
   },
-  props: ['caseId', 'readOnly','planId'],
+  props: {
+    planId: String,
+    caseId: String,
+    planCaseId: String,
+    readOnly: Boolean,
+    isCopy: Boolean,
+  },
   computed: {
     issueStatusMap() {
       return ISSUE_STATUS_MAP;
     },
+    notInIds() {
+      return this.page.data ? this.page.data.map(i => i.id) : [];
+    },
+    projectId() {
+      return getCurrentProjectID();
+    }
   },
   created() {
-    getIssueTemplate()
-      .then((template) => {
-        this.issueTemplate = template;
-        if (this.issueTemplate.platform === 'metersphere') {
-          this.isThirdPart = false;
-        } else {
-          this.isThirdPart = true;
-        }
-        if (template) {
-          let customFields = template.customFields;
-          for (let fields of customFields) {
-            if (fields.name === '状态') {
-              this.status = fields.options;
-              break;
-            }
+    getIssuePartTemplateWithProject((template, project) => {
+      this.currentProject = project;
+      this.issueTemplate = template;
+      if (this.issueTemplate.platform === LOCAL) {
+        this.isThirdPart = false;
+      } else {
+        this.isThirdPart = true;
+      }
+      if (template) {
+        let customFields = template.customFields;
+        for (let fields of customFields) {
+          if (fields.name === '状态') {
+            this.status = fields.options;
+            break;
           }
         }
-        this.fields = getTableHeaderWithCustomFields('ISSUE_LIST', this.issueTemplate.customFields);
-        if (!this.isThirdPart) {
-          for (let i = 0; i < this.fields.length; i++) {
-            if (this.fields[i].id === 'platformStatus') {
-              this.fields.splice(i, 1);
-              break;
-            }
+      }
+      this.fields = getTableHeaderWithCustomFields('ISSUE_LIST', this.issueTemplate.customFields);
+      if (!this.isThirdPart) {
+        for (let i = 0; i < this.fields.length; i++) {
+          if (this.fields[i].id === 'platformStatus') {
+            this.fields.splice(i, 1);
+            break;
           }
         }
+      }
+      if (this.$refs.table) {
         this.$refs.table.reloadTable();
-      });
+      }
+    });
   },
   methods: {
     statusChange(param) {
@@ -170,20 +197,25 @@ export default {
       return getCustomFieldValue(row, field, this.members);
     },
     getIssues() {
-      let result = getIssuesByCaseId(this.caseId, this.page);
-      if (result) {
-        this.page.result = result;
+      if (!this.isCopy) {
+        let result = getIssuesByCaseId(this.planId ? 'PLAN_FUNCTIONAL' : 'FUNCTIONAL', this.getCaseResourceId(), this.page);
+        if (result) {
+          this.page.result = result;
+        }
       }
     },
-    appIssue() {
-      if (!this.caseId) {
+    getCaseResourceId() {
+      return this.planId ? this.planCaseId : this.caseId;
+    },
+    addIssue() {
+      if (!this.caseId || this.isCopy) {
         this.$warning(this.$t('api_test.automation.save_case_info'));
         return;
       }
       this.$refs.issueEdit.open();
     },
     relateIssue() {
-      if (!this.caseId) {
+      if (!this.caseId || this.isCopy) {
         this.$warning(this.$t('api_test.automation.save_case_info'));
         return;
       }
@@ -200,11 +232,25 @@ export default {
       }
     },
     deleteIssue(row) {
-      this.page.result = this.$post("/issues/delete/relate", {id: row.id, caseId: this.caseId}, () => {
-        this.getIssues();
-        this.$success(this.$t('commons.delete_success'));
+      this.$alert(this.$t('test_track.issue.delete_warning'), '', {
+        confirmButtonText: this.$t('commons.confirm'),
+        cancelButtonText: this.$t('commons.cancel'),
+        callback: (action) => {
+          if (action === 'confirm') {
+            this.page.result = deleteIssueRelate({
+              id: row.id,
+              caseResourceId: this.getCaseResourceId(),
+              isPlanEdit: this.planId ? true : false,
+              projectId: this.projectId,
+              workspaceId: getCurrentWorkspaceId()
+            }, () => {
+              this.getIssues();
+              this.$success(this.$t('commons.delete_success'));
+            });
+          }
+        }
       })
-    },
+    }
   }
 }
 </script>

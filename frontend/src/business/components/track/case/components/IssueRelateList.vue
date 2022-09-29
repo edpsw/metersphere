@@ -5,6 +5,10 @@
     :title="$t('test_track.case.relate_issue')"
     @confirm="save"
     ref="relevanceDialog">
+    <ms-search
+      :base-search-tip="$t('commons.search_by_name_or_id')"
+      :condition.sync="page.condition"
+      @search="getIssues"/>
     <ms-table
       v-loading="page.result.loading"
       :data="page.data"
@@ -27,7 +31,8 @@
 
       <ms-table-column
         :label="$t('test_track.issue.title')"
-        prop="title">
+        prop="title"
+        min-width="200px">
       </ms-table-column>
 
       <ms-table-column
@@ -61,24 +66,36 @@
 
   </ms-edit-dialog>
 </template>
-
+<style scoped>
+.search-input {
+  float: right;
+  width: 300px;
+}
+</style>
 <script>
 import MsEditDialog from "@/business/components/common/components/MsEditDialog";
 import MsTable from "@/business/components/common/components/table/MsTable";
 import MsTableColumn from "@/business/components/common/components/table/MsTableColumn";
-import {getRelateIssues, testCaseIssueRelate} from "@/network/Issue";
+import {getRelateIssues, isThirdPartEnable, testCaseIssueRelate} from "@/network/Issue";
 import IssueDescriptionTableItem from "@/business/components/track/issue/IssueDescriptionTableItem";
 import {ISSUE_STATUS_MAP} from "@/common/js/table-constants";
 import MsTablePagination from "@/business/components/common/pagination/TablePagination";
 import {getPageInfo} from "@/common/js/tableUtils";
 import {getCurrentProjectID} from "@/common/js/utils";
+import {
+  TEST_CASE_RELEVANCE_ISSUE_LIST
+} from "@/business/components/common/components/search/search-components";
+import MsSearch from "@/business/components/common/components/search/MsSearch";
 export default {
   name: "IssueRelateList",
-  components: {MsTablePagination, IssueDescriptionTableItem, MsTableColumn, MsTable, MsEditDialog},
+  components: {MsTablePagination, IssueDescriptionTableItem, MsTableColumn, MsTable, MsEditDialog, MsSearch},
   data() {
     return {
-      page: getPageInfo(),
-      visible: false
+      page: getPageInfo({
+        components: TEST_CASE_RELEVANCE_ISSUE_LIST
+      }),
+      visible: false,
+      isThirdPart: false
     }
   },
   computed: {
@@ -89,7 +106,16 @@ export default {
       return getCurrentProjectID();
     }
   },
-  props: ['caseId', 'isThirdPart'],
+  props: {
+    caseId: String,
+    planCaseId: String,
+    notInIds: Array,
+  },
+  created() {
+    isThirdPartEnable((data) => {
+      this.isThirdPart = data;
+    });
+  },
   methods: {
     open() {
       this.getIssues();
@@ -97,17 +123,21 @@ export default {
     },
     getIssues() {
       this.page.condition.projectId = this.projectId;
-      this.page.condition.caseId = this.caseId;
+      this.page.condition.notInIds = this.notInIds;
       this.page.result = getRelateIssues(this.page);
+    },
+    getCaseResourceId() {
+      return this.planCaseId ? this.planCaseId : this.caseId;
     },
     save() {
       let param = {};
-      param.caseId = this.caseId;
       param.issueIds = Array.from(this.$refs.table.selectRows).map(i => i.id);
-      param.caseId = this.caseId;
+      param.caseResourceId = this.getCaseResourceId();
+      param.isPlanEdit = !!this.planCaseId;
+      param.refId = this.planCaseId ? this.caseId : null;
       testCaseIssueRelate(param, () => {
         this.visible = false;
-        this.$emit('refresh');
+        this.$emit('refresh', this.$refs.table.selectRows);
       });
     }
   }

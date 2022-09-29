@@ -32,7 +32,9 @@
             <el-table-column :label="$t('api_test.environment.socket')" show-overflow-tooltip>
               <template v-slot="scope">
                 <span v-if="parseDomainName(scope.row)!='SHOW_INFO'">{{ parseDomainName(scope.row) }}</span>
-                <el-button size="mini" icon="el-icon-s-data" @click="showInfo(scope.row)" v-else>查看域名详情</el-button>
+                <el-button size="mini" icon="el-icon-s-data" @click="showInfo(scope.row)" v-else>
+                  {{ $t('workspace.env_group.view_details') }}
+                </el-button>
               </template>
             </el-table-column>
             <el-table-column :label="$t('commons.operating')">
@@ -57,35 +59,56 @@
         </el-card>
 
         <!-- 创建、编辑、复制环境时的对话框 -->
-        <el-dialog :visible.sync="dialogVisible" :close-on-click-modal="false" :title="dialogTitle" width="66%">
-          <environment-edit :environment="currentEnvironment" ref="environmentEdit" @close="close"
-                            :project-id="currentProjectId" @refreshAfterSave="refresh">
+        <el-dialog :visible.sync="dialogVisible" :close-on-click-modal="false" width="66%" top="50px"
+                   :fullscreen="isFullScreen">
+          <template #title>
+            <ms-dialog-header :title="dialogTitle" :hide-button="true"
+                              @cancel="dialogVisible = false"
+                              @confirm="save" @fullScreen="fullScreen"/>
+          </template>
+          <environment-edit :if-create="ifCreate" :environment="currentEnvironment" ref="environmentEdit" @close="close"
+                            @confirm="save" :is-project="true"
+                            :project-list="projectList" @refreshAfterSave="refresh">
           </environment-edit>
         </el-dialog>
-        <environment-import :project-list="projectList" @refresh="refresh" ref="envImport"></environment-import>
+        <environment-import :project-list="projectList" :to-import-project-id="currentProjectId" @refresh="refresh"
+                            ref="envImport"></environment-import>
 
         <el-dialog title="域名列表" :visible.sync="domainVisible">
           <el-table :data="conditions">
             <el-table-column prop="socket" :label="$t('load_test.domain')" show-overflow-tooltip width="180">
               <template v-slot:default="{row}">
-                {{ getUrl(row) }}
+                {{ row.conditionType ? row.server : getUrl(row) }}
+              </template>
+            </el-table-column>
+            <el-table-column :label="'类型'" show-overflow-tooltip
+                             min-width="100px">
+              <template v-slot:default="{row}">
+                <el-tag type="info" size="mini">{{ row.conditionType ? row.conditionType : "HTTP" }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="type" :label="$t('api_test.environment.condition_enable')" show-overflow-tooltip
                              min-width="100px">
               <template v-slot:default="{row}">
-                {{ getName(row) }}
+                {{ row.conditionType ? "-" : getName(row) }}
               </template>
             </el-table-column>
             <el-table-column prop="details" show-overflow-tooltip min-width="120px" :label="$t('api_test.value')">
               <template v-slot:default="{row}">
-                {{ getDetails(row) }}
+                {{ row.conditionType ? "-" : getDetails(row) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="description" show-overflow-tooltip min-width="120px"
+                             :label="$t('commons.description')">
+              <template v-slot:default="{row}">
+                <span>{{ row.description ? row.description : "-" }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="createTime" show-overflow-tooltip min-width="120px"
                              :label="$t('commons.create_time')">
               <template v-slot:default="{row}">
-                <span>{{ row.time | timestampFormatDate }}</span>
+                <span v-if="!row.conditionType">{{ row.time | timestampFormatDate }}</span>
+                <span v-else>-</span>
               </template>
             </el-table-column>
           </el-table>
@@ -111,11 +134,11 @@ import EnvironmentEdit from "@/business/components/api/test/components/environme
 import MsAsideItem from "@/business/components/common/components/MsAsideItem";
 import MsAsideContainer from "@/business/components/common/components/MsAsideContainer";
 import ProjectSwitch from "@/business/components/common/head/ProjectSwitch";
-import SearchList from "@/business/components/common/head/SearchList";
-import {downloadFile, getCurrentProjectID} from "@/common/js/utils";
+import {downloadFile, getCurrentProjectID, getUUID, operationConfirm} from "@/common/js/utils";
 import EnvironmentImport from "@/business/components/project/menu/EnvironmentImport";
 import MsMainContainer from "@/business/components/common/components/MsMainContainer";
 import MsContainer from "@/business/components/common/components/MsContainer";
+import MsDialogHeader from "@/business/components/common/components/MsDialogHeader";
 
 export default {
   name: "EnvironmentList",
@@ -123,13 +146,12 @@ export default {
     MsContainer,
     MsMainContainer,
     EnvironmentImport,
-    SearchList,
     ProjectSwitch,
     MsAsideContainer,
     MsAsideItem,
     EnvironmentEdit,
     ApiEnvironmentConfig,
-    MsTablePagination, MsTableOperatorButton, MsTableOperator, MsTableButton, MsTableHeader
+    MsTablePagination, MsTableOperatorButton, MsTableOperator, MsTableButton, MsTableHeader, MsDialogHeader
   },
   data() {
     return {
@@ -152,7 +174,9 @@ export default {
       total: 0,
       projectIds: [],   //当前工作空间所拥有的所有项目id
       projectFilters: [],
-      screenHeight: 'calc(100vh - 195px)',
+      screenHeight: 'calc(100vh - 155px)',
+      ifCreate: false, //是否是创建环境
+      isFullScreen: false //是否全屏
     }
   },
   created() {
@@ -163,10 +187,24 @@ export default {
   },
 
   methods: {
+    fullScreen() {
+      this.isFullScreen = !this.isFullScreen;
+    },
     showInfo(row) {
       const config = JSON.parse(row.config);
       this.conditions = config.httpConfig.conditions;
+      if (config.tcpConfig && config.tcpConfig.server) {
+        let condition = {
+          conditionType: 'TCP',
+          server: config.tcpConfig.server,
+          description: config.tcpConfig.description
+        }
+        this.conditions.push(condition);
+      }
       this.domainVisible = true;
+    },
+    save() {
+      this.$refs.environmentEdit.save();
     },
     getName(row) {
       switch (row.type) {
@@ -236,6 +274,7 @@ export default {
       this.dialogVisible = true;
       this.currentEnvironment = new Environment();
       this.currentEnvironment.projectId = this.currentProjectId;
+      this.ifCreate = true;
     },
     search() {
       this.list()
@@ -248,6 +287,7 @@ export default {
       parseEnvironment(temEnv);   //parseEnvironment会改变环境对象的内部结构，从而影响前端列表的显示，所以复制一个环境对象作为代替
       this.currentEnvironment = temEnv;
       this.dialogVisible = true;
+      this.ifCreate = false;
     },
 
     copyEnv(environment) {
@@ -258,6 +298,11 @@ export default {
       parseEnvironment(temEnv);   //parseEnvironment会改变环境对象的内部结构，从而影响前端列表的显示，所以复制一个环境对象作为代替
       let newEnvironment = new Environment(temEnv);
       newEnvironment.id = null;
+      newEnvironment.config.databaseConfigs.forEach(dataSource => {
+        if (dataSource.id) {
+          dataSource.id = getUUID();
+        }
+      })
       newEnvironment.name = this.getNoRepeatName(newEnvironment.name);
       this.dialogVisible = true;
       this.currentEnvironment = newEnvironment;
@@ -265,18 +310,12 @@ export default {
     },
     deleteEnv(environment) {
       if (environment.id) {
-        this.$confirm(this.$t('commons.confirm_delete') + environment.name, {
-          confirmButtonText: this.$t('commons.confirm'),
-          cancelButtonText: this.$t('commons.cancel'),
-          type: "warning"
-        }).then(() => {
+        operationConfirm(this.$t('commons.confirm_delete') + environment.name, () => {
           this.result = this.$get('/api/environment/delete/' + environment.id, () => {
             this.$success(this.$t('commons.delete_success'));
             this.list();
           });
-        }).catch(() => {
-          this.$info(this.$t('commons.delete_cancelled'));
-        })
+        });
       }
     },
     getNoRepeatName(name) {
@@ -318,9 +357,11 @@ export default {
         if (env.config) {  //旧环境可能没有config数据
           let tempConfig = JSON.parse(env.config);
           if (tempConfig.httpConfig.conditions && tempConfig.httpConfig.conditions.length > 0) {
-            tempConfig.httpConfig.conditions = tempConfig.httpConfig.conditions.filter(condition => {   //删除”模块启用条件“，因为导入导出环境对应的项目不同，模块也就不同，
-              return condition.type !== 'MODULE';
-            });
+            tempConfig.httpConfig.conditions.map(condition => {
+              if (condition.type === 'MODULE') {
+                condition.details = [];
+              }
+            })
             env.config = JSON.stringify(tempConfig);
           }
         }
@@ -343,12 +384,17 @@ export default {
           return "";
         } else {
           if (config.httpConfig.conditions.length === 1) {
+            if (config.tcpConfig && config.tcpConfig.server) {
+              return "SHOW_INFO";
+            }
             let obj = config.httpConfig.conditions[0];
-            if (obj.protocol && obj.domain) {
-              return obj.protocol + "://" + obj.domain;
+            if (obj.protocol && obj.socket) {
+              return obj.protocol + "://" + obj.socket;
             }
           } else if (config.httpConfig.conditions.length > 1) {
             return "SHOW_INFO";
+          } else if (config.tcpConfig && config.tcpConfig.server) {
+            return config.tcpConfig.server;
           } else {
             return "";
           }
@@ -356,8 +402,7 @@ export default {
       } else {  //旧版本没有对应的config数据,其域名保存在protocol和domain中
         return environment.protocol + '://' + environment.domain;
       }
-    }
-
+    },
   },
 
 

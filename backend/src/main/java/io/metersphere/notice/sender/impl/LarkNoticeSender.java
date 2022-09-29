@@ -7,7 +7,6 @@ import io.metersphere.notice.domain.UserDetail;
 import io.metersphere.notice.sender.AbstractNoticeSender;
 import io.metersphere.notice.sender.NoticeModel;
 import io.metersphere.notice.util.LarkClient;
-import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
@@ -30,7 +29,7 @@ public class LarkNoticeSender extends AbstractNoticeSender {
 
         LogUtil.info("飞书收件人: {}", userIds);
         context += StringUtils.join(collect, " ");
-        LarkClient.send(messageDetail.getWebhook(), context);
+        LarkClient.send(messageDetail.getWebhook(), "消息通知: \n" + context);
     }
 
     @Override

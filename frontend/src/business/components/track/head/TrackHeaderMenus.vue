@@ -6,7 +6,7 @@
       <el-col :span="14">
         <el-menu class="header-menu" :unique-opened="true" mode="horizontal" router
                  :default-active="pathName">
-          <el-menu-item :index="'/track/home'">
+          <el-menu-item :index="'/track/home'" v-permission="['PROJECT_TRACK_HOME:READ']">
             {{ $t("i18n.home") }}
           </el-menu-item>
           <el-menu-item :index="'/track/case/all'" v-permission="['PROJECT_TRACK_CASE:READ']">
@@ -31,7 +31,9 @@
           </el-menu-item>
         </el-menu>
       </el-col>
-      <el-col :span="8"/>
+      <el-col :span="10">
+        <ms-header-right-menus/>
+      </el-col>
     </el-row>
   </div>
 
@@ -41,13 +43,13 @@
 import MsShowAll from "../../common/head/ShowAll";
 import MsRecentList from "../../common/head/RecentList";
 import MsCreateButton from "../../common/head/CreateButton";
-import SearchList from "@/business/components/common/head/SearchList";
 import ProjectChange from "@/business/components/common/head/ProjectSwitch";
 import {getCurrentProjectID} from "@/common/js/utils";
+import MsHeaderRightMenus from "@/business/components/layout/HeaderRightMenus";
 
 export default {
   name: "TrackHeaderMenus",
-  components: {ProjectChange, SearchList, MsShowAll, MsRecentList, MsCreateButton},
+  components: {ProjectChange, MsShowAll, MsRecentList, MsCreateButton, MsHeaderRightMenus},
   data() {
     return {
       testPlanViewPath: '',
@@ -164,4 +166,7 @@ export default {
 /*  margin-left: 20px;*/
 /*}*/
 
+.el-menu-item {
+  padding: 0 10px;
+}
 </style>

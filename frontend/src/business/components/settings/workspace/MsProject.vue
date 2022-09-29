@@ -4,11 +4,7 @@
       <template v-slot:header>
         <ms-table-header :create-permission="['WORKSPACE_PROJECT_MANAGER:READ+CREATE']" :condition.sync="condition"
                          @search="search" @create="create"
-                         :create-tip="btnTips" :title="$t('commons.project')">
-          <template v-slot:button>
-            <ms-table-button icon="el-icon-box" v-permission="['WORKSPACE_PROJECT_MANAGER:READ+UPLOAD_JAR']"
-                             :content="$t('api_test.jar_config.title')" @click="openJarConfig"/>
-          </template>
+                         :create-tip="btnTips" :title="$t('project.manager')">
         </ms-table-header>
       </template>
       <el-table border class="adjust-table" :data="items" style="width: 100%"
@@ -93,84 +89,14 @@
                            :total="total"/>
     </el-card>
 
-    <el-dialog :close-on-click-modal="false" :title="title" :visible.sync="createVisible" destroy-on-close
-               @close="handleClose">
-      <el-form :model="form" :rules="rules" ref="form" label-position="right" label-width="80px" size="small">
-        <el-form-item :label-width="labelWidth" :label="$t('commons.name')" prop="name">
-          <el-input v-model="form.name" autocomplete="off"></el-input>
-        </el-form-item>
-
-
-        <el-form-item :label-width="labelWidth" :label="$t('用例模板')" prop="caseTemplateId">
-          <template-select :data="form" scene="API_CASE" prop="caseTemplateId" ref="caseTemplate"/>
-        </el-form-item>
-        <el-form-item :label-width="labelWidth" :label="$t('缺陷模板')" prop="issueTemplateId">
-          <template-select :data="form" scene="ISSUE" prop="issueTemplateId" ref="issueTemplate"/>
-        </el-form-item>
-
-        <el-form-item :label-width="labelWidth" label="TCP Mock Port">
-          <el-input-number v-model="form.mockTcpPort" :controls="false"
-                           style="width: 30%;margin-right: 30px"></el-input-number>
-          <el-switch v-model="form.isMockTcpOpen" @change="chengeMockTcpSwitch"></el-switch>
-        </el-form-item>
-
-        <el-form-item :label-width="labelWidth" :label="$t('commons.description')" prop="description">
-          <el-input :autosize="{ minRows: 2, maxRows: 4}" type="textarea" v-model="form.description"></el-input>
-        </el-form-item>
-        <el-form-item :label-width="labelWidth" :label="$t('project.tapd_id')" v-if="tapd">
-          <el-input v-model="form.tapdId" autocomplete="off"></el-input>
-        </el-form-item>
-        <el-form-item :label-width="labelWidth" :label="$t('project.jira_key')" v-if="jira">
-          <el-input v-model="form.jiraKey" autocomplete="off"/>
-          <ms-instructions-icon effect="light">
-            <template>
-              <img class="jira-image" src="../../../../assets/jira-key.png"/>
-            </template>
-          </ms-instructions-icon>
-        </el-form-item>
-        <el-form-item :label-width="labelWidth" :label="$t('project.zentao_id')" v-if="zentao">
-          <el-input v-model="form.zentaoId" autocomplete="off"></el-input>
-          <ms-instructions-icon effect="light">
-            <template>
-              禅道流程：产品-项目 | 产品-迭代 | 产品-冲刺 | 项目-迭代 | 项目-冲刺 <br/><br/>
-              根据 "后台 -> 自定义 -> 流程" 查看对应流程，根据流程填写ID <br/><br/>
-              产品-项目 | 产品-迭代 | 产品-冲刺 需要填写产品ID <br/><br/>
-              项目-迭代 | 项目-冲刺 需要填写项目ID
-            </template>
-          </ms-instructions-icon>
-        </el-form-item>
-        <el-form-item :label-width="labelWidth" :label="$t('project.azureDevops_id')" v-if="azuredevops">
-          <el-input v-model="form.azureDevopsId" autocomplete="off"></el-input>
-        </el-form-item>
-        <el-form-item :label-width="labelWidth" :label="'AzureDevops过滤ID'" v-if="azuredevops">
-          <el-input v-model="form.azureFilterId" autocomplete="off"/>
-          <ms-instructions-icon content="非必填项，用例关联需求时，可以只筛选出，所填的 workItem 下的选项" effect="light"/>
-        </el-form-item>
-        <el-form-item :label-width="labelWidth" :label="$t('project.repeatable')" prop="repeatable">
-          <el-switch v-model="form.repeatable"></el-switch>
-        </el-form-item>
-        <el-form-item :label-width="labelWidth" label="测试用例自定义ID" prop="customNum">
-          <el-switch v-model="form.customNum"></el-switch>
-        </el-form-item>
-        <el-form-item :label-width="labelWidth" label="场景自定义ID" prop="scenarioCustomNum">
-          <el-switch v-model="form.scenarioCustomNum"></el-switch>
-        </el-form-item>
-      </el-form>
-      <template v-slot:footer>
-        <div class="dialog-footer">
-          <ms-dialog-footer
-            @cancel="createVisible = false"
-            @confirm="submit('form')"/>
-        </div>
-      </template>
-    </el-dialog>
+    <edit-project ref="editProject"/>
 
     <el-dialog :close-on-click-modal="false" :visible.sync="memberVisible" width="70%" :destroy-on-close="true"
                @close="close"
                class="dialog-css">
       <template v-slot:title>
         <ms-table-header :condition.sync="dialogCondition" @create="open" @search="list" :have-search="false"
-                         :create-permission="['WORKSPACE_USER:READ+CREATE']"
+                         :create-permission="['WORKSPACE_PROJECT_MANAGER:READ+ADD_USER']"
                          :create-tip="$t('member.create')" :title="$t('commons.member')"/>
       </template>
       <div>
@@ -188,8 +114,8 @@
             <template v-slot:default="scope">
               <div>
                 <ms-table-operator :tip2="$t('commons.remove')"
-                                   :edit-permission="['WORKSPACE_USER:READ+EDIT']"
-                                   :delete-permission="['WORKSPACE_USER:READ+DELETE']"
+                                   :edit-permission="['WORKSPACE_PROJECT_MANAGER:READ+EDIT_USER']"
+                                   :delete-permission="['WORKSPACE_PROJECT_MANAGER:READ+DELETE_USER']"
                                    @editClick="editMember(scope.row)"
                                    @deleteClick="delMember(scope.row)"/>
               </div>
@@ -238,7 +164,13 @@
       </template>
     </el-dialog>
 
-    <add-member :group-type="'PROJECT'" :group-scope-id="workspaceId" ref="addMember" @submit="submitForm"/>
+    <add-member
+      :group-type="'PROJECT'"
+      :group-scope-id="workspaceId"
+      :project-id="rowProjectId"
+      ref="addMember"
+      :user-resource-url="'user/ws/current/member/list'"
+      @submit="submitForm"/>
 
     <ms-delete-confirm :title="$t('project.delete')" @delete="_handleDelete" ref="deleteConfirm"/>
 
@@ -251,7 +183,6 @@
 </template>
 
 <script>
-import MsCreateBox from "../CreateBox";
 import {Message} from "element-ui";
 import MsTablePagination from "../../common/pagination/TablePagination";
 import MsTableHeader from "../../common/components/MsTableHeader";
@@ -261,8 +192,7 @@ import {
   getCurrentProjectID,
   getCurrentUser,
   getCurrentUserId,
-  getCurrentWorkspaceId,
-  listenGoBack,
+  getCurrentWorkspaceId, operationConfirm,
   removeGoBackListener
 } from "@/common/js/utils";
 import MsContainer from "../../common/components/MsContainer";
@@ -276,17 +206,17 @@ import MsJarConfig from "@/business/components/settings/workspace/JarConfig";
 import MsTableButton from "../../common/components/MsTableButton";
 import {_filter, _sort} from "@/common/js/tableUtils";
 import MsResourceFiles from "@/business/components/performance/test/components/ResourceFiles";
-import TemplateSelect from "@/business/components/settings/workspace/template/TemplateSelect";
 import {PROJECT_CONFIGS} from "@/business/components/common/components/search/search-components";
 import MsRolesTag from "@/business/components/common/components/MsRolesTag";
 import AddMember from "@/business/components/settings/common/AddMember";
 import MsInstructionsIcon from "@/business/components/common/components/MsInstructionsIcon";
+import EditProject from "@/business/components/project/menu/EditProject";
 
 export default {
   name: "MsProject",
   components: {
+    EditProject,
     MsInstructionsIcon,
-    TemplateSelect,
     MsResourceFiles,
     MsTableButton,
     MsJarConfig,
@@ -295,15 +225,15 @@ export default {
     MsTableOperatorButton,
     MsDeleteConfirm,
     MsMainContainer, MsRolesTag,
-    MsContainer, MsTableOperator, MsCreateBox, MsTablePagination, MsTableHeader, MsDialogFooter,
+    MsContainer, MsTableOperator, MsTablePagination, MsTableHeader, MsDialogFooter,
     AddMember
   },
   inject: [
+    'reload',
     'reloadTopMenus'
   ],
   data() {
     return {
-      createVisible: false,
       updateVisible: false,
       dialogMemberVisible: false,
       result: {},
@@ -311,10 +241,6 @@ export default {
       title: this.$t('project.create'),
       condition: {components: PROJECT_CONFIGS},
       items: [],
-      tapd: false,
-      jira: false,
-      zentao: false,
-      azuredevops: false,
       form: {},
       currentPage: 1,
       pageSize: 10,
@@ -328,10 +254,8 @@ export default {
         description: [
           {max: 250, message: this.$t('commons.input_limit', [0, 250]), trigger: 'blur'}
         ],
-        // caseTemplateId: [{required: true}],
-        // issueTemplateId: [{required: true}],
       },
-      screenHeight: 'calc(100vh - 195px)',
+      screenHeight: 'calc(100vh - 155px)',
       dialogCondition: {},
       memberVisible: false,
       memberLineData: [],
@@ -341,7 +265,8 @@ export default {
       dialogTotal: 0,
       currentProjectId: "",
       userList: [],
-      labelWidth: '150px'
+      labelWidth: '150px',
+      rowProjectId: ""
     };
   },
   props: {
@@ -362,9 +287,6 @@ export default {
     this.list();
   },
   computed: {
-    currentUser: () => {
-      return getCurrentUser();
-    },
     projectId() {
       return getCurrentProjectID();
     },
@@ -372,35 +294,29 @@ export default {
       return getCurrentWorkspaceId();
     }
   },
-  destroyed() {
-    this.createVisible = false;
-  },
   methods: {
     jumpPage(row) {
       this.currentWorkspaceRow = row;
       this.currentProjectId = row.id;
       let param = {
-        name: '',
         projectId: row.id
       };
-      this.wsId = row.id;
-      let path = "/user/project/member/list";
-      this.result = this.$post("/user/project/member/list", param, res => {
-        let data = res.data;
-        this.memberLineData = data;
-        let arr = this.memberLineData.filter(item => item.id == getCurrentUserId());
+      this.result = this.$post("/user/ws/project/member/list/" + row.workspaceId + "/1/100000", param, res => {
+        this.memberLineData = res.data.listObject;
+        let arr = this.memberLineData.filter(item => item.id === getCurrentUserId());
         if (arr.length > 0) {
           window.sessionStorage.setItem(PROJECT_ID, row.id);
-          this.$router.push('/track/home');
+          this.$router.push('/track/home').then(() => {
+            this.reload();
+            this.reloadTopMenus();
+          });
         } else {
-          this.$message(this.$t("commons.project_permission"));
+          this.$warning(this.$t("commons.project_permission"));
         }
       });
-
     },
     getMaintainerOptions() {
-      let workspaceId = getCurrentWorkspaceId();
-      this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()}, response => {
+      this.$get('/user/project/member/list', response => {
         this.userFilters = response.data.map(u => {
           return {text: u.name, value: u.id};
         });
@@ -408,73 +324,17 @@ export default {
     },
     create() {
       let workspaceId = getCurrentWorkspaceId();
-      this.getOptions();
       if (!workspaceId) {
         this.$warning(this.$t('project.please_choose_workspace'));
         return false;
       }
       this.title = this.$t('project.create');
       // listenGoBack(this.handleClose);
-      this.createVisible = true;
       this.form = {};
-    },
-    getOptions() {
-
-      if (this.$refs.issueTemplate) {
-        this.$refs.issueTemplate.getTemplateOptions();
-      }
-      if (this.$refs.caseTemplate) {
-        this.$refs.caseTemplate.getTemplateOptions();
-      }
+      this.$refs.editProject.edit();
     },
     edit(row) {
-      this.title = this.$t('project.edit');
-      this.getOptions();
-      this.createVisible = true;
-      listenGoBack(this.handleClose);
-      this.form = Object.assign({}, row);
-      this.$get("/service/integration/all/" + getCurrentWorkspaceId(), response => {
-        let data = response.data;
-        let platforms = data.map(d => d.platform);
-        if (platforms.indexOf("Tapd") !== -1) {
-          this.tapd = true;
-        }
-        if (platforms.indexOf("Jira") !== -1) {
-          this.jira = true;
-        }
-        if (platforms.indexOf("Zentao") !== -1) {
-          this.zentao = true;
-        }
-        if (platforms.indexOf("AzureDevops") !== -1) {
-          this.azuredevops = true;
-        }
-      });
-    },
-    submit(formName) {
-      this.$refs[formName].validate((valid) => {
-        if (valid) {
-          let saveType = "add";
-          if (this.form.id) {
-            saveType = "update";
-          }
-          var protocol = document.location.protocol;
-          protocol = protocol.substring(0, protocol.indexOf(":"));
-          this.form.protocal = protocol;
-          this.form.workspaceId = getCurrentWorkspaceId();
-          this.form.createUser = getCurrentUserId();
-          this.result = this.$post("/project/" + saveType, this.form, () => {
-            this.createVisible = false;
-            Message.success(this.$t('commons.save_success'));
-            if (saveType === 'add') {
-              this.reloadTopMenus();
-            } else {
-              this.list();
-            }
-          });
-        } else {
-          return false;
-        }
-      });
+      this.$refs.editProject.edit(row);
     },
     openJarConfig() {
       this.$refs.jarConfig.open();
@@ -486,11 +346,7 @@ export default {
       this.$refs.deleteConfirm.open(project);
     },
     _handleDelete(project) {
-      this.$confirm(this.$t('project.delete_tip'), '', {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
+      operationConfirm(this.$t('project.delete_tip'), () => {
         this.$get('/project/delete/' + project.id, () => {
           if (project.id === getCurrentProjectID()) {
             localStorage.removeItem(PROJECT_ID);
@@ -499,20 +355,10 @@ export default {
           Message.success(this.$t('commons.delete_success'));
           this.list();
         });
-      }).catch(() => {
-        this.$message({
-          type: 'info',
-          message: this.$t('commons.delete_cancelled')
-        });
       });
     },
     handleClose() {
       removeGoBackListener(this.handleClose);
-      this.createVisible = false;
-      this.tapd = false;
-      this.jira = false;
-      this.zentao = false;
-      this.azuredevops = false;
     },
     search() {
       this.list();
@@ -525,12 +371,11 @@ export default {
         this.items = data.listObject;
         for (let i = 0; i < this.items.length; i++) {
           let param = {
-            name: '',
-            workspaceId: this.items[i].id
+            projectId: this.items[i].id
           };
-          let path = "user/ws/member/list/all";
+          let path = "/user/ws/project/member/list/" + this.condition.workspaceId + "/1/100000";
           this.$post(path, param, res => {
-            let member = res.data;
+            let member = res.data.listObject;
             this.$set(this.items[i], "memberSize", member.length);
           });
         }
@@ -552,6 +397,7 @@ export default {
       return path + "/" + this.dialogCurrentPage + "/" + this.dialogPageSize;
     },
     cellClick(row) {
+      this.rowProjectId = row.id;
       // 保存当前点击的组织信息到currentRow
       this.currentWorkspaceRow = row;
       this.currentProjectId = row.id;
@@ -560,8 +406,7 @@ export default {
         name: '',
         projectId: row.id
       };
-      this.wsId = row.id;
-      let path = "/user/project/member/list";
+      let path = "/user/ws/project/member/list/" + row.workspaceId;
       this.result = this.$post(this.buildPagePath(path), param, res => {
         let data = res.data;
         this.memberLineData = data.listObject;
@@ -584,7 +429,7 @@ export default {
       this.dialogWsMemberVisible = true;
       let param = this.dialogCondition;
       this.$set(param, 'projectId', row.id);
-      let path = "/user/project/member/list";
+      let path = "/user/ws/project/member/list/" + row.workspaceId;
       this.result = this.$post(this.buildPagePath(path), param, res => {
         let data = res.data;
         this.memberLineData = data.listObject;
@@ -613,17 +458,11 @@ export default {
       this.$set(this.form, 'groupIds', groupIds);
     },
     delMember(row) {
-      this.$confirm(this.$t('member.remove_member'), '', {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
+      operationConfirm(this.$t('member.remove_member'), () => {
         this.result = this.$get('/user/project/member/delete/' + this.currentProjectId + '/' + encodeURIComponent(row.id), () => {
           this.$success(this.$t('commons.remove_success'));
           this.dialogSearch();
         });
-      }).catch(() => {
-        this.$info(this.$t('commons.remove_cancel'));
       });
     },
     close: function () {
@@ -720,6 +559,7 @@ pre {
 }
 
 .el-input, .el-textarea {
-  width: 95%;
+  width: 80%;
 }
+
 </style>

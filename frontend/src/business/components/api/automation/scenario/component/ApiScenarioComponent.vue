@@ -11,36 +11,60 @@
     :is-disabled="true"
     :is-max="isMax"
     :show-btn="showBtn"
+    :is-deleted="scenario.referenced==='REF' && ! isShowNum"
+    :show-version="showVersion"
     color="#606266"
     background-color="#F4F4F5"
-    :title="$t('api_test.automation.scenario_import')">
+    :if-from-variable-advance="ifFromVariableAdvance"
+    :environmentType="environmentType"
+    :environmentGroupId="environmentGroupId"
+    :envMap="envMap"
+    :title="$t('commons.scenario')">
+
+    <template v-slot:afterTitle>
+      <span v-if="isShowNum" @click="clickResource(scenario)">{{ "（ ID: " + scenario.num + "）" }}</span>
+      <span v-else>
+        <el-tooltip class="ms-num" effect="dark" :content="$t('api_test.automation.scenario.num_none')" placement="top">
+          <i class="el-icon-warning"/>
+        </el-tooltip>
+      </span>
+      <span v-xpack v-if="scenario.versionEnable">{{ $t('project.version.name') }}: {{ scenario.versionName }}</span>
+    </template>
 
     <template v-slot:behindHeaderLeft>
-      <el-tag size="mini" class="ms-tag" v-if="scenario.referenced==='Deleted'" type="danger">{{ $t('api_test.automation.reference_deleted') }}</el-tag>
-      <el-tag size="mini" class="ms-tag" v-if="scenario.referenced==='Copy'">{{ $t('commons.copy') }}</el-tag>
-      <el-tag size="mini" class="ms-tag" v-if="scenario.referenced==='REF'">{{ $t('api_test.scenario.reference') }}</el-tag>
-      <span class="ms-tag">{{ getProjectName(scenario.projectId) }}</span>
+      <el-tag size="small" class="ms-tag" v-if="scenario.referenced==='Deleted'" type="danger">
+        {{ $t('api_test.automation.reference_deleted') }}
+      </el-tag>
+      <el-tag size="small" class="ms-tag" v-if="scenario.referenced==='Copy'">{{ $t('commons.copy') }}</el-tag>
+      <el-tag size="small" class="ms-tag" v-if="scenario.referenced==='REF'">{{
+          $t('api_test.scenario.reference')
+        }}
+      </el-tag>
+      <span class="ms-tag ms-step-name-api">{{ getProjectName(scenario.projectId) }}</span>
+      <el-tooltip v-if="(!scenario.hashTree || scenario.hashTree.length === 0) && scenario.referenced==='REF'"
+                  class="ms-num" effect="dark" :content="$t('api_test.scenario.base_scenario_step_is_empty')"
+                  placement="top" style="margin-left: 5px">
+        <i class="el-icon-warning"/>
+      </el-tooltip>
     </template>
     <template v-slot:debugStepCode>
        <span v-if="node.data.testing" class="ms-test-running">
          <i class="el-icon-loading" style="font-size: 16px"/>
          {{ $t('commons.testing') }}
        </span>
-      <span class="ms-step-debug-code" :class="node.data.code ==='error'?'ms-req-error':'ms-req-success'" v-if="!loading && node.data.debug && !node.data.testing">
+      <span class="ms-step-debug-code" :class="node.data.code ==='error'?'ms-req-error':'ms-req-success'"
+            v-if="!loading && node.data.debug && !node.data.testing">
         {{ getCode() }}
       </span>
     </template>
-    <template v-slot:scenarioEnable>
-      <el-tooltip content="启用场景环境：当前步骤使用场景原始环境配置运行" placement="top">
-        <el-checkbox v-model="scenario.environmentEnable" @change="checkEnv">启用场景环境</el-checkbox>
-      </el-tooltip>
-    </template>
-    <template v-slot:button>
+    <template v-slot:button v-if="!ifFromVariableAdvance">
       <el-tooltip :content="$t('api_test.run')" placement="top" v-if="!scenario.run">
-        <el-button :disabled="!scenario.enable" @click="run" icon="el-icon-video-play" style="padding: 5px" class="ms-btn" size="mini" circle/>
+        <el-button :disabled="!scenario.enable" @click="run" icon="el-icon-video-play" style="padding: 5px"
+                   class="ms-btn" size="mini" circle/>
       </el-tooltip>
       <el-tooltip :content="$t('report.stop_btn')" placement="top" :enterable="false" v-else>
-        <el-button :disabled="!scenario.enable" @click.once="stop" size="mini" style="color:white;padding: 0 0.1px;width: 24px;height: 24px;" class="stop-btn" circle>
+        <el-button :disabled="!scenario.enable" @click.once="stop" size="mini"
+                   style="color:white;padding: 0 0.1px;width: 24px;height: 24px;" class="stop-btn" circle>
           <div style="transform: scale(0.66)">
             <span style="margin-left: -4.5px;font-weight: bold;">STOP</span>
           </div>
@@ -57,12 +81,14 @@ import MsTcpBasisParameters from "../../../definition/components/request/tcp/Tcp
 import MsDubboBasisParameters from "../../../definition/components/request/dubbo/BasisParameters";
 import MsApiRequestForm from "../../../definition/components/request/http/ApiHttpRequestForm";
 import ApiBaseComponent from "../common/ApiBaseComponent";
-import {getCurrentProjectID} from "@/common/js/utils";
+import {getCurrentProjectID, getCurrentWorkspaceId, getUUID, strMapToObj} from "@/common/js/utils";
+import {STEP} from "@/business/components/api/automation/scenario/Setting";
 
 export default {
   name: "ApiScenarioComponent",
   props: {
     scenario: {},
+    currentScenario: {},
     message: String,
     node: {},
     isMax: {
@@ -73,52 +99,41 @@ export default {
       type: Boolean,
       default: true,
     },
+    showVersion: {
+      type: Boolean,
+      default: true,
+    },
     draggable: {
       type: Boolean,
       default: false,
     },
-    currentEnvironmentId: String,
-    projectList: Array
+    projectList: Array,
+    environmentType: String,
+    environmentGroupId: String,
+    envMap: Map,
+    ifFromVariableAdvance: {
+      type: Boolean,
+      default: false,
+    }
   },
   watch: {
     message() {
-      if (this.message === "stop") {
+      if (this.message === 'stop') {
         this.scenario.run = false;
       }
       this.reload();
     },
+    'node.data.isBatchProcess'() {
+      if (this.node.data && this.node.data.isBatchProcess && this.node.data.referenced === 'REF') {
+        this.node.expanded = false;
+      }
+    }
   },
   created() {
-    if (!this.scenario.projectId) {
-      this.scenario.projectId = getCurrentProjectID();
-    }
-    if (this.scenario.id && this.scenario.referenced === 'REF' && !this.scenario.loaded) {
-      this.result = this.$get("/api/automation/getApiScenario/" + this.scenario.id, response => {
-        if (response.data) {
-          this.scenario.loaded = true;
-          let obj = {};
-          if (response.data.scenarioDefinition) {
-            obj = JSON.parse(response.data.scenarioDefinition);
-            this.scenario.hashTree = obj.hashTree;
-          }
-          this.scenario.projectId = response.data.projectId;
-          const pro = this.projectList.find(p => p.id === response.data.projectId);
-          if (!pro) {
-            this.scenario.projectId = getCurrentProjectID();
-          }
-          if (this.scenario.hashTree) {
-            this.setDisabled(this.scenario.hashTree, this.scenario.projectId);
-          }
-          //this.scenario.disabled = true;
-          this.scenario.name = response.data.name;
-          this.scenario.headers = obj.headers;
-          this.scenario.variables = obj.variables;
-          this.scenario.environmentMap = obj.environmentMap;
-          this.$emit('refReload');
-        } else {
-          this.scenario.referenced = "Deleted";
-        }
-      })
+    this.isShowNum = this.scenario.num ? true : false;
+    if (this.scenario.id && this.scenario.referenced === 'REF' && !this.scenario.loaded && this.scenario.hashTree) {
+      this.scenario.root = this.node.parent.parent ? false : true;
+      this.recursive(this.scenario.hashTree, this.scenario.projectId, true);
     }
   },
   components: {ApiBaseComponent, MsSqlBasisParameters, MsTcpBasisParameters, MsDubboBasisParameters, MsApiRequestForm},
@@ -126,48 +141,75 @@ export default {
     return {
       loading: false,
       isShowInput: false,
+      isShowNum: false,
+      stepFilter: new STEP,
     }
   },
   computed: {
     isDeletedOrRef() {
-      if (this.scenario.referenced != undefined && this.scenario.referenced === 'Deleted' || this.scenario.referenced === 'REF') {
-        return true;
-      }
-      return false;
-    },
-    projectId() {
-      return getCurrentProjectID();
+      return this.scenario.referenced !== undefined && this.scenario.referenced === 'Deleted' || this.scenario.referenced === 'REF';
     },
   },
   methods: {
     run() {
+      if (!this.scenario.enable) {
+        this.$warning(this.$t('api_test.automation.debug_message'));
+        return;
+      }
       this.scenario.run = true;
-      this.$emit('runScenario', this.scenario);
+      let runScenario = JSON.parse(JSON.stringify(this.scenario));
+      let variables = JSON.parse(JSON.stringify(this.currentScenario.variables));
+
+      // 合并自身依赖场景变量
+      if (runScenario && runScenario.variableEnable && runScenario.variables) {
+        if (variables) {
+          // 同名合并
+          runScenario.variables.forEach(data => {
+            variables.forEach(item => {
+              if (data.type === item.type && data.name === item.name) {
+                Object.assign(data, item);
+              }
+            })
+          });
+        }
+      } else {
+        runScenario.variables = variables;
+      }
+
+      runScenario.hashTree = [this.scenario];
+      runScenario.stepScenario = true;
+      this.$emit('runScenario', runScenario);
     },
     stop() {
       this.scenario.run = false;
       this.$emit('stopScenario');
       this.reload();
     },
-    checkEnv() {
-      this.$post("/api/automation/checkScenarioEnv", {scenarioDefinition: JSON.stringify(this.scenario), projectId: this.projectId}, res => {
+    checkEnv(val) {
+      this.$get("/api/automation/checkScenarioEnv/" + this.scenario.id, res => {
         if (this.scenario.environmentEnable && !res.data) {
           this.scenario.environmentEnable = false;
-          this.$warning("当前场景没有环境，需要先设置自身环境");
+          this.$warning(this.$t('commons.scenario_warning'));
           return;
         }
-        this.setDomain();
+        this.setDomain(val);
       });
     },
-    setDomain() {
-      if (this.scenario.environmentEnable) {
-        this.$post("/api/automation/setDomain", {definition: JSON.stringify(this.scenario)}, res => {
-          if (res.data) {
-            let data = JSON.parse(res.data);
-            this.scenario.hashTree = data.hashTree;
-          }
-        })
+    setDomain(val) {
+      let param = {
+        environmentEnable: val,
+        id: this.scenario.id,
+        environmentType: this.environmentType,
+        environmentGroupId: this.environmentGroupId,
+        environmentMap: strMapToObj(this.envMap),
+        definition: JSON.stringify(this.scenario)
       }
+      this.$post("/api/automation/setDomain", param, res => {
+        if (res.data) {
+          let data = JSON.parse(res.data);
+          this.scenario.hashTree = data.hashTree;
+        }
+      })
     },
     getCode() {
       if (this.node && this.node.data.code && this.node.data.debug) {
@@ -184,7 +226,14 @@ export default {
     },
     active() {
       if (this.node) {
-        this.node.expanded = !this.node.expanded;
+        if (this.node.data && this.node.data.isBatchProcess && this.node.data.referenced === 'REF') {
+          this.node.expanded = false;
+        } else {
+          this.node.expanded = !this.node.expanded;
+        }
+      }
+      if (this.scenario && this.scenario.hashTree && this.node.expanded) {
+        this.recursive(this.scenario.hashTree, this.scenario.projectId, false);
       }
       this.reload();
     },
@@ -200,21 +249,21 @@ export default {
         this.loading = false
       })
     },
-    recursive(arr, id) {
+    recursive(arr, id, disabled) {
       for (let i in arr) {
-        arr[i].disabled = true;
+        arr[i].disabled = disabled;
         arr[i].projectId = this.calcProjectId(arr[i].projectId, id);
-        if (arr[i].hashTree != undefined && arr[i].hashTree.length > 0) {
-          this.recursive(arr[i].hashTree, arr[i].projectId);
+        // 处理子请求环境
+        let typeArray = ["JDBCPostProcessor", "JDBCSampler", "JDBCPreProcessor"]
+        if (typeArray.indexOf(arr[i].type) !== -1) {
+          arr[i].refEevMap = new Map();
+          arr[i].environmentEnable = this.scenario.environmentEnable;
+          if (this.scenario.environmentEnable && this.scenario.environmentMap) {
+            arr[i].refEevMap = this.scenario.environmentMap;
+          }
         }
-      }
-    },
-    setDisabled(scenarioDefinition, id) {
-      for (let i in scenarioDefinition) {
-        scenarioDefinition[i].disabled = true;
-        scenarioDefinition[i].projectId = this.calcProjectId(scenarioDefinition[i].projectId, id);
-        if (scenarioDefinition[i].hashTree != undefined && scenarioDefinition[i].hashTree.length > 0) {
-          this.recursive(scenarioDefinition[i].hashTree, scenarioDefinition[i].projectId);
+        if (arr[i].hashTree && arr[i].hashTree.length > 0) {
+          this.recursive(arr[i].hashTree, arr[i].projectId);
         }
       }
     },
@@ -230,12 +279,55 @@ export default {
       }
     },
     getProjectName(id) {
-      if (this.projectId !== id) {
+      if (id !== getCurrentProjectID()) {
         const project = this.projectList.find(p => p.id === id);
         return project ? project.name : "";
       }
 
+    },
+    clickResource(resource) {
+      let workspaceId = getCurrentWorkspaceId();
+      let isTurnSpace = true
+      if (resource.projectId !== getCurrentProjectID()) {
+        isTurnSpace = false;
+        this.$get("/project/get/" + resource.projectId, response => {
+          if (response.data) {
+            workspaceId = response.data.workspaceId;
+            isTurnSpace = true;
+            this.checkPermission(resource, workspaceId, isTurnSpace);
+          }
+        });
+      } else {
+        this.checkPermission(resource, workspaceId, isTurnSpace);
+      }
+
+    },
+    gotoTurn(resource, workspaceId, isTurnSpace) {
+      let automationData = this.$router.resolve({
+        name: 'ApiAutomationWithQuery',
+        params: {
+          redirectID: getUUID(),
+          dataType: "scenario",
+          dataSelectRange: 'edit:' + resource.id,
+          projectId: resource.projectId,
+          workspaceId: workspaceId
+        }
+      });
+      if (isTurnSpace) {
+        window.open(automationData.href, '_blank');
+      }
+    },
+    checkPermission(resource, workspaceId, isTurnSpace) {
+      this.$get('/project/getOwnerProjectIds', res => {
+        const project = res.data.find(p => p === resource.projectId);
+        if (!project) {
+          this.$warning(this.$t('commons.no_permission'));
+        } else {
+          this.gotoTurn(resource, workspaceId, isTurnSpace)
+        }
+      })
     }
+
   }
 }
 </script>
@@ -250,8 +342,12 @@ export default {
   transform: rotate(90deg);
 }
 
+.ms-step-name-api {
+  padding-left: 5px;
+}
+
 .ms-tag {
-  margin-left: 0px;
+  margin-left: 0;
 }
 
 .ms-req-error {
@@ -259,7 +355,7 @@ export default {
 }
 
 .ms-test-running {
-  color: #6D317C;
+  color: #783887;
 }
 
 .ms-req-success {
@@ -294,6 +390,12 @@ export default {
 }
 
 .ms-test-running {
-  color: #6D317C;
+  color: #783887;
+}
+
+.ms-num {
+  margin-left: 1rem;
+  font-size: 15px;
+  color: #de9d1c;
 }
 </style>

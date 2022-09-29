@@ -1,9 +1,7 @@
 package io.metersphere.security.realm;
 
-import io.metersphere.base.domain.UserGroupPermission;
 import io.metersphere.commons.user.SessionUser;
 import io.metersphere.commons.utils.SessionUtils;
-import io.metersphere.dto.GroupResourceDTO;
 import io.metersphere.dto.UserDTO;
 import io.metersphere.i18n.Translator;
 import io.metersphere.service.UserService;
@@ -13,10 +11,6 @@ import org.apache.shiro.realm.AuthorizingRealm;
 import org.apache.shiro.subject.PrincipalCollection;
 
 import javax.annotation.Resource;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 public abstract class BaseRealm extends AuthorizingRealm {
     @Resource
@@ -44,12 +38,6 @@ public abstract class BaseRealm extends AuthorizingRealm {
 
     @Override
     public boolean isPermitted(PrincipalCollection principals, String permission) {
-        Set<String> permissions = Objects.requireNonNull(SessionUtils.getUser()).getGroupPermissions().stream()
-                .map(GroupResourceDTO::getUserGroupPermissions)
-                .flatMap(List::stream)
-                .map(UserGroupPermission::getPermissionId)
-                .collect(Collectors.toSet());
-
-        return permissions.contains(permission);
+        return SessionUtils.hasPermission(SessionUtils.getCurrentWorkspaceId(), SessionUtils.getCurrentProjectId(), permission);
     }
 }

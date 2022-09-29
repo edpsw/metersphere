@@ -9,8 +9,6 @@
     <result column="description" jdbcType="VARCHAR" property="description" />
     <result column="status" jdbcType="VARCHAR" property="status" />
     <result column="stage" jdbcType="VARCHAR" property="stage" />
-    <result column="test_case_match_rule" jdbcType="VARCHAR" property="testCaseMatchRule" />
-    <result column="executor_match_rule" jdbcType="VARCHAR" property="executorMatchRule" />
     <result column="create_time" jdbcType="BIGINT" property="createTime" />
     <result column="update_time" jdbcType="BIGINT" property="updateTime" />
     <result column="planned_start_time" jdbcType="BIGINT" property="plannedStartTime" />
@@ -27,6 +25,7 @@
     <result column="tags" jdbcType="LONGVARCHAR" property="tags" />
     <result column="report_summary" jdbcType="LONGVARCHAR" property="reportSummary" />
     <result column="report_config" jdbcType="LONGVARCHAR" property="reportConfig" />
+    <result column="run_mode_config" jdbcType="LONGVARCHAR" property="runModeConfig" />
   </resultMap>
   <sql id="Example_Where_Clause">
     <where>
@@ -87,13 +86,12 @@
     </where>
   </sql>
   <sql id="Base_Column_List">
-    id, workspace_id, report_id, `name`, description, `status`, stage, test_case_match_rule, 
-    executor_match_rule, create_time, update_time, planned_start_time, planned_end_time, 
-    actual_start_time, actual_end_time, creator, project_id, execution_times, automatic_status_update, 
-    repeat_case
+    id, workspace_id, report_id, `name`, description, `status`, stage, create_time, update_time, 
+    planned_start_time, planned_end_time, actual_start_time, actual_end_time, creator, 
+    project_id, execution_times, automatic_status_update, repeat_case
   </sql>
   <sql id="Blob_Column_List">
-    tags, report_summary, report_config
+    tags, report_summary, report_config, run_mode_config
   </sql>
   <select id="selectByExampleWithBLOBs" parameterType="io.metersphere.base.domain.TestPlanExample" resultMap="ResultMapWithBLOBs">
     select
@@ -146,20 +144,20 @@
   <insert id="insert" parameterType="io.metersphere.base.domain.TestPlanWithBLOBs">
     insert into test_plan (id, workspace_id, report_id, 
       `name`, description, `status`, 
-      stage, test_case_match_rule, executor_match_rule, 
-      create_time, update_time, planned_start_time, 
-      planned_end_time, actual_start_time, actual_end_time, 
-      creator, project_id, execution_times, 
-      automatic_status_update, repeat_case, tags, 
-      report_summary, report_config)
+      stage, create_time, update_time, 
+      planned_start_time, planned_end_time, actual_start_time, 
+      actual_end_time, creator, project_id, 
+      execution_times, automatic_status_update, repeat_case, 
+      tags, report_summary, report_config, 
+      run_mode_config)
     values (#{id,jdbcType=VARCHAR}, #{workspaceId,jdbcType=VARCHAR}, #{reportId,jdbcType=VARCHAR}, 
       #{name,jdbcType=VARCHAR}, #{description,jdbcType=VARCHAR}, #{status,jdbcType=VARCHAR}, 
-      #{stage,jdbcType=VARCHAR}, #{testCaseMatchRule,jdbcType=VARCHAR}, #{executorMatchRule,jdbcType=VARCHAR}, 
-      #{createTime,jdbcType=BIGINT}, #{updateTime,jdbcType=BIGINT}, #{plannedStartTime,jdbcType=BIGINT}, 
-      #{plannedEndTime,jdbcType=BIGINT}, #{actualStartTime,jdbcType=BIGINT}, #{actualEndTime,jdbcType=BIGINT}, 
-      #{creator,jdbcType=VARCHAR}, #{projectId,jdbcType=VARCHAR}, #{executionTimes,jdbcType=INTEGER}, 
-      #{automaticStatusUpdate,jdbcType=BIT}, #{repeatCase,jdbcType=BIT}, #{tags,jdbcType=LONGVARCHAR}, 
-      #{reportSummary,jdbcType=LONGVARCHAR}, #{reportConfig,jdbcType=LONGVARCHAR})
+      #{stage,jdbcType=VARCHAR}, #{createTime,jdbcType=BIGINT}, #{updateTime,jdbcType=BIGINT}, 
+      #{plannedStartTime,jdbcType=BIGINT}, #{plannedEndTime,jdbcType=BIGINT}, #{actualStartTime,jdbcType=BIGINT}, 
+      #{actualEndTime,jdbcType=BIGINT}, #{creator,jdbcType=VARCHAR}, #{projectId,jdbcType=VARCHAR}, 
+      #{executionTimes,jdbcType=INTEGER}, #{automaticStatusUpdate,jdbcType=BIT}, #{repeatCase,jdbcType=BIT}, 
+      #{tags,jdbcType=LONGVARCHAR}, #{reportSummary,jdbcType=LONGVARCHAR}, #{reportConfig,jdbcType=LONGVARCHAR}, 
+      #{runModeConfig,jdbcType=LONGVARCHAR})
   </insert>
   <insert id="insertSelective" parameterType="io.metersphere.base.domain.TestPlanWithBLOBs">
     insert into test_plan
@@ -184,12 +182,6 @@
       </if>
       <if test="stage != null">
         stage,
-      </if>
-      <if test="testCaseMatchRule != null">
-        test_case_match_rule,
-      </if>
-      <if test="executorMatchRule != null">
-        executor_match_rule,
       </if>
       <if test="createTime != null">
         create_time,
@@ -233,6 +225,9 @@
       <if test="reportConfig != null">
         report_config,
       </if>
+      <if test="runModeConfig != null">
+        run_mode_config,
+      </if>
     </trim>
     <trim prefix="values (" suffix=")" suffixOverrides=",">
       <if test="id != null">
@@ -255,12 +250,6 @@
       </if>
       <if test="stage != null">
         #{stage,jdbcType=VARCHAR},
-      </if>
-      <if test="testCaseMatchRule != null">
-        #{testCaseMatchRule,jdbcType=VARCHAR},
-      </if>
-      <if test="executorMatchRule != null">
-        #{executorMatchRule,jdbcType=VARCHAR},
       </if>
       <if test="createTime != null">
         #{createTime,jdbcType=BIGINT},
@@ -304,6 +293,9 @@
       <if test="reportConfig != null">
         #{reportConfig,jdbcType=LONGVARCHAR},
       </if>
+      <if test="runModeConfig != null">
+        #{runModeConfig,jdbcType=LONGVARCHAR},
+      </if>
     </trim>
   </insert>
   <select id="countByExample" parameterType="io.metersphere.base.domain.TestPlanExample" resultType="java.lang.Long">
@@ -335,12 +327,6 @@
       </if>
       <if test="record.stage != null">
         stage = #{record.stage,jdbcType=VARCHAR},
-      </if>
-      <if test="record.testCaseMatchRule != null">
-        test_case_match_rule = #{record.testCaseMatchRule,jdbcType=VARCHAR},
-      </if>
-      <if test="record.executorMatchRule != null">
-        executor_match_rule = #{record.executorMatchRule,jdbcType=VARCHAR},
       </if>
       <if test="record.createTime != null">
         create_time = #{record.createTime,jdbcType=BIGINT},
@@ -384,6 +370,9 @@
       <if test="record.reportConfig != null">
         report_config = #{record.reportConfig,jdbcType=LONGVARCHAR},
       </if>
+      <if test="record.runModeConfig != null">
+        run_mode_config = #{record.runModeConfig,jdbcType=LONGVARCHAR},
+      </if>
     </set>
     <if test="_parameter != null">
       <include refid="Update_By_Example_Where_Clause" />
@@ -398,8 +387,6 @@
       description = #{record.description,jdbcType=VARCHAR},
       `status` = #{record.status,jdbcType=VARCHAR},
       stage = #{record.stage,jdbcType=VARCHAR},
-      test_case_match_rule = #{record.testCaseMatchRule,jdbcType=VARCHAR},
-      executor_match_rule = #{record.executorMatchRule,jdbcType=VARCHAR},
       create_time = #{record.createTime,jdbcType=BIGINT},
       update_time = #{record.updateTime,jdbcType=BIGINT},
       planned_start_time = #{record.plannedStartTime,jdbcType=BIGINT},
@@ -413,7 +400,8 @@
       repeat_case = #{record.repeatCase,jdbcType=BIT},
       tags = #{record.tags,jdbcType=LONGVARCHAR},
       report_summary = #{record.reportSummary,jdbcType=LONGVARCHAR},
-      report_config = #{record.reportConfig,jdbcType=LONGVARCHAR}
+      report_config = #{record.reportConfig,jdbcType=LONGVARCHAR},
+      run_mode_config = #{record.runModeConfig,jdbcType=LONGVARCHAR}
     <if test="_parameter != null">
       <include refid="Update_By_Example_Where_Clause" />
     </if>
@@ -427,8 +415,6 @@
       description = #{record.description,jdbcType=VARCHAR},
       `status` = #{record.status,jdbcType=VARCHAR},
       stage = #{record.stage,jdbcType=VARCHAR},
-      test_case_match_rule = #{record.testCaseMatchRule,jdbcType=VARCHAR},
-      executor_match_rule = #{record.executorMatchRule,jdbcType=VARCHAR},
       create_time = #{record.createTime,jdbcType=BIGINT},
       update_time = #{record.updateTime,jdbcType=BIGINT},
       planned_start_time = #{record.plannedStartTime,jdbcType=BIGINT},
@@ -464,12 +450,6 @@
       </if>
       <if test="stage != null">
         stage = #{stage,jdbcType=VARCHAR},
-      </if>
-      <if test="testCaseMatchRule != null">
-        test_case_match_rule = #{testCaseMatchRule,jdbcType=VARCHAR},
-      </if>
-      <if test="executorMatchRule != null">
-        executor_match_rule = #{executorMatchRule,jdbcType=VARCHAR},
       </if>
       <if test="createTime != null">
         create_time = #{createTime,jdbcType=BIGINT},
@@ -513,6 +493,9 @@
       <if test="reportConfig != null">
         report_config = #{reportConfig,jdbcType=LONGVARCHAR},
       </if>
+      <if test="runModeConfig != null">
+        run_mode_config = #{runModeConfig,jdbcType=LONGVARCHAR},
+      </if>
     </set>
     where id = #{id,jdbcType=VARCHAR}
   </update>
@@ -524,8 +507,6 @@
       description = #{description,jdbcType=VARCHAR},
       `status` = #{status,jdbcType=VARCHAR},
       stage = #{stage,jdbcType=VARCHAR},
-      test_case_match_rule = #{testCaseMatchRule,jdbcType=VARCHAR},
-      executor_match_rule = #{executorMatchRule,jdbcType=VARCHAR},
       create_time = #{createTime,jdbcType=BIGINT},
       update_time = #{updateTime,jdbcType=BIGINT},
       planned_start_time = #{plannedStartTime,jdbcType=BIGINT},
@@ -539,7 +520,8 @@
       repeat_case = #{repeatCase,jdbcType=BIT},
       tags = #{tags,jdbcType=LONGVARCHAR},
       report_summary = #{reportSummary,jdbcType=LONGVARCHAR},
-      report_config = #{reportConfig,jdbcType=LONGVARCHAR}
+      report_config = #{reportConfig,jdbcType=LONGVARCHAR},
+      run_mode_config = #{runModeConfig,jdbcType=LONGVARCHAR}
     where id = #{id,jdbcType=VARCHAR}
   </update>
   <update id="updateByPrimaryKey" parameterType="io.metersphere.base.domain.TestPlan">
@@ -550,8 +532,6 @@
       description = #{description,jdbcType=VARCHAR},
       `status` = #{status,jdbcType=VARCHAR},
       stage = #{stage,jdbcType=VARCHAR},
-      test_case_match_rule = #{testCaseMatchRule,jdbcType=VARCHAR},
-      executor_match_rule = #{executorMatchRule,jdbcType=VARCHAR},
       create_time = #{createTime,jdbcType=BIGINT},
       update_time = #{updateTime,jdbcType=BIGINT},
       planned_start_time = #{plannedStartTime,jdbcType=BIGINT},

@@ -60,8 +60,8 @@
                 }
               }
               if (!hasEnvironment) {
-                this.currentData.environmentId = '';
-                this.currentData.environment = undefined;
+                this.currentData.environmentId =  this.$store.state.useEnvironment;
+                this.currentData.environment =  this.$store.state.useEnvironment;
               }
             });
           } else {
@@ -92,8 +92,42 @@
               this.currentData.environmentId = value;
               if (this.currentData.request) {
                 this.currentData.request.useEnvironment = value;
+                // 更改当前步骤中含SQL前后置步骤对应的数据源
+                if(this.currentData.request.hashTree) {
+                  // 找到原始环境和数据源名称
+                  let environment = this.environments[i];
+                  this.setOwnEnvironment(this.currentData.request.hashTree, environment);
+                }
               }
               break;
+            }
+          }
+        },
+        getTargetSource(obj){
+          this.environments.forEach(environment => {
+            parseEnvironment(environment);
+            // 找到原始环境和数据源名称
+            if (environment.id === obj.environmentId) {
+              if (environment.config && environment.config.databaseConfigs) {
+                environment.config.databaseConfigs.forEach(item => {
+                  if (item.id === obj.dataSourceId) {
+                    obj.targetDataSourceName = item.name;
+                  }
+                });
+              }
+            }
+          });
+        },
+        setOwnEnvironment(scenarioDefinition,env) {
+          for (let i in scenarioDefinition) {
+            let typeArray = ["JDBCPostProcessor", "JDBCSampler", "JDBCPreProcessor"]
+            if (typeArray.indexOf(scenarioDefinition[i].type) !== -1) {
+              // 找到原始数据源名称
+              this.getTargetSource(scenarioDefinition[i])
+              scenarioDefinition[i].environmentId = env.id;
+            }
+            if (scenarioDefinition[i].hashTree !== undefined && scenarioDefinition[i].hashTree.length > 0) {
+              this.setOwnEnvironment(scenarioDefinition[i].hashTree,env);
             }
           }
         },
@@ -104,6 +138,12 @@
           }
           this.$refs.environmentConfig.open(this.projectId);
         },
+        setEnvironment(environmentId){
+          this.currentData.environmentId = environmentId;
+          if (this.currentData.request) {
+            this.currentData.request.useEnvironment = environmentId;
+          }
+        }
       }
     }
 </script>

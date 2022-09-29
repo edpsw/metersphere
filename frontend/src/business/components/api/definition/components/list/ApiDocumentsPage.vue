@@ -1,6 +1,8 @@
 <template>
   <div>
-    <api-document-anchor :is-share-page="isSharePage" :trash-enable="trashEnable" :project-id="projectId" :module-ids="moduleIds"></api-document-anchor>
+    <api-document-anchor :is-share-page="isSharePage" :trash-enable="trashEnable"
+                         :module-ids="moduleIds" :project-id="projectId" :version-id="versionId"
+                         ref="documentAnchor"/>
   </div>
 </template>
 
@@ -15,28 +17,21 @@ export default {
   },
   data() {
     return {
-      isSharePage:false,
-    }
+      isSharePage: false,
+      condition: {},
+    };
   },
   props: {
-    projectId:String,
-    moduleIds:Array,
-    activeDom:String,
+    projectId: String,
+    moduleIds: Array,
+    versionId: String,
+    activeDom: String,
     trashEnable: {
       type: Boolean,
       default: false,
     },
   },
-  created: function () {
-  },
-  watch: {
-  },
-  computed: {
-
-  },
-  methods: {
-  },
-}
+};
 </script>
 
 <style scoped>

@@ -1,10 +1,10 @@
 <template>
   <el-dialog :visible="dialogVisible" :title="dialogTitle"
              @close="close" :close-on-click-modal="false"
-              width="50%">
+             width="50%">
     <el-form>
-      <el-row>
-        <el-col :span="6">
+      <el-row type="flex" justify="center">
+        <el-col :span="!toImportProjectId ? 6 : 0">
           <div class="project-item">
             <div style="margin-bottom: 10px">
               {{$t('project.select')}}
@@ -16,7 +16,7 @@
             </el-select>
           </div>
         </el-col>
-        <el-col :span="16" :offset="1">
+        <el-col :span="16" style="text-align: center;">
           <el-upload
             class="api-upload" drag action="alert"
             :on-change="handleFileChange"
@@ -52,6 +52,12 @@ export default {
         return [];
       }
     },
+    toImportProjectId: {
+      type: String,
+      default() {
+        return "";
+      }
+    }
   },
   data() {
     return {
@@ -92,11 +98,20 @@ export default {
               try {
                 JSON.parse(fileString).map(env => {
                   //projectId为空字符串要转换为null，空字符串会被认为有projectId
-                  env.projectId = this.currentProjectId === '' ? null : this.currentProjectId;
+                  if (this.toImportProjectId) {
+                    env.projectId = this.toImportProjectId;
+                  } else {
+                    env.projectId = this.currentProjectId === '' ? null : this.currentProjectId;
+                  }
+                  if (!env.projectId) {
+                    this.$warning(this.$t('api_test.environment.project_warning'));
+                    return;
+                  }
                   this.$fileUpload('/api/environment/add', null,[],  env, response => {
+                    this.dialogVisible = false;
                     this.$emit('refresh');
                     this.$success(this.$t('commons.save_success'));
-                  })
+                  });
                 })
               } catch (exception) {
                 this.$warning(this.$t('api_test.api_import.ms_env_import_file_limit'));

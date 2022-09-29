@@ -1,7 +1,8 @@
 <template>
   <div v-loading="loading">
     <div class="mask" v-show="isShowSelect"></div>
-    <el-popover placement="bottom-start" :width="popoverWidth" trigger="manual" v-model="isShowSelect" @hide="popoverHide" v-outside-click="outsideClick">
+    <el-popover placement="bottom-start" :width="popoverWidth" trigger="manual" v-model="isShowSelect"
+                @hide="popoverHide" v-outside-click="outsideClick">
       <el-input
         size="mini"
         prefix-icon="el-icon-search"
@@ -27,11 +28,14 @@
                  @click.native="selectClick"
                  @remove-tag="removeTag"
                  @clear="clean"
+                 :placeholder="placeholder"
                  class="ms-tree-select">
         <el-option v-for="item in options" :key="item.value" :label="item.label" :value="item.value"></el-option>
       </el-select>
       <el-row>
-        <el-button v-if="multiple" class="ok" @click="isShowSelect=false" size="mini" type="text">{{ $t('commons.confirm') }}</el-button>
+        <el-button v-if="multiple" class="ok" @click="isShowSelect=false" size="mini" type="text">
+          {{ $t('commons.confirm') }}
+        </el-button>
       </el-row>
     </el-popover>
   </div>
@@ -136,6 +140,12 @@ export default {
       default() {
         return '300px';
       }
+    },
+    placeholder: {
+      type: String,
+      default() {
+        return this.$t('el.select.placeholder');
+      }
     }
   },
   //上面是父组件可传入参数
@@ -149,6 +159,7 @@ export default {
       filterText: "",
       loading: false,
       checkedId: [],
+      selectNodeIds: []
     };
   },
   computed: {
@@ -229,6 +240,9 @@ export default {
             return;
           }
         }
+      } else {
+        this.returnDataKeys = this.defaultKey;
+        this.setKey(this.defaultKey);
       }
     },
     //下拉框select点击[入口]
@@ -260,14 +274,29 @@ export default {
         });
         this.returnDatas = t;
       }
+
+      this.selectNodeIds = [];
+      if (data) {
+        this.getChildNodeId(data, this.selectNodeIds);
+      }
+    },
+    getChildNodeId(rootNode, nodeIds) {
+      //递归获取所有子节点ID
+      nodeIds.push(rootNode.id);
+      if (rootNode.children) {
+        for (let i = 0; i < rootNode.children.length; i++) {
+          this.getChildNodeId(rootNode.children[i], nodeIds);
+        }
+      }
     },
     //单选:清空选中
     clean() {
       this.$refs.tree.setCurrentKey(null);//清除树选中key
       this.returnDatas = null;
       this.returnDataKeys = '';
+      this.selectNodeIds = [];
       this.popoverHide();
-
+      this.$emit('clean');
     },
     //单选:设置、初始化值 key
     setKey(thisKey) {
@@ -276,6 +305,7 @@ export default {
       if (node && node.data) {
         this.setData(node.data);
       }
+      this.popoverHide();
     },
     //单选：设置、初始化对象
     setData(data) {
@@ -283,7 +313,8 @@ export default {
       this.options.push({label: data[this.obj.label], value: data[this.obj.id]});
       this.returnDatas = data;
       this.returnDataKeys = data[this.obj.id]
-
+      this.selectNodeIds = [];
+      this.getChildNodeId(data, this.selectNodeIds);
     },
     //多选:设置、初始化值 keys
     setKeys(thisKeys) {
@@ -293,7 +324,7 @@ export default {
       this.options = [];
       thisKeys.map((item) => {//设置option选项
         let node = this.$refs.tree.getNode(item); // 所有被选中的节点对应的node
-        if(node){
+        if (node) {
           t.push(node.data);
           this.options.push({label: node.label, value: node.key});
           return {label: node.label, value: node.key};
@@ -330,6 +361,7 @@ export default {
     },
     //下拉框关闭执行
     popoverHide() {
+      this.$emit('setSelectNodeIds', this.selectNodeIds);
       this.$emit('getValue', this.returnDataKeys, this.returnDatas ? this.returnDatas : {});
     },
     // 多选，清空所有勾选
@@ -364,7 +396,9 @@ export default {
         for (let i = 0; i < data.length; i++) {
           const n = data[i];
           if (n[this.obj.pid] === id) {
-            n[this.obj.children] = fa(n[this.obj.id]);
+            if (this.obj.children) {
+              n[this.obj.children] = fa(n[this.obj.id]);
+            }
             temp.push(n);
           }
         }
@@ -375,7 +409,7 @@ export default {
     filterNode(value, data) {
       if (!value) return true;
       if (data.label) {
-        return data.label.indexOf(value.toLowerCase()) !== -1;
+        return data.label.toLowerCase().indexOf(value.toLowerCase()) !== -1;
       }
       return false;
     },
@@ -401,26 +435,26 @@ export default {
       },
       deep: true
     },
-    defaultKey:{
-      handler:function(){
+    defaultKey: {
+      handler: function () {
         this.init();
-        if(this.data && this.data.length > 0){
-          if(this.defaultKey instanceof Array){
+        if (this.data && this.data.length > 0) {
+          if (this.defaultKey instanceof Array) {
             this.$refs.tree.setCheckedKeys(this.defaultKey);
           }
         }
       },
-      deep:true
+      deep: true
     },
-    data:{
-      handler:function(){
-        if(this.defaultKey && this.defaultKey.length > 0 && this.defaultKey instanceof Array){
-          if(this.defaultKey instanceof Array){
+    data: {
+      handler: function () {
+        if (this.defaultKey && this.defaultKey.length > 0 && this.defaultKey instanceof Array) {
+          if (this.defaultKey instanceof Array) {
             this.$refs.tree.setCheckedKeys(this.defaultKey);
           }
         }
       },
-      deep:true
+      deep: true
     },
     filterText(val) {
       this.$nextTick(() => {

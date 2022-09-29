@@ -4,6 +4,7 @@ import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import io.metersphere.base.domain.TestPlanTestCaseWithBLOBs;
 import io.metersphere.commons.constants.OperLogConstants;
+import io.metersphere.commons.constants.OperLogModule;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
 import io.metersphere.controller.request.ResetOrderRequest;
@@ -12,6 +13,7 @@ import io.metersphere.track.dto.TestPlanCaseDTO;
 import io.metersphere.track.request.testcase.TestPlanCaseBatchRequest;
 import io.metersphere.track.request.testplancase.QueryTestPlanCaseRequest;
 import io.metersphere.track.request.testplancase.TestPlanFuncCaseBatchRequest;
+import io.metersphere.track.request.testplancase.TestPlanFuncCaseEditRequest;
 import io.metersphere.track.service.TestPlanTestCaseService;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,8 +30,10 @@ public class TestPlanTestCaseController {
 
     @PostMapping("/list/{goPage}/{pageSize}")
     public Pager<List<TestPlanCaseDTO>> getTestPlanCases(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestPlanCaseRequest request) {
+        QueryTestPlanCaseRequest paramRequest = testPlanTestCaseService.setCustomNumOrderParam(request);
         Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
-        return PageUtils.setPageInfo(page, testPlanTestCaseService.list(request));
+        List<TestPlanCaseDTO> list = testPlanTestCaseService.list(paramRequest);
+        return PageUtils.setPageInfo(page, list);
     }
 
     /*jenkins测试计划下全部用例*/
@@ -44,6 +48,12 @@ public class TestPlanTestCaseController {
     @PostMapping("/list/minder")
     public List<TestPlanCaseDTO> listForMinder(@RequestBody QueryTestPlanCaseRequest request) {
         return testPlanTestCaseService.listForMinder(request);
+    }
+
+    @PostMapping("/list/minder/{goPage}/{pageSize}")
+    public Pager<List<TestPlanCaseDTO>> listForMinder(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestPlanCaseRequest request) {
+        Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
+        return PageUtils.setPageInfo(page, testPlanTestCaseService.listForMinder(request));
     }
 
     @GetMapping("/list/node/{planId}/{nodePaths}")
@@ -95,45 +105,39 @@ public class TestPlanTestCaseController {
         return testPlanTestCaseService.idList(request);
     }
 
-
-    @PostMapping("/list/ids")
-    public List<TestPlanCaseDTO> getTestPlanCaseIds(@RequestBody QueryTestPlanCaseRequest request) {
-        return testPlanTestCaseService.list(request);
-    }
-
     @PostMapping("/edit")
-    @MsAuditLog(module = "track_test_case_review", type = OperLogConstants.UPDATE, content = "#msClass.getLogDetails(#testPlanTestCase.id)", msClass = TestPlanTestCaseService.class)
-    public void editTestCase(@RequestBody TestPlanTestCaseWithBLOBs testPlanTestCase) {
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_CASE_REVIEW, type = OperLogConstants.UPDATE, content = "#msClass.getLogDetails(#testPlanTestCase.id)", msClass = TestPlanTestCaseService.class)
+    public void editTestCase(@RequestBody TestPlanFuncCaseEditRequest testPlanTestCase) {
         testPlanTestCaseService.editTestCase(testPlanTestCase);
     }
 
     @PostMapping("/minder/edit")
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.ASSOCIATE_CASE, content = "#msClass.getCaseLogDetails(#testPlanTestCases)", msClass = TestPlanTestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.ASSOCIATE_CASE, content = "#msClass.getCaseLogDetails(#testPlanTestCases)", msClass = TestPlanTestCaseService.class)
     public void editTestCaseForMinder(@RequestBody List<TestPlanTestCaseWithBLOBs> testPlanTestCases) {
         testPlanTestCaseService.editTestCaseForMinder(testPlanTestCases);
     }
 
     @PostMapping("/batch/edit")
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.BATCH_UPDATE, beforeEvent = "#msClass.batchLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = TestPlanTestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.BATCH_UPDATE, beforeEvent = "#msClass.batchLogDetails(#request.ids)", content = "#msClass.getLogDetails(#request.ids)", msClass = TestPlanTestCaseService.class)
     public void editTestCaseBath(@RequestBody TestPlanCaseBatchRequest request) {
         testPlanTestCaseService.editTestCaseBath(request);
     }
 
     @PostMapping("/batch/delete")
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.UN_ASSOCIATE_CASE, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = TestPlanTestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.UN_ASSOCIATE_CASE, beforeEvent = "#msClass.getLogDetails(#request.ids)", msClass = TestPlanTestCaseService.class)
     public void deleteTestCaseBath(@RequestBody TestPlanCaseBatchRequest request) {
         testPlanTestCaseService.deleteTestCaseBath(request);
     }
 
     @PostMapping("/delete/{id}")
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.UN_ASSOCIATE_CASE, beforeEvent = "#msClass.getLogDetails(#id)", msClass = TestPlanTestCaseService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.UN_ASSOCIATE_CASE, beforeEvent = "#msClass.getLogDetails(#id)", msClass = TestPlanTestCaseService.class)
     public int deleteTestCase(@PathVariable String id) {
         return testPlanTestCaseService.deleteTestCase(id);
     }
 
-    @GetMapping("/list/failure/{planId}")
-    public List<TestPlanCaseDTO> getFailureCases(@PathVariable String planId) {
-        return testPlanTestCaseService.getFailureCases(planId);
+    @PostMapping("/list/all/{planId}")
+    public List<TestPlanCaseDTO> getFailureCases(@PathVariable String planId, @RequestBody(required = false) List<String> statusList) {
+        return testPlanTestCaseService.getAllCasesByStatusList(planId, statusList);
     }
 
     @GetMapping("/list/all/{planId}")

@@ -20,6 +20,7 @@ import io.metersphere.track.dto.TestReviewCaseDTO;
 import io.metersphere.track.request.testplancase.TestReviewCaseBatchRequest;
 import io.metersphere.track.request.testreview.DeleteRelevanceRequest;
 import io.metersphere.track.request.testreview.QueryCaseReviewRequest;
+import io.metersphere.track.request.testreview.TestCaseReviewTestCaseEditRequest;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
@@ -35,8 +36,6 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(rollbackFor = Exception.class)
 public class TestReviewTestCaseService {
-    @Resource
-    private TestCaseTestMapper testCaseTestMapper;
     @Resource
     private LoadTestMapper loadTestMapper;
     @Resource
@@ -58,11 +57,23 @@ public class TestReviewTestCaseService {
     @Resource
     TestCaseMapper testCaseMapper;
     @Resource
+    TestCaseService testCaseService;
+    @Resource
     ExtTestPlanTestCaseMapper extTestPlanTestCaseMapper;
+    @Resource
+    TestCaseCommentService testCaseCommentService;
 
     public List<TestReviewCaseDTO> list(QueryCaseReviewRequest request) {
         request.setOrders(ServiceUtils.getDefaultSortOrder(request.getOrders()));
         List<TestReviewCaseDTO> list = extTestReviewCaseMapper.list(request);
+        if (CollectionUtils.isEmpty(list)) {
+            return list;
+        }
+
+        ServiceUtils.buildVersionInfo(list);
+        ServiceUtils.buildProjectInfo(list);
+        ServiceUtils.buildCustomNumInfo(list);
+
         QueryMemberRequest queryMemberRequest = new QueryMemberRequest();
         queryMemberRequest.setWorkspaceId(SessionUtils.getCurrentProjectId());
         Map<String, String> userMap = userService.getMemberList(queryMemberRequest)
@@ -71,6 +82,7 @@ public class TestReviewTestCaseService {
             String reviewId = item.getReviewId();
             List<String> userIds = getReviewUserIds(reviewId);
             item.setReviewerName(getReviewName(userIds, userMap));
+            item.setMaintainerName(userMap.get(item.getMaintainer()));
         });
         return list;
     }
@@ -106,6 +118,21 @@ public class TestReviewTestCaseService {
         return testCaseReviewTestCaseMapper.deleteByPrimaryKey(request.getId());
     }
 
+    public int deleteToGc(List<String> caseIds) {
+        return updateIsDel(caseIds, true);
+    }
+
+    private int updateIsDel(List<String> caseIds, Boolean isDel) {
+        if (CollectionUtils.isEmpty(caseIds)) {
+            return 0;
+        }
+        TestCaseReviewTestCaseExample example = new TestCaseReviewTestCaseExample();
+        example.createCriteria().andCaseIdIn(caseIds);
+        TestCaseReviewTestCase record = new TestCaseReviewTestCase();
+        record.setIsDel(isDel);
+        return testCaseReviewTestCaseMapper.updateByExampleSelective(record, example);
+    }
+
     private void checkReviewer(String reviewId) {
         List<String> userIds = testCaseReviewService.getTestCaseReviewerIds(reviewId);
         String currentId = SessionUtils.getUser().getId();
@@ -133,7 +160,7 @@ public class TestReviewTestCaseService {
         testCaseReviewTestCaseMapper.deleteByExample(example);
     }
 
-    public void editTestCase(TestCaseReviewTestCase testCaseReviewTestCase) {
+    public void editTestCase(TestCaseReviewTestCaseEditRequest testCaseReviewTestCase) {
         checkReviewCase(testCaseReviewTestCase.getReviewId());
 
         // 记录测试用例评审状态变更
@@ -143,16 +170,12 @@ public class TestReviewTestCaseService {
         testCaseReviewTestCaseMapper.updateByPrimaryKeySelective(testCaseReviewTestCase);
 
         // 修改用例评审状态
-        String caseId = testCaseReviewTestCase.getCaseId();
-        TestCaseWithBLOBs testCase = new TestCaseWithBLOBs();
-        testCase.setId(caseId);
-        testCase.setReviewStatus(testCaseReviewTestCase.getStatus());
-        testCaseMapper.updateByPrimaryKeySelective(testCase);
-    }
+        testCaseService.updateReviewStatus(testCaseReviewTestCase.getCaseId(), testCaseReviewTestCase.getStatus());
 
-    public List<TestReviewCaseDTO> getTestCaseReviewDTOList(QueryCaseReviewRequest request) {
-        request.setOrders(ServiceUtils.getDefaultSortOrder(request.getOrders()));
-        return extTestReviewCaseMapper.list(request);
+        if (StringUtils.isNotEmpty(testCaseReviewTestCase.getComment())) {
+            // 走Spring的代理对象，防止发送通知操作记录等操作失效
+            testCaseCommentService.saveComment(testCaseReviewTestCase);
+        }
     }
 
     public TestReviewCaseDTO get(String reviewId) {
@@ -194,6 +217,7 @@ public class TestReviewTestCaseService {
 
     public void editTestCaseBatchStatus(TestReviewCaseBatchRequest request) {
         List<String> ids = request.getIds();
+        request.getCondition().setOrder(null);
         if (request.getCondition() != null && request.getCondition().isSelectAll()) {
             ids = extTestReviewCaseMapper.selectTestCaseIds(request.getCondition());
             if (request.getCondition().getUnSelectIds() != null) {
@@ -210,13 +234,15 @@ public class TestReviewTestCaseService {
             checkReviewCase(request.getReviewId());
         }
 
-        // 更新状态
+        // 更新状态{TestCase, TestCaseReviewTestCase}
         if (StringUtils.isNotBlank(request.getStatus())) {
-            TestCaseExample example = new TestCaseExample();
-            example.createCriteria().andIdIn(ids);
-            TestCaseWithBLOBs testCase = new TestCaseWithBLOBs();
-            testCase.setReviewStatus(request.getStatus());
-            testCaseMapper.updateByExampleSelective(testCase, example);
+            testCaseService.updateReviewStatus(ids, request.getStatus());
+
+            TestCaseReviewTestCaseExample caseReviewTestCaseExample = new TestCaseReviewTestCaseExample();
+            caseReviewTestCaseExample.createCriteria().andReviewIdEqualTo(request.getReviewId()).andCaseIdIn(ids);
+            TestCaseReviewTestCase testCaseReviewTestCase = new TestCaseReviewTestCase();
+            testCaseReviewTestCase.setStatus(request.getStatus());
+            testCaseReviewTestCaseMapper.updateByExampleSelective(testCaseReviewTestCase, caseReviewTestCaseExample);
         }
     }
 
@@ -234,17 +260,11 @@ public class TestReviewTestCaseService {
     public void editTestCaseForMinder(String reviewId, List<TestCaseReviewTestCase> testCaseReviewTestCases) {
         checkReviewCase(reviewId);
         if (!CollectionUtils.isEmpty(testCaseReviewTestCases)) {
-            List<TestCaseWithBLOBs> testCaseList = new ArrayList<>();
             testCaseReviewTestCases.forEach((item) -> {
-                TestCaseWithBLOBs testCase = new TestCaseWithBLOBs();
-                testCase.setId(item.getCaseId());
-                testCase.setReviewStatus(item.getStatus());
-                testCaseList.add(testCase);
-                testCase.setUpdateTime(System.currentTimeMillis());
                 item.setUpdateTime(System.currentTimeMillis());
                 testCaseReviewTestCaseMapper.updateByPrimaryKeySelective(item);
+                testCaseService.updateReviewStatus(item.getCaseId(), item.getStatus());
             });
-            testCaseList.forEach(testCaseMapper::updateByPrimaryKeySelective);
         }
     }
 
@@ -371,5 +391,9 @@ public class TestReviewTestCaseService {
                 extTestReviewCaseMapper::getPreOrder,
                 extTestReviewCaseMapper::getLastOrder,
                 testCaseReviewTestCaseMapper::updateByPrimaryKeySelective);
+    }
+
+    public int reduction(List<String> ids) {
+        return updateIsDel(ids, false);
     }
 }

@@ -1,5 +1,7 @@
 package io.metersphere.api.tcp.server;
 
+import io.metersphere.commons.utils.LogUtil;
+
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -19,7 +21,6 @@ public class TCPServer implements Runnable {
 
     public void openSocket() throws Exception {
         this.serverSocket = new ServerSocket(this.port);
-        int connectIndex = 0;
 
         while (true) {
             if (!this.serverSocket.isClosed()) {
@@ -55,7 +56,7 @@ public class TCPServer implements Runnable {
         try {
             this.openSocket();
         } catch (Exception e) {
-            e.printStackTrace();
+            LogUtil.error(e);
         }
     }
 }

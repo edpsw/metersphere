@@ -1,35 +1,29 @@
 <template>
   <div>
-    <el-menu :unique-opened="true" class="header-user-menu align-right header-top-menu"
-             mode="horizontal"
-             :background-color="color"
-             text-color="#fff"
-             active-text-color="#fff">
-      <el-menu-item onselectstart="return false">
-        <el-tooltip effect="light">
-          <template v-slot:content>
-            <span>{{ $t('commons.notice_center') }}</span>
-          </template>
-          <div @click="showNoticeCenter" v-if="noticeCount > 0 || noticeShow">
-            <el-badge is-dot class="item" type="danger">
-              <font-awesome-icon class="icon global focusing" :icon="['fas', 'bell']"/>
-            </el-badge>
-          </div>
-          <font-awesome-icon @click="showNoticeCenter" class="icon global focusing" :icon="['fas', 'bell']" v-else/>
-        </el-tooltip>
-      </el-menu-item>
-    </el-menu>
+    <div class="ms-header-menu align-right">
+      <el-tooltip effect="light">
+        <template v-slot:content>
+          <span>{{ $t('commons.notice_center') }}</span>
+        </template>
+        <div @click="showNoticeCenter" v-if="noticeCount > 0 || noticeShow">
+          <el-badge is-dot class="item" type="danger">
+            <font-awesome-icon class="icon global focusing" :icon="['fas', 'bell']"/>
+          </el-badge>
+        </div>
+        <font-awesome-icon @click="showNoticeCenter" class="icon global focusing" :icon="['fas', 'bell']" v-else/>
+      </el-tooltip>
+    </div>
 
     <el-drawer :visible.sync="taskVisible" :destroy-on-close="true" direction="rtl"
-               :withHeader="true" :modal="false" :title="$t('commons.notice_center')" size="600px"
+               :withHeader="true" :modal="false" :title="$t('commons.notice_center')" size="550px"
                custom-class="ms-drawer-task">
-      <div style="margin: 0px 20px 0px">
+      <div style="margin: 0 20px 0">
         <el-tabs :active-name="activeName">
           <el-tab-pane :label="$t('commons.mentioned_me_notice')" name="mentionedMe">
-            <mentioned-me-data ref="mentionedMe" :user-list="userList"/>
+            <notification-data ref="mentionedMe" :user-list="userList" type="MENTIONED_ME"/>
           </el-tab-pane>
           <el-tab-pane :label="$t('commons.system_notice')" name="systemNotice">
-            <system-notice-data ref="systemNotice" :user-list="userList"/>
+            <notification-data ref="systemNotice" :user-list="userList" type="SYSTEM_NOTICE"/>
           </el-tab-pane>
         </el-tabs>
       </div>
@@ -43,15 +37,13 @@ import MsDrawer from "../common/components/MsDrawer";
 import {getCurrentUserId} from "@/common/js/utils";
 import MsRequestResultTail from "../../components/api/definition/components/response/RequestResultTail";
 import MsTipButton from "@/business/components/common/components/MsTipButton";
-import SystemNoticeData from "@/business/components/notice/components/SystemNoticeData";
-import MentionedMeData from "@/business/components/notice/components/MentionedMeData";
 import {getOperation, getResource} from "@/business/components/notice/util";
+import NotificationData from "@/business/components/notice/components/NotificationData";
 
 export default {
   name: "MsNotification",
   components: {
-    MentionedMeData,
-    SystemNoticeData,
+    NotificationData,
     MsTipButton,
     MsDrawer,
     MsRequestResultTail
@@ -81,9 +73,6 @@ export default {
       noticeShow: false,
     };
   },
-  props: {
-    color: String
-  },
   created() {
     this.getNotifications();
     this.getUserList();
@@ -95,9 +84,12 @@ export default {
       }
     }
   },
+  beforeDestroy() {
+    this.websocket.close();
+  },
   methods: {
     getUserList() {
-      this.$get('/user/list', response => {
+      this.$get('/user/ws/current/member/list', response => {
         this.userList = response.data;
         this.userMap = this.userList.reduce((r, c) => {
           r[c.id] = c;
@@ -165,7 +157,7 @@ export default {
           if (now - d.createTime > 10 * 1000) {
             return;
           }
-          d.user = this.userMap[d.operator];
+          d.user = this.userMap[d.operator] || {name: 'MS'};
           let message = d.user.name + getOperation(d.operation) + getResource(d) + ": " + d.resourceName;
           let title = d.type === 'MENTIONED_ME' ? this.$t('commons.mentioned_me_notice') : this.$t('commons.system_notice');
           setTimeout(() => {
@@ -225,7 +217,7 @@ export default {
 }
 
 .global {
-  color: #fff;
+  color: rgb(146, 147, 150);
 }
 
 .header-top-menu {
@@ -262,7 +254,7 @@ export default {
 }
 
 /deep/ .el-badge__content.is-fixed {
-  top: 25px;
+  top: 15px;
 }
 
 /deep/ .el-badge__content {
@@ -282,4 +274,14 @@ export default {
 .ms-task-success {
   color: #67C23A;
 }
+
+.ms-header-menu {
+  padding: 12px 0px 0px;
+}
+
+.ms-header-menu:hover {
+  cursor: pointer;
+  border-color: var(--color);
+}
+
 </style>

@@ -5,14 +5,19 @@ import io.metersphere.base.domain.*;
 import io.metersphere.base.mapper.*;
 import io.metersphere.base.mapper.ext.ExtTestCaseMapper;
 import io.metersphere.base.mapper.ext.ExtTestPlanTestCaseMapper;
+import io.metersphere.commons.constants.SystemCustomField;
 import io.metersphere.commons.constants.TestPlanTestCaseStatus;
 import io.metersphere.commons.utils.DateUtils;
 import io.metersphere.commons.utils.MathUtils;
 import io.metersphere.performance.base.ChartsData;
+import io.metersphere.service.CustomFieldService;
+import io.metersphere.service.ProjectService;
+import io.metersphere.track.dto.CountMapDTO;
 import io.metersphere.track.dto.TestPlanDTOWithMetric;
 import io.metersphere.track.response.BugStatustics;
 import io.metersphere.track.response.TestPlanBugCount;
 import io.metersphere.track.response.TrackCountResult;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +45,8 @@ public class TrackService {
     private TestPlanScenarioCaseService testPlanScenarioCaseService;
     @Resource
     private TestPlanLoadCaseService testPlanLoadCaseService;
+    @Resource
+    private CustomFieldService customFieldService;
 
     public List<TrackCountResult> countPriority(String projectId) {
         return extTestCaseMapper.countPriority(projectId);
@@ -115,20 +122,22 @@ public class TrackService {
         List<TestPlanBugCount> list = new ArrayList<>();
         BugStatustics bugStatustics = new BugStatustics();
         int index = 1;
-        int totalBugSize = 0;
         int totalCaseSize = 0;
+        int totalBugSize = 0;
         for (TestPlan plan : plans) {
-            int planBugSize = getPlanBugSize(plan.getId());
+            int planBugSize = getPlanBugSize(plan.getId(), projectId);
             // bug为0不记录
             if (planBugSize == 0) {
                 continue;
             }
+            totalBugSize += planBugSize;
 
             TestPlanBugCount testPlanBug = new TestPlanBugCount();
             testPlanBug.setIndex(index++);
             testPlanBug.setPlanName(plan.getName());
             testPlanBug.setCreateTime(plan.getCreateTime());
             testPlanBug.setStatus(plan.getStatus());
+            testPlanBug.setPlanId(plan.getId());
 
             int planCaseSize = getPlanCaseSize(plan.getId());
             testPlanBug.setCaseSize(planCaseSize);
@@ -137,14 +146,11 @@ public class TrackService {
             double planPassRage = getPlanPassRage(plan.getId());
             testPlanBug.setPassRage(planPassRage + "%");
             list.add(testPlanBug);
-
-            totalBugSize += planBugSize;
             totalCaseSize += planCaseSize;
 
         }
-
         bugStatustics.setList(list);
-        float rage =totalCaseSize == 0 ? 0 : (float) totalBugSize * 100 / totalCaseSize;
+        float rage = totalCaseSize == 0 ? 0 : (float) totalBugSize * 100 / totalCaseSize;
         DecimalFormat df = new DecimalFormat("0.0");
         bugStatustics.setRage(df.format(rage) + "%");
         bugStatustics.setBugTotalSize(totalBugSize);
@@ -156,8 +162,16 @@ public class TrackService {
 
     }
 
-    private int getPlanBugSize(String planId) {
-        return extTestCaseMapper.getTestPlanBug(planId);
+    private int getPlanBugSize(String planId, String projectId) {
+        List<String> issueIds = extTestCaseMapper.getTestPlanBug(planId);
+        Map<String, String> statusMap = customFieldService.getIssueSystemCustomFieldByName(SystemCustomField.ISSUE_STATUS, projectId, issueIds);
+        // 缺陷是否有状态
+        if (MapUtils.isEmpty(statusMap)) {
+            return issueIds.size();
+        }
+        return (int) issueIds.stream()
+                .filter(id -> !StringUtils.equals(statusMap.getOrDefault(id, "").replaceAll("\"", ""), "closed"))
+                .count();
     }
 
     private double getPlanPassRage(String planId) {
@@ -166,16 +180,16 @@ public class TrackService {
         testPlan.setPassed(0);
         testPlan.setTotal(0);
 
-        List<String> functionalExecResults = extTestPlanTestCaseMapper.getExecResultByPlanId(planId);
-        functionalExecResults.forEach(item -> {
-            if (!StringUtils.equals(item, TestPlanTestCaseStatus.Prepare.name())
-                    && !StringUtils.equals(item, TestPlanTestCaseStatus.Underway.name())) {
-                testPlan.setTested(testPlan.getTested() + 1);
-                if (StringUtils.equals(item, TestPlanTestCaseStatus.Pass.name())) {
-                    testPlan.setPassed(testPlan.getPassed() + 1);
+        List<CountMapDTO> statusCountMap = extTestPlanTestCaseMapper.getExecResultMapByPlanId(testPlan.getId());
+        for (CountMapDTO item : statusCountMap) {
+            if (!StringUtils.equals(item.getKey(), TestPlanTestCaseStatus.Prepare.name())
+                    && !StringUtils.equals(item.getKey(), TestPlanTestCaseStatus.Underway.name())) {
+                testPlan.setTested(testPlan.getTested() + item.getValue());
+                if (StringUtils.equals(item.getKey(), TestPlanTestCaseStatus.Pass.name())) {
+                    testPlan.setPassed(testPlan.getPassed() + item.getValue());
                 }
             }
-        });
+        }
 
         List<String> apiExecResults = testPlanApiCaseService.getExecResultByPlanId(planId);
         apiExecResults.forEach(item -> {

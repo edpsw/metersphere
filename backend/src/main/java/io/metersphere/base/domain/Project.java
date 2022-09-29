@@ -25,25 +25,25 @@ public class Project implements Serializable {
 
     private String azureDevopsId;
 
-    private Boolean repeatable;
-
     private String caseTemplateId;
 
     private String issueTemplateId;
-
-    private Boolean customNum;
-
-    private Boolean scenarioCustomNum;
 
     private String createUser;
 
     private String systemId;
 
-    private Integer mockTcpPort;
-
-    private Boolean isMockTcpOpen;
-
     private String azureFilterId;
+
+    private String platform;
+
+    private Boolean thirdPartTemplate;
+
+    private Boolean versionEnable;
+
+    private String apiTemplateId;
+
+    private String issueConfig;
 
     private static final long serialVersionUID = 1L;
 }

@@ -4,7 +4,9 @@
       <template v-slot:header>
         <test-plan-scenario-list-header
           :condition="condition"
-          @refresh="search"
+          :projectId="projectId"
+          :plan-status="planStatus"
+          @refresh="filterSearch"
           @relevanceCase="$emit('relevanceCase', 'scenario')"/>
       </template>
 
@@ -23,7 +25,8 @@
         row-key="id"
         :row-order-func="editTestPlanScenarioCaseOrder"
         :row-order-group-id="planId"
-        @refresh="search"
+        @order="search"
+        @filter="filterSearch"
         ref="table">
         <span v-for="(item) in fields" :key="item.key">
           <ms-table-column
@@ -32,7 +35,15 @@
             sortable
             prop="customNum"
             min-width="80px"
-            label="ID"/>
+            label="ID">
+             <template v-slot:default="scope">
+               <el-link @click="openById(scope.row)">
+                  <span>
+                    {{ scope.row.customNum }}
+                  </span>
+               </el-link>
+            </template>
+          </ms-table-column>
 
           <ms-table-column :field="item"
                            :fields-width="fieldsWidth"
@@ -40,12 +51,24 @@
                            :label="$t('api_test.automation.scenario_name')" min-width="120px"
                            sortable/>
 
+          <ms-table-column
+            :field="item"
+            v-if="versionEnable"
+            prop="versionId"
+            :filters="versionFilters"
+            :label="$t('commons.version')"
+            min-width="120px">
+              <template v-slot:default="scope">
+                <span>{{ scope.row.versionName }}</span>
+            </template>
+          </ms-table-column>
+
           <ms-table-column :field="item"
                            :fields-width="fieldsWidth"
                            prop="level" :label="$t('api_test.automation.case_level')" min-width="120px"
                            column-key="level"
                            sortable
-                           :filters="LEVEL_FILTERS">
+                           :filters="apiscenariofilters.LEVEL_FILTERS">
             <template v-slot:default="scope">
               <priority-table-item :value="scope.row.level" ref="level"/>
             </template>
@@ -133,7 +156,7 @@
           <ms-table-column :field="item"
                            :fields-width="fieldsWidth"
                            prop="lastResult" min-width="100px"
-                           :filters="RESULT_FILTERS"
+                           :filters="apiscenariofilters.RESULT_FILTERS"
                            :label="$t('api_test.automation.last_result')">
             <template v-slot:default="{row}">
               <el-link type="success" @click="showReport(row)" v-if="row.lastResult === 'Success'">
@@ -141,6 +164,12 @@
               </el-link>
               <el-link type="danger" @click="showReport(row)" v-if="row.lastResult === 'Fail'">
                 {{ $t('api_test.automation.fail') }}
+              </el-link>
+              <el-link type="danger" @click="showReport(row)" v-if="row.lastResult === 'Error'">
+                {{ $t('api_test.automation.fail') }}
+              </el-link>
+              <el-link style="color: #F6972A" @click="showReport(row)" v-if="row.lastResult === 'errorReportResult'">
+                {{ $t('error_report_library.option.name') }}
               </el-link>
             </template>
           </ms-table-column>
@@ -165,7 +194,13 @@
     <!-- 批量编辑 -->
     <batch-edit :dialog-title="$t('test_track.case.batch_edit_case')" :type-arr="typeArr" :value-arr="valueArr"
                 :select-row="this.$refs.table ? this.$refs.table.selectRows : new Set()" ref="batchEdit" @batchEdit="batchEdit"/>
-    <ms-plan-run-mode @handleRunBatch="handleRunBatch" ref="runMode" :plan-case-ids="planCaseIds" :type="'apiScenario'"/>
+    <ms-plan-run-mode
+      :type="'apiScenario'"
+      :plan-case-ids="planCaseIds"
+      @close="search"
+      @handleRunBatch="handleRunBatch"
+      ref="runMode"/>
+
     <ms-task-center ref="taskCenter" :show-menu="false"/>
   </div>
 </template>
@@ -174,7 +209,7 @@
 import MsTableHeader from "@/business/components/common/components/MsTableHeader";
 import MsTablePagination from "@/business/components/common/pagination/TablePagination";
 import MsTag from "../../../../../common/components/MsTag";
-import {getCurrentProjectID, getUUID, strMapToObj} from "@/common/js/utils";
+import {getCurrentProjectID, getCurrentWorkspaceId, getUUID, hasLicense, strMapToObj} from "@/common/js/utils";
 import MsApiReportDetail from "../../../../../api/automation/report/ApiReportDetail";
 import MsTableMoreBtn from "../../../../../api/automation/scenario/TableMoreBtn";
 import MsScenarioExtendButtons from "@/business/components/api/automation/scenario/ScenarioExtendBtns";
@@ -184,7 +219,7 @@ import {
   initCondition,
   buildBatchParam, getCustomTableHeader, getCustomTableWidth
 } from "../../../../../../../common/js/tableUtils";
-import {TEST_PLAN_SCENARIO_CASE} from "@/common/js/constants";
+import {ENV_TYPE, TEST_PLAN_SCENARIO_CASE} from "@/common/js/constants";
 import HeaderLabelOperate from "@/business/components/common/head/HeaderLabelOperate";
 import BatchEdit from "@/business/components/track/case/components/BatchEdit";
 import MsPlanRunMode from "@/business/components/track/plan/common/PlanRunModeWithEnv";
@@ -226,7 +261,9 @@ export default {
     selectNodeIds: Array,
     reviewId: String,
     planId: String,
-    clickType: String
+    planStatus: String,
+    clickType: String,
+    versionEnable: Boolean,
   },
   data() {
     return {
@@ -251,31 +288,32 @@ export default {
       infoDb: false,
       runVisible: false,
       runData: [],
-      ...API_SCENARIO_FILTERS,
       enableOrderDrag: true,
       operators: [
         {
           tip: this.$t('api_test.run'), icon: "el-icon-video-play",
           exec: this.execute,
-          class: 'run-button',
+          class: this.planStatus==='Archived'?'disable-run':'run-button',
+          isDisable: this.planStatus==='Archived',
           permissions: ['PROJECT_TRACK_PLAN:READ+RUN']
         },
         {
           tip: this.$t('test_track.plan_view.cancel_relevance'), icon: "el-icon-unlock",
           exec: this.remove,
           type: 'danger',
+          isDisable: this.planStatus==='Archived',
           permissions: ['PROJECT_TRACK_PLAN:READ+RELEVANCE_OR_CANCEL']
         }
       ],
       buttons: [
         {
-          name: this.$t('test_track.case.batch_unlink'), handleClick: this.handleDeleteBatch, permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_DELETE']
+          name: this.$t('test_track.case.batch_unlink'), handleClick: this.handleDeleteBatch,  isDisable: this.planStatus==='Archived', permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_DELETE']
         },
         {
-          name: this.$t('api_test.automation.batch_execute'), handleClick: this.handleBatchExecute, permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_RUN']
+          name: this.$t('api_test.automation.batch_execute'), handleClick: this.handleBatchExecute,  isDisable: this.planStatus==='Archived', permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_RUN']
         },
         {
-          name: this.$t('test_track.case.batch_edit_case'), handleClick: this.handleBatchEdit, permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_EDIT']
+          name: this.$t('test_track.case.batch_edit_case'), handleClick: this.handleBatchEdit, isDisable: this.planStatus==='Archived',  permissions: ['PROJECT_TRACK_PLAN:READ+CASE_BATCH_EDIT']
         }
       ],
       typeArr: [
@@ -284,7 +322,9 @@ export default {
       valueArr: {
         projectEnv: []
       },
-      planCaseIds: []
+      planCaseIds: [],
+      apiscenariofilters:{},
+      versionFilters: [],
     }
   },
   computed: {
@@ -296,8 +336,9 @@ export default {
     }
   },
   created() {
+    this.apiscenariofilters = API_SCENARIO_FILTERS();
     this.search();
-
+    this.getVersionOptions();
   },
   watch: {
     selectNodeIds() {
@@ -309,6 +350,11 @@ export default {
     }
   },
   methods: {
+    filterSearch() {
+      // 添加搜索条件时，当前页设置成第一页
+      this.currentPage = 1;
+      this.search();
+    },
     search() {
       initCondition(this.condition,this.condition.selectAll);
       this.loading = true;
@@ -337,11 +383,23 @@ export default {
           });
           this.tableData.forEach(item => {
             try {
-              const envs = JSON.parse(item.environment);
-              if (envs) {
-                this.$post("/test/plan/scenario/case/env", envs, res => {
-                  this.$set(item, 'envs', res.data);
-                });
+              let envs;
+              const type = item.environmentType;
+              if (type === ENV_TYPE.GROUP && item.environmentGroupId) {
+                this.$get("/environment/group/project/map/name/" + item.environmentGroupId, res => {
+                  let data = res.data;
+                  if (data) {
+                    envs = new Map(Object.entries(data));
+                    this.$set(item, 'envs', res.data);
+                  }
+                })
+              } else if (type === ENV_TYPE.JSON) {
+                envs = JSON.parse(item.environment);
+                if (envs) {
+                  this.$post("/test/plan/scenario/case/env", envs, res => {
+                    this.$set(item, 'envs', res.data);
+                  });
+                }
               }
             } catch (error) {
               this.$set(item, 'envs', {});
@@ -413,6 +471,7 @@ export default {
         });
         param.condition = selectParam.condition;
         param.triggerMode = "BATCH";
+        param.requestOriginator = "TEST_PLAN";
         this.$post("/test/plan/scenario/case/run", param, response => {
           this.$message(this.$t('commons.run_message'));
           this.$refs.taskCenter.open();
@@ -429,10 +488,16 @@ export default {
       this.reportId = "";
       this.buildExecuteParam(param,row);
       param.triggerMode = "MANUAL";
+      param.requestOriginator = "TEST_PLAN";
+      param.config = {
+        mode: "serial"
+      };
       if (this.planId) {
         this.$post("/test/plan/scenario/case/run", param, response => {
           this.runVisible = true;
-          this.reportId = response.data;
+          if (response.data && response.data.length > 0) {
+            this.reportId = response.data[0].reportId;
+          }
         });
       }
       if (this.reviewId) {
@@ -519,13 +584,36 @@ export default {
       let param = {};
       param.mapping = strMapToObj(form.map);
       param.envMap = strMapToObj(form.projectEnvMap);
-
+      param.environmentType = form.environmentType;
+      param.envGroupId = form.envGroupId;
       if (this.planId) {
         this.$post('/test/plan/scenario/case/batch/update/env', param, () => {
           this.$success(this.$t('commons.save_success'));
           this.search();
         });
       }
+    },
+    getVersionOptions() {
+      if (hasLicense()) {
+        this.$get('/project/version/get-project-versions/' + getCurrentProjectID(), response => {
+          this.versionFilters = response.data.map(u => {
+            return {text: u.name, value: u.id};
+          });
+        });
+      }
+    },
+    openById(item) {
+      let automationData = this.$router.resolve({
+        name: 'ApiAutomationWithQuery',
+        params: {
+          redirectID: getUUID(),
+          dataType: "scenario",
+          dataSelectRange: 'edit:' + item.caseId,
+          projectId: item.projectId,
+          workspaceId: getCurrentWorkspaceId()
+        }
+      });
+      window.open(automationData.href, '_blank');
     },
   }
 }

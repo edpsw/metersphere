@@ -1,15 +1,21 @@
 <template>
   <div>
     <div v-if="request.protocol === 'HTTP'">
-      <div v-if="request.url || isCustomizeReq">
+      <div v-if="isCustomizeReq">
         <el-select v-model="request.method" class="ms-select" size="small" :disabled="request.disabled">
           <el-option v-for="item in reqOptions" :key="item.id" :label="item.label" :value="item.id"/>
         </el-select>
-        <el-input v-model="request.domain" v-if="request.isRefEnvironment  && request.domain" size="small" readonly class="ms-input"/>
+        <el-input v-model="request.domain" v-if="request.isRefEnvironment  && request.domain" size="small" readonly
+                  class="ms-input"/>
+
+        <el-input :placeholder="$t('api_test.definition.request.path_all_info')" v-model="request.path"
+                  style="width: 50%" size="small" @blur="urlChange" :disabled="request.disabled"
+                  v-if="request.isRefEnvironment"/>
+
         <el-input :placeholder="$t('api_test.definition.request.path_all_info')" v-model="request.url"
-                  style="width: 50%" size="small" @blur="urlChange" :disabled="request.disabled">
-        </el-input>
-        <el-checkbox v-if="isCustomizeReq" class="is-ref-environment" v-model="request.isRefEnvironment">
+                  style="width: 50%" size="small" @blur="urlChange" :disabled="request.disabled" v-else/>
+        <el-checkbox v-if="isCustomizeReq" class="is-ref-environment" v-model="request.isRefEnvironment"
+                     @change="setDomain" :disabled="request.disabled">
           {{ $t('api_test.request.refer_to_environment') }}
         </el-checkbox>
       </div>
@@ -17,7 +23,8 @@
         <el-select v-model="request.method" class="ms-select" size="small" :disabled="request.disabled">
           <el-option v-for="item in reqOptions" :key="item.id" :label="item.label" :value="item.id"/>
         </el-select>
-        <el-input v-model="request.domain" v-if="request.domain" size="small" readonly class="ms-input" :disabled="request.disabled"/>
+        <el-input v-model="request.domain" v-if="request.domain" size="small" readonly class="ms-input"
+                  :disabled="request.disabled"/>
         <el-input :placeholder="$t('api_test.definition.request.path_all_info')" style="width: 50%"
                   v-model="request.path" size="small" @blur="pathChange" :disabled="request.disabled"/>
       </div>
@@ -33,7 +40,7 @@
           </el-col>
           <el-col :span="12">
             <el-form-item :label="$t('api_test.request.tcp.port')" prop="port" label-width="60px">
-              <el-input-number v-model="request.port" controls-position="right" :min="0" :max="65535" size="small"/>
+              <el-input v-model="request.port" size="small"/>
             </el-form-item>
           </el-col>
         </el-row>
@@ -55,49 +62,27 @@ export default {
       isUrl: false,
     }
   },
-  mounted() {
-    if (this.isCustomizeReq) {
-      if (this.request.isRefEnvironment === undefined || this.request.isRefEnvironment === null) {
-        // 兼容旧数据
-        if (this.request.url) {
-          this.$set(this.request, 'isRefEnvironment', false);
-        } else {
-          this.$set(this.request, 'isRefEnvironment', true);
-        }
-      }
-      // url和path设置成一样，根据是否引用环境判断用哪个
-      if (this.request.url) {
-        this.$set(this.request, 'path', this.request.url);
-
-      } else {
-        this.$set(this.request, 'url', this.request.path);
-
-      }
-    }
-  },
   methods: {
     pathChange() {
       this.isUrl = false;
       if (!this.request.path || this.request.path.indexOf('?') === -1) return;
       let url = this.getURL(this.addProtocol(this.request.path));
-      if (url && this.isUrl) {
+      if (url) {
         this.request.path = decodeURIComponent(this.request.path.substr(0, this.request.path.indexOf("?")));
       }
     },
     urlChange() {
       this.isUrl = false;
-      if (this.isCustomizeReq) {
-        this.request.path = this.request.url;
-      }
-      if (!this.request.url || this.request.url.indexOf('?') === -1) return;
-      let url = this.getURL(this.addProtocol(this.request.url));
-      if (url) {
-        let paramUrl = this.request.url.substr(this.request.url.indexOf("?") + 1);
-        if (paramUrl && this.isUrl) {
-          this.request.url = decodeURIComponent(this.request.url.substr(0, this.request.url.indexOf("?")));
-        }
-        if (this.isCustomizeReq) {
-          this.request.path = this.request.url;
+      if (this.request.isRefEnvironment) {
+        this.pathChange();
+      } else {
+        if (!this.request.url || this.request.url.indexOf('?') === -1) return;
+        let url = this.getURL(this.addProtocol(this.request.url));
+        if (url) {
+          let paramUrl = this.request.url.substr(this.request.url.indexOf("?") + 1);
+          if (paramUrl) {
+            this.request.url = decodeURIComponent(this.request.url.substr(0, this.request.url.indexOf("?")));
+          }
         }
       }
     },
@@ -112,17 +97,40 @@ export default {
     getURL(urlStr) {
       try {
         let url = new URL(urlStr);
-        url.searchParams.forEach((value, key) => {
-          if (key && value) {
-            this.isUrl = true;
-            this.request.arguments.splice(0, 0, new KeyValue({name: key, required: false, value: value}));
-          }
-        });
+        if (url.search && url.search.length > 1) {
+          let params = url.search.substr(1).split("&");
+          params.forEach(param => {
+            if (param) {
+              let keyValues = param.split("=");
+              if (keyValues) {
+                this.isUrl = true;
+                this.request.arguments.splice(0, 0, new KeyValue({
+                  name: keyValues[0],
+                  required: false,
+                  value: keyValues[1]
+                }));
+              }
+            }
+          });
+        }
         return url;
       } catch (e) {
         this.$error(this.$t('api_test.request.url_invalid'), 2000);
       }
     },
+    setDomain() {
+      let urlStr = this.addProtocol(this.request.url);
+      const reg = /(((^https?:(?:\/\/)?)(?:[-;:&=\+\$,\w]+@)?[A-Za-z0-9.-]+|(?:www.|[-;:&=\+\$,\w]+@)[A-Za-z0-9.-]+)((?:\/[\+~%\/.\w-_]*)?\??(?:[-\+=&;%@.\w_]*)#?(?:[\w]*))?)$/g;
+      if (reg.test(urlStr)) {
+        let url = this.getURL(urlStr);
+        if (url && url.pathname) {
+          this.request.path = url.pathname;
+        }
+      } else {
+        this.request.path = this.request.url
+      }
+      this.$emit("setDomain");
+    }
   }
 }
 </script>

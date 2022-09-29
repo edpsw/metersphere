@@ -48,19 +48,13 @@ public class ApiDefinitionImportUtil {
         return "/" + path;
     }
 
-    public static ApiModule getNodeTree(String projectId) {
-        ApiModuleService apiModuleService = CommonBeanFactory.getBean(ApiModuleService.class);
-        List<ApiModuleDTO> nodeTrees = apiModuleService.getNodeTreeByProjectId(projectId, RequestType.HTTP);
-
-        return null;
-    }
-
     public static ApiModule buildModule(ApiModule parentModule, String name, String projectId) {
         ApiModuleService apiModuleService = CommonBeanFactory.getBean(ApiModuleService.class);
         ApiModule module;
         if (parentModule != null) {
             module = apiModuleService.getNewModule(name, projectId, parentModule.getLevel() + 1);
             module.setParentId(parentModule.getId());
+            module.setProtocol(parentModule.getProtocol());
         } else {
             module = apiModuleService.getNewModule(name, projectId, 1);
         }
@@ -121,6 +115,7 @@ public class ApiDefinitionImportUtil {
         if (parentModule != null) {
             module = apiModuleService.getNewModule(name, projectId, parentModule.getLevel() + 1);
             module.setParentId(parentModule.getId());
+            module.setProtocol(parentModule.getProtocol());
         } else {
             module = apiModuleService.getNewModule(name, projectId, 1);
         }

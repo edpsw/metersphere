@@ -13,9 +13,10 @@ import java.util.Map;
 
 public class ShiroUtils {
 
-    public static void loadBaseFilterChain(Map<String, String> filterChainDefinitionMap){
+    public static void loadBaseFilterChain(Map<String, String> filterChainDefinitionMap) {
 
-        filterChainDefinitionMap.put("/resource/**", "anon");
+        filterChainDefinitionMap.put("/resource/md/get/**", "anon");
+        filterChainDefinitionMap.put("/resource/ui/get/**", "anon");
         filterChainDefinitionMap.put("/*.worker.js", "anon");
         filterChainDefinitionMap.put("/login", "anon");
         filterChainDefinitionMap.put("/signin", "anon");
@@ -35,11 +36,12 @@ public class ShiroUtils {
         filterChainDefinitionMap.put("/jmeter/ready/**", "anon");
         filterChainDefinitionMap.put("/authsource/list/allenable", "anon");
         filterChainDefinitionMap.put("/sso/signin", "anon");
-        filterChainDefinitionMap.put("/sso/callback", "anon");
-        filterChainDefinitionMap.put("/license/valid", "anon");
+        filterChainDefinitionMap.put("/sso/callback/**", "anon");
+        filterChainDefinitionMap.put("/license/validate", "anon");
         filterChainDefinitionMap.put("/api/jmeter/download", "anon");
         filterChainDefinitionMap.put("/api/jmeter/download/files", "anon");
-        filterChainDefinitionMap.put("/api/jmeter/download/jar", "anon");
+        filterChainDefinitionMap.put("/api/jmeter/download/jar/**", "anon");
+        filterChainDefinitionMap.put("/api/jmeter/download/plug/jar", "anon");
 
         // for swagger
         filterChainDefinitionMap.put("/swagger-ui.html", "anon");
@@ -52,11 +54,16 @@ public class ShiroUtils {
         //分享相关接口
         filterChainDefinitionMap.put("/share/info/generateShareInfoWithExpired", "anon");
         filterChainDefinitionMap.put("/share/info/selectApiInfoByParam", "anon");
+        filterChainDefinitionMap.put("/share/info/selectHistoryReportById", "anon");
         filterChainDefinitionMap.put("/share/get/**", "anon");
         filterChainDefinitionMap.put("/share/info", "apikey, csrf, authc"); // 需要认证
         filterChainDefinitionMap.put("/document/**", "anon");
+        filterChainDefinitionMap.put("/echartPic/**", "anon");
         filterChainDefinitionMap.put("/share/**", "anon");
         filterChainDefinitionMap.put("/sharePlanReport", "anon");
+        filterChainDefinitionMap.put("/sharePerformanceReport", "anon");
+        filterChainDefinitionMap.put("/shareApiReport", "anon");
+        filterChainDefinitionMap.put("/shareUiReport", "anon");
 
         filterChainDefinitionMap.put("/system/theme", "anon");
         filterChainDefinitionMap.put("/system/save/baseurl/**", "anon");
@@ -68,27 +75,25 @@ public class ShiroUtils {
         //mock接口
         filterChainDefinitionMap.put("/mock/**", "anon");
         filterChainDefinitionMap.put("/ws/**", "anon");
-
-        filterChainDefinitionMap.put("/plugin/**", "anon");
+        filterChainDefinitionMap.put("/file/metadata/info/**", "anon");
 
     }
 
     public static void ignoreCsrfFilter(Map<String, String> filterChainDefinitionMap) {
         filterChainDefinitionMap.put("/", "apikey, authc"); // 跳转到 / 不用校验 csrf
         filterChainDefinitionMap.put("/language", "apikey, authc");// 跳转到 /language 不用校验 csrf
-        filterChainDefinitionMap.put("/test/case/file/preview/**", "apikey, authc"); // 预览测试用例附件 不用校验 csrf
+        filterChainDefinitionMap.put("/attachment/preview/**", "apikey, authc"); // 预览测试用例附件 不用校验 csrf
         filterChainDefinitionMap.put("/mock", "apikey, authc"); // 跳转到 /mock接口 不用校验 csrf
-        filterChainDefinitionMap.put("/resource/md/get/**", "apikey, authc");
     }
 
-    public static Cookie getSessionIdCookie(){
+    public static Cookie getSessionIdCookie() {
         SimpleCookie sessionIdCookie = new SimpleCookie();
         sessionIdCookie.setPath("/");
         sessionIdCookie.setName("MS_SESSION_ID");
         return sessionIdCookie;
     }
 
-    public static SessionManager getSessionManager(Long sessionTimeout, CacheManager cacheManager){
+    public static SessionManager getSessionManager(Long sessionTimeout, CacheManager cacheManager) {
         DefaultWebSessionManager sessionManager = new CustomSessionManager();
         sessionManager.setSessionIdUrlRewritingEnabled(false);
         sessionManager.setDeleteInvalidSessions(true);

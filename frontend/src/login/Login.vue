@@ -16,7 +16,7 @@
               <el-form-item v-slot:default>
                 <el-radio-group v-model="form.authenticate" @change="redirectAuth(form.authenticate)">
                   <el-radio label="LDAP" size="mini" v-if="openLdap">LDAP</el-radio>
-                  <el-radio label="LOCAL" size="mini" v-if="openLdap">普通登录</el-radio>
+                  <el-radio label="LOCAL" size="mini" v-if="openLdap">{{ $t('login.normal_Login') }}</el-radio>
                   <el-radio :label="auth.id" size="mini" v-for="auth in authSources" :key="auth.id">{{ auth.type }}
                     {{ auth.name }}
                   </el-radio>
@@ -58,8 +58,8 @@
 </template>
 
 <script>
-import {publicKeyEncrypt, saveLocalStorage} from '@/common/js/utils';
-import {DEFAULT_LANGUAGE, PRIMARY_COLOR} from "@/common/js/constants";
+import {getCurrentUserId, hasPermissions, publicKeyEncrypt, saveLocalStorage} from '@/common/js/utils';
+import {CURRENT_LANGUAGE, DEFAULT_LANGUAGE, PRIMARY_COLOR} from "@/common/js/constants";
 
 const requireComponent = require.context('@/business/components/xpack/', true, /\.vue$/);
 const display = requireComponent.keys().length > 0 ? requireComponent("./display/Display.vue") : {};
@@ -76,21 +76,14 @@ export default {
         password: '',
         authenticate: 'LOCAL'
       },
-      rules: {
-        username: [
-          {required: true, message: this.$t('commons.input_login_username'), trigger: 'blur'},
-        ],
-        password: [
-          {required: true, message: this.$t('commons.input_password'), trigger: 'blur'},
-          {min: 6, max: 30, message: this.$t('commons.input_limit', [6, 30]), trigger: 'blur'}
-        ]
-      },
+      rules: this.getDefaultRules(),
       msg: '',
       ready: false,
       openLdap: false,
-      loginTitle: this.$t("commons.welcome"),
       authSources: [],
       loginUrl: 'signin',
+      lastUser: null,
+      loginTitle: this.$t('commons.welcome')
     };
   },
   beforeCreate() {
@@ -119,6 +112,11 @@ export default {
         this.ready = true;
         // 保存公钥
         localStorage.setItem("publicKey", response.data.message);
+        let lang = localStorage.getItem(CURRENT_LANGUAGE);
+        if (lang) {
+          this.$setLang(lang);
+          this.rules = this.getDefaultRules();
+        }
       } else {
         let user = response.data.data;
         saveLocalStorage(response.data);
@@ -140,6 +138,9 @@ export default {
     if (license.default) {
       license.default.valid(this);
     }
+
+    // 上次登录的用户
+    this.lastUser = sessionStorage.getItem('lastUser');
   },
 
   destroyed() {
@@ -178,6 +179,8 @@ export default {
       });
     },
     doLogin() {
+      // 删除缓存
+      sessionStorage.removeItem('changePassword');
       let publicKey = localStorage.getItem("publicKey");
 
       let form = {
@@ -189,7 +192,10 @@ export default {
       this.result = this.$post(this.loginUrl, form, response => {
         saveLocalStorage(response);
         sessionStorage.setItem('loginSuccess', 'true');
+        sessionStorage.setItem('changePassword', response.message);
         this.getLanguage(response.data.language);
+        // 检查登录用户的权限
+        this.checkRedirectUrl();
       });
     },
     getLanguage(language) {
@@ -207,6 +213,34 @@ export default {
       if (auth.default) {
         auth.default.redirectAuth(this, authId);
       }
+    },
+    getDefaultRules() { // 设置完语言要重新赋值
+      return {
+        username: [
+          {required: true, message: this.$t('commons.input_login_username'), trigger: 'blur'},
+        ],
+        password: [
+          {required: true, message: this.$t('commons.input_password'), trigger: 'blur'},
+          {min: 6, max: 30, message: this.$t('commons.input_limit', [6, 30]), trigger: 'blur'}
+        ]
+      };
+    },
+    checkRedirectUrl() {
+      if (this.lastUser === getCurrentUserId()) {
+        return;
+      }
+      let redirectUrl = '/';
+      if (hasPermissions('PROJECT_USER:READ', 'PROJECT_ENVIRONMENT:READ', 'PROJECT_OPERATING_LOG:READ', 'PROJECT_FILE:READ+JAR', 'PROJECT_FILE:READ+FILE', 'PROJECT_CUSTOM_CODE:READ', 'PROJECT_MESSAGE:READ', 'PROJECT_TEMPLATE:READ')) {
+        redirectUrl = '/project/home';
+      } else if (hasPermissions('WORKSPACE_SERVICE:READ', 'WORKSPACE_USER:READ', 'WORKSPACE_PROJECT_MANAGER:READ', 'WORKSPACE_PROJECT_ENVIRONMENT:READ', 'WORKSPACE_OPERATING_LOG:READ')) {
+        redirectUrl = '/setting/project/:type';
+      } else if (hasPermissions('SYSTEM_USER:READ', 'SYSTEM_WORKSPACE:READ', 'SYSTEM_GROUP:READ', 'SYSTEM_TEST_POOL:READ', 'SYSTEM_SETTING:READ', 'SYSTEM_AUTH:READ', 'SYSTEM_QUOTA:READ', 'SYSTEM_OPERATING_LOG:READ')) {
+        redirectUrl = '/setting';
+      } else {
+        redirectUrl = '/';
+      }
+
+      sessionStorage.setItem('redirectUrl', redirectUrl);
     }
   }
 };

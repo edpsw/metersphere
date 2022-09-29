@@ -3,9 +3,9 @@
     <!-- 认证-->
     <el-tab-pane :label="$t('api_test.definition.request.verified')" name="verified">
 
-      <el-form :model="authConfig" :rules="rule" ref="authConfig" label-position="right" label-width="80px">
+      <el-form :model="authConfig" :rules="rule" ref="authConfig" label-position="right">
         <el-form-item :label="$t('api_test.definition.request.verification_method')" prop="verification">
-          <el-select v-model="authConfig.verification" @change="change"
+          <el-select v-model="authConfig.verification" @change="change" :disabled="isReadOnly"
                      :placeholder="$t('api_test.definition.request.verification_method')" filterable size="small">
             <el-option
               v-for="item in options"
@@ -24,9 +24,10 @@
           </el-input>
         </el-form-item>
 
-        <el-form-item :label="$t('commons.password')" prop="password" v-if=" authConfig.verification!=undefined && authConfig.verification !='No Auth'">
+        <el-form-item :label="$t('commons.password')" prop="password"
+                      v-if=" authConfig.verification!=undefined && authConfig.verification !='No Auth'">
           <el-input v-model="authConfig.password" :placeholder="$t('commons.password')" show-password autocomplete="off"
-                    maxlength="50" show-word-limit/>
+                    maxlength="100" show-word-limit/>
         </el-form-item>
 
       </el-form>
@@ -34,12 +35,12 @@
     </el-tab-pane>
 
     <!--加密-->
-    <el-tab-pane :label="$t('api_test.definition.request.encryption')" name="encryption">
+    <el-tab-pane :label="$t('api_test.definition.request.encryption')" name="encryption" v-if="encryptShow">
       <el-form :model="authConfig" size="small" :rules="rule"
                ref="authConfig">
 
         <el-form-item :label="$t('api_test.definition.request.encryption')" prop="encryption">
-          <el-select v-model="authConfig.encrypt"
+          <el-select v-model="authConfig.encrypt" :disabled="isReadOnly"
                      :placeholder="$t('api_test.definition.request.verification_method')" filterable size="small">
             <el-option
               v-for="item in encryptOptions"
@@ -62,24 +63,24 @@ export default {
   components: {},
   props: {
     request: {},
+    encryptShow: {
+      type: Boolean,
+      default: true,
+    },
+    isReadOnly: Boolean,
+  },
+  watch: {
+    request() {
+      this.initData();
+    }
   },
   created() {
-    if (this.request.hashTree) {
-      for (let index in this.request.hashTree) {
-        if (this.request.hashTree[index].type == 'AuthManager') {
-          this.request.authManager = this.request.hashTree[index];
-          this.request.hashTree.splice(index, 1);
-        }
-      }
-    }
-    if (this.request.authManager) {
-      this.authConfig = this.request.authManager;
-    }
+    this.initData();
   },
   data() {
     return {
-      options: [{name: "No Auth"}, {name: "Basic Auth"}],
-      encryptOptions: [{id: false, name: "不加密"}],
+      options: [{name: "No Auth"}, {name: "Basic Auth"}, {name: "Digest Auth"}],
+      encryptOptions: [{id: false, name: this.$t('commons.encrypted')}],
       activeName: "verified",
       rule: {},
       authConfig: {},
@@ -87,21 +88,40 @@ export default {
   },
   methods: {
     change() {
-      if (this.authConfig.verification === "Basic Auth") {
+      if (this.authConfig.verification === "Basic Auth" || this.authConfig.verification === "Digest Auth") {
         let authManager = createComponent("AuthManager");
-        authManager.verification = "Basic Auth";
+        authManager.verification = this.authConfig.verification;
         authManager.environment = this.request.useEnvironment;
-        this.request.hashTree.push(authManager);
-        this.authConfig = authManager;
+        if (this.request.hashTree == undefined) {
+          this.request.hashTree = [];
+        }
+        // 这里做个判断，如果原来有值则不覆盖
+        if (this.authConfig.username == undefined && this.authConfig.password == undefined) {
+          this.authConfig = authManager;
+        }
+        this.request.authManager = this.authConfig;
       } else {
+        let authManager = createComponent("AuthManager");
+        authManager.verification = "No Auth";
+        if (this.request.hashTree == undefined) {
+          this.request.hashTree = [];
+        }
+        this.authConfig = authManager;
+        this.request.authManager = this.authConfig;
+      }
+    },
+    initData() {
+      if (this.request.hashTree) {
         for (let index in this.request.hashTree) {
-          if (this.request.hashTree[index].type === "AuthManager") {
+          if (this.request.hashTree[index].type == 'AuthManager') {
+            this.request.authManager = this.request.hashTree[index];
             this.request.hashTree.splice(index, 1);
           }
         }
-        this.request.authManager = {};
       }
-      this.request.authManager = this.authConfig;
+      if (this.request.authManager) {
+        this.authConfig = this.request.authManager;
+      }
     }
   }
 }

@@ -13,7 +13,7 @@
           :title="$t('plugin.title')"
           @search="initPlugins"
           @import="importJar"
-          :show-import="true"/>
+          :show-import="true" :upload-permission="['SYSTEM_PLUGIN:UPLOAD']"/>
       </template>
 
       <el-table
@@ -44,20 +44,20 @@
                 :tip="$t('commons.delete')"
                 icon="el-icon-delete"
                 type="danger"
-                @exec="handleDelete(scope.row.id)"/>
+                @exec="handleDelete(scope.row.id)" v-permission="['SYSTEM_PLUGIN:DEL']"/>
             </div>
             <div v-else>
               <ms-table-operator-button
                 :tip="$t('plugin.script_view')"
                 icon="el-icon-view"
-                @exec="handleView(scope.row)"/>
+                @exec="handleView(scope.row)" v-permission="['SYSTEM_PLUGIN:READ']"/>
             </div>
           </template>
         </el-table-column>
 
       </el-table>
     </el-card>
-    <el-dialog :title="$t('commons.import')" :visible.sync="dialogVisible" @close="close">
+    <el-dialog :title="$t('commons.import')" :visible.sync="dialogVisible" @close="close" destroy-on-close>
       <ms-jar-config @close="close"/>
     </el-dialog>
     <ms-script-view ref="scriptView"/>
@@ -70,6 +70,7 @@ import MsTableOperatorButton from "../../common/components/MsTableOperatorButton
 import MsTableHeader from "../../common/components/MsTableHeader";
 import MsJarConfig from "./JarConfig";
 import MsScriptView from "./ScriptView";
+import {operationConfirm} from "@/common/js/utils";
 
 export default {
   name: "PluginConfig",
@@ -128,19 +129,10 @@ export default {
       this.$refs.scriptView.open(row.scriptId);
     },
     handleDelete(id) {
-      this.$confirm(this.$t('api_test.jar_config.delete_tip'), '', {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
+      operationConfirm(this.$t('api_test.jar_config.delete_tip'), () => {
         this.result = this.$get("/plugin/delete/" + id, () => {
           this.$success(this.$t('commons.delete_success'));
           this.initPlugins();
-        });
-      }).catch(() => {
-        this.$message({
-          type: 'info',
-          message: this.$t('commons.delete_cancelled')
         });
       });
     },

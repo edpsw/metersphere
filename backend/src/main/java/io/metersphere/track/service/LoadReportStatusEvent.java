@@ -4,7 +4,9 @@ import io.metersphere.base.domain.LoadTestReport;
 import io.metersphere.base.mapper.ext.ExtTestPlanLoadCaseMapper;
 import io.metersphere.commons.constants.PerformanceTestStatus;
 import io.metersphere.commons.constants.ReportTriggerMode;
+import io.metersphere.commons.constants.TestPlanLoadCaseStatus;
 import io.metersphere.commons.consumer.LoadTestFinishEvent;
+import io.metersphere.commons.utils.LogUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,11 +26,12 @@ public class LoadReportStatusEvent implements LoadTestFinishEvent {
         if (StringUtils.isNotBlank(reportId)) {
             String result = "";
             if (StringUtils.equals(PerformanceTestStatus.Error.name(), status)) {
-                result = "error";
+                result = TestPlanLoadCaseStatus.error.name();
             }
             if (StringUtils.equals(PerformanceTestStatus.Completed.name(), status)) {
-                result = "success";
+                result = TestPlanLoadCaseStatus.success.name();
             }
+            LogUtil.info("update plan load case status: " + result);
             extTestPlanLoadCaseMapper.updateCaseStatus(reportId, result);
         }
     }
@@ -36,6 +39,7 @@ public class LoadReportStatusEvent implements LoadTestFinishEvent {
     @Override
     public void execute(LoadTestReport loadTestReport) {
         if (StringUtils.equals(ReportTriggerMode.MANUAL.name(), loadTestReport.getTriggerMode())
+                || StringUtils.equals(ReportTriggerMode.BATCH.name(), loadTestReport.getTriggerMode())
                 || StringUtils.equals(ReportTriggerMode.TEST_PLAN_SCHEDULE.name(), loadTestReport.getTriggerMode())
                 || StringUtils.equals(ReportTriggerMode.TEST_PLAN_API.name(), loadTestReport.getTriggerMode())) {
             if (StringUtils.equalsAny(loadTestReport.getStatus(),

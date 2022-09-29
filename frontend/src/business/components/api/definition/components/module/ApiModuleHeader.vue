@@ -1,7 +1,7 @@
 <template>
   <div>
     <el-row>
-      <el-col class="protocol-col" :span="9">
+      <el-col :span="8">
         <el-select class="protocol-select" size="small" v-model="condition.protocol">
           <el-option
             v-for="item in options"
@@ -14,20 +14,22 @@
       </el-col>
       <el-col :span="15">
         <ms-search-bar
-          :show-operator="showOperator"
+          :show-operator="showOperator && !isTrashData"
           :condition="condition"
           :commands="operators"/>
       </el-col>
     </el-row>
 
-    <module-trash-button v-if="!isReadOnly" :condition="condition" :total="total" :exe="enableTrash"/>
+    <module-trash-button v-if="showTrashNode" :condition="condition" :total="total"
+                         :exe="enableTrash"/>
 
     <ms-add-basis-api
       :current-protocol="condition.protocol"
+      :module-options="moduleOptions"
       @saveAsEdit="saveAsEdit"
       @refresh="refresh"
       ref="basisApi"/>
-    <api-import :propotal="condition.protocol" ref="apiImport" :moduleOptions="moduleOptions"
+    <api-import :protocol="condition.protocol" ref="apiImport" :moduleOptions="moduleOptions"
                 @refresh="$emit('refresh')"/>
   </div>
 </template>
@@ -46,7 +48,7 @@ export default {
   components: {MsSearchBar, TemplateComponent, ModuleTrashButton, ApiImport, MsAddBasisApi},
   data() {
     return {
-      operators: [
+      httpOperators: [
         {
           label: this.$t('api_test.definition.request.title'),
           callback: this.addApi,
@@ -97,8 +99,51 @@ export default {
               }
             }
           ]
-        }
-      ]
+        },
+      ],
+      operators: [],
+      otherOperators: [
+        {
+          label: this.$t('api_test.definition.request.title'),
+          callback: this.addApi,
+          permissions: ['PROJECT_API_DEFINITION:READ+CREATE_API']
+        },
+        {
+          label: this.$t('api_test.definition.request.fast_debug'),
+          callback: () => {
+            this.$emit('debug');
+          },
+          permissions: ['PROJECT_API_DEFINITION:READ+DEBUG']
+        },
+        {
+          label: this.$t('api_test.api_import.timing_synchronization'),
+          callback: () => {
+            this.$emit('schedule');
+          },
+          permissions: ['PROJECT_API_DEFINITION:READ+TIMING_SYNC']
+        },
+        {
+          label: this.$t('api_test.api_import.label'),
+          callback: this.handleImport,
+          permissions: ['PROJECT_API_DEFINITION:READ+IMPORT_API']
+        },
+        {
+          label: this.$t('report.export'),
+          children: [
+            {
+              label: this.$t('report.export_to_ms_format'),
+              permissions: ['PROJECT_API_DEFINITION:READ+EXPORT_API'],
+              callback: () => {
+                if (!this.projectId) {
+                  this.$warning(this.$t('commons.check_project_tip'));
+                  return;
+                }
+                this.$emit('exportAPI', 'MS');
+              }
+            }
+          ]
+        },
+      ],
     };
   },
   props: {
@@ -123,17 +168,48 @@ export default {
         return false;
       }
     },
+    isTrashData: {
+      type: Boolean,
+      default() {
+        return false;
+      }
+    },
     options: {
       type: Array,
       default() {
         return OPTIONS;
       }
+    },
+    selectProjectId: {
+      type: String,
+      default() {
+        return getCurrentProjectID();
+      }
     }
   },
   computed: {
     projectId() {
-      return getCurrentProjectID();
+      if (this.selectProjectId) {
+        return this.selectProjectId;
+      } else {
+        return getCurrentProjectID();
+      }
     },
+    showTrashNode() {
+      return (!this.isReadOnly && !this.isTrashData);
+    }
+  },
+  watch: {
+    'condition.protocol'() {
+      if (this.condition.protocol === 'HTTP') {
+        this.operators = this.httpOperators;
+      } else {
+        this.operators = this.otherOperators;
+      }
+    },
+  },
+  created() {
+    this.operators = this.httpOperators;
   },
   methods: {
     handleImport() {
@@ -166,7 +242,7 @@ export default {
 
 <style scoped>
 .protocol-select {
-  width: 92px;
+  width: 85px;
   height: 30px;
 }
 

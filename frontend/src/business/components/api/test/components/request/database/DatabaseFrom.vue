@@ -32,12 +32,18 @@
       </el-form-item>
 
       <el-form-item :label="$t('api_test.request.sql.pool_max')" prop="poolMax">
-        <el-input-number size="small" :disabled="isReadOnly" v-model="currentConfig.poolMax" :placeholder="$t('commons.please_select')" :max="100" :min="0"/>
+        <el-input-number size="small" :disabled="isReadOnly" v-model="currentConfig.poolMax"
+                         :placeholder="$t('commons.please_select')" :max="100" :min="0"
+                         onKeypress="return (/[\d]/.test(String.fromCharCode(event.keyCode)))"
+                         :precision="0"/>
       </el-form-item>
 
 
       <el-form-item :label="$t('api_test.request.sql.timeout')" prop="timeout">
-        <el-input-number size="small" :disabled="isReadOnly" v-model="currentConfig.timeout" :placeholder="$t('commons.millisecond')" :max="1000*10000000" :min="0"/>
+        <el-input-number size="small" :disabled="isReadOnly" v-model="currentConfig.timeout"
+                         :placeholder="$t('commons.millisecond')" :max="1000*10000000" :min="0"
+                         onKeypress="return (/[\d]/.test(String.fromCharCode(event.keyCode)))"
+                         :precision="0"/>
       </el-form-item>
 
       <el-form-item>
@@ -148,7 +154,7 @@ export default {
       }else if(type === "org.postgresql.Driver"){
         this.currentConfig.dbUrl = "jdbc:postgresql://127.0.0.1:5432/database";
       }else if(type === "oracle.jdbc.OracleDriver"){
-        this.currentConfig.dbUrl = "jdbc:oracle:thin:192.168.2.1:1521:database";
+        this.currentConfig.dbUrl = "jdbc:oracle:thin:@192.168.2.1:1521:database";
       }
     },
   }
@@ -159,6 +165,10 @@ export default {
 
 .buttons {
   float: right;
+}
+
+.select-100 {
+  width: 100%;
 }
 
 </style>

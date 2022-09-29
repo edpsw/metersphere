@@ -1,12 +1,13 @@
 <template>
-    <functional-relevance
-      :page="page"
-      :get-table-data="getTestCases"
-      :get-node-tree="getTreeNodes"
-      :is-test-plan="true"
-      :save="saveCaseRelevance"
-      ref="functionalRelevance">
-    </functional-relevance>
+  <functional-relevance
+    :page="page"
+    :get-table-data="getTestCases"
+    :get-node-tree="getTreeNodes"
+    :is-test-plan="true"
+    :save="saveCaseRelevance"
+    :version-enable="versionEnable"
+    ref="functionalRelevance">
+  </functional-relevance>
 </template>
 
 <script>
@@ -32,7 +33,11 @@ export default {
   props: {
     planId: {
       type: String
-    }
+    },
+    versionEnable: {
+      type: Boolean,
+      default: false
+    },
   },
   watch: {
     planId() {
@@ -46,15 +51,21 @@ export default {
       }
     },
     saveCaseRelevance(param, vueObj) {
-      param.planId = this.planId;
-      vueObj.result = this.$post('/test/plan/relevance', param, () => {
+      if (param.ids.length > 0) {
+        param.planId = this.planId;
+        vueObj.result = this.$post('/test/plan/relevance', param, () => {
+          vueObj.isSaving = false;
+          this.$success(this.$t('commons.save_success'));
+          vueObj.$refs.baseRelevance.close();
+          vueObj.setSelectCounts(0);
+          this.$emit('refresh');
+        }, (error) => {
+          vueObj.isSaving = false;
+        });
+      } else {
         vueObj.isSaving = false;
-        this.$success(this.$t('commons.save_success'));
-        vueObj.$refs.baseRelevance.close();
-        this.$emit('refresh');
-      },(error) => {
-        vueObj.isSaving = false;
-      });
+        this.$warning(this.$t('test_track.plan_view.please_choose_test_case'));
+      }
     },
     search() {
       this.getTestCases();
@@ -73,11 +84,11 @@ export default {
         });
       });
     },
-    getTreeNodes(vueObj) {
-      vueObj.$refs.nodeTree.result = this.$post("/case/node/list/all/plan",
-      {testPlanId: this.planId, projectId: vueObj.projectId}, response => {
-        vueObj.treeNodes = response.data;
-      });
+    getTreeNodes(vueObj, condition) {
+      vueObj.nodeResult = this.$post("/case/node/list/plan/relate",
+        {planId: this.planId, projectId: vueObj.projectId, ...condition}, response => {
+          vueObj.treeNodes = response.data;
+        });
       vueObj.selectNodeIds = [];
     }
   }

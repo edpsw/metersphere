@@ -38,6 +38,18 @@
       </el-row>
       <el-row>
         <el-col>
+          <el-form-item prop="from">
+            <template v-slot:label>
+              {{ $t('system_parameter_setting.SMTP_from') }} <i style="font-size: 10px;">{{$t('system_parameter_setting.from_tip')}}</i>
+            </template>
+            <el-input v-model="formInline.from" :placeholder="$t('system_parameter_setting.SMTP_from')"
+                      type="text" v-on:input="change()">
+            </el-input>
+          </el-form-item>
+        </el-col>
+      </el-row>
+      <el-row>
+        <el-col>
           <el-form-item :label="$t('system_parameter_setting.test_recipients')">
             <el-input v-model="formInline.recipient" :placeholder="$t('system_parameter_setting.test_recipients')"
                       autocomplete="new-password" type="text" ref="input">
@@ -61,7 +73,7 @@
       <el-button type="primary" @click="testConnection('formInline')" :disabled="disabledConnection" size="small">
         {{ $t('system_parameter_setting.test_connection') }}
       </el-button>
-      <el-button @click="edit" v-if="showEdit" size="small">{{ $t('commons.edit') }}</el-button>
+      <el-button @click="edit" v-if="showEdit" size="small" v-permission="['SYSTEM_SETTING:READ+EDIT']">{{ $t('commons.edit') }}</el-button>
       <el-button type="success" @click="save('formInline')" v-if="showSave" :disabled="disabledSave" size="small">
         {{ $t('commons.save') }}
       </el-button>
@@ -144,6 +156,7 @@ export default {
         "smtp.port": this.formInline.port,
         "smtp.account": this.formInline.account,
         "smtp.password": this.formInline.password,
+        "smtp.from": this.formInline.from,
         "smtp.ssl": this.formInline.ssl,
         "smtp.tls": this.formInline.tls,
         "smtp.recipient": this.formInline.recipient,
@@ -173,11 +186,11 @@ export default {
         {paramKey: "smtp.host", paramValue: this.formInline.host, type: "text", sort: 1},
         {paramKey: "smtp.port", paramValue: this.formInline.port, type: "text", sort: 2},
         {paramKey: "smtp.account", paramValue: this.formInline.account, type: "text", sort: 3},
+        {paramKey: "smtp.from", paramValue: this.formInline.from, type: "text", sort: 4},
         {paramKey: "smtp.password", paramValue: this.formInline.password, type: "password", sort: 4},
         {paramKey: "smtp.ssl", paramValue: this.formInline.ssl, type: "text", sort: 5},
         {paramKey: "smtp.tls", paramValue: this.formInline.tls, type: "text", sort: 6},
         {paramKey: "smtp.recipient", paramValue: this.formInline.recipient, type: "text", sort: 8}
-
       ]
 
       this.$refs[formInline].validate(valid => {

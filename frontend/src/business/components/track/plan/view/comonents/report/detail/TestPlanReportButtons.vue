@@ -5,30 +5,31 @@
         placement="right"
         width="300">
         <p>{{shareUrl}}</p>
-        <span style="color: red;float: left;margin-left: 10px;">24小时有效</span>
+        <span style="color: red;float: left;margin-left: 10px;" v-if="application.typeValue">{{ $t('commons.validity_period')+application.typeValue}}</span>
         <div style="text-align: right; margin: 0">
           <el-button type="primary" size="mini" :disabled="!shareUrl"
                      v-clipboard:copy="shareUrl">{{ $t("commons.copy") }}</el-button>
         </div>
         <el-button icon="el-icon-share" slot="reference" :disabled="!isTestManagerOrTestUser"
                    plain size="mini" @click="handleShare()">
-          {{'分享'}}
+          {{ $t('test_track.report.share') }}
         </el-button>
       </el-popover>
     </el-row>
     <el-row>
       <el-button icon="el-icon-receiving" v-if="!isDb" :disabled="!isTestManagerOrTestUser" plain size="mini" @click="handleSave()">
-        {{'保存'}}
+        {{ $t('commons.save')}}
       </el-button>
     </el-row>
     <el-row>
-      <el-button icon="el-icon-download" :disabled="!isTestManagerOrTestUser" plain size="mini" @click="handleExportHtml()">
-        {{'导出'}}
+      <el-button icon="el-icon-download" :disabled="!isTestManagerOrTestUser"
+                 v-permission="['PROJECT_TRACK_REPORT:READ+EXPORT']" plain size="mini" @click="handleExportHtml()">
+        {{ $t('commons.export')}}
       </el-button>
     </el-row>
     <el-row>
       <el-button icon="el-icon-setting" v-if="!isDb"  :disabled="!isTestManagerOrTestUser" plain size="mini" @click="handleEditTemplate()">
-        {{'配置'}}
+        {{ $t('test_track.report.configuration') }}
       </el-button>
     </el-row>
     <test-plan-report-edit :plan-id="planId" :config.sync="report.config" ref="reportEdit"/>
@@ -41,6 +42,9 @@ import TestPlanApiReport from "@/business/components/track/plan/view/comonents/r
 import {generateShareInfoWithExpired} from "@/network/share";
 import TestPlanReportEdit
   from "@/business/components/track/plan/view/comonents/report/detail/component/TestPlanReportEdit";
+import {editPlanReport, saveTestPlanReport} from "@/network/test-plan";
+import {getCurrentProjectID} from "@/common/js/utils";
+import {CURRENT_LANGUAGE} from "@/i18n/i18n";
 export default {
   name: "TestPlanReportButtons",
   components: {
@@ -58,6 +62,7 @@ export default {
       result: {},
       isTestManagerOrTestUser: true,
       shareUrl: '',
+      application:{},
     };
   },
   methods: {
@@ -72,16 +77,39 @@ export default {
         pram.customData = this.report.id;
         pram.shareType = 'PLAN_DB_REPORT';
       }
+      pram.lang = localStorage.getItem(CURRENT_LANGUAGE);
       generateShareInfoWithExpired(pram, (data) => {
         let thisHost = window.location.host;
         this.shareUrl = thisHost + "/sharePlanReport" + data.shareUrl;
+      });
+      this.getProjectApplication();
+    },
+    getProjectApplication(){
+      this.$get('/project_application/get/' + getCurrentProjectID()+"/TRACK_SHARE_REPORT_TIME", res => {
+        if(res.data){
+          let quantity = res.data.typeValue.substring(0, res.data.typeValue.length - 1);
+          let unit = res.data.typeValue.substring(res.data.typeValue.length - 1);
+          if(unit==='H'){
+            res.data.typeValue = quantity+this.$t('commons.date_unit.hour');
+          }else
+          if(unit==='D'){
+            res.data.typeValue = quantity+this.$t('commons.date_unit.day');
+          }else
+          if(unit==='M'){
+            res.data.typeValue = quantity+this.$t('commons.workspace_unit')+this.$t('commons.date_unit.month');
+          }else
+          if(unit==='Y'){
+            res.data.typeValue = quantity+this.$t('commons.date_unit.year');
+          }
+          this.application = res.data;
+        }
       });
     },
     handleSave() {
       let param = {};
       this.buildParam(param);
-      this.$get('/test/plan/report/saveTestPlanReport/'+this.planId+'/MANUAL', () => {
-        this.result = this.$post('/case/report/edit', param, () => {
+      editPlanReport({id: this.planId, reportSummary: this.report.summary ? this.report.summary : ''}, () => {
+        saveTestPlanReport(this.planId, () => {
           this.$success(this.$t('commons.save_success'));
         });
       });
@@ -103,8 +131,11 @@ export default {
       if (this.isShare) {
         config.url = '/share' + config.url;
       }
-      this.result = this.$download(config, this.report.name + '.html');
-    }
+      config.url = config.url + '/' + localStorage.getItem(CURRENT_LANGUAGE);
+      this.result = this.$download(config, this.report.name + '.html',()=>{
+        this.$success(this.$t("organization.integration.successful_operation"));
+      });
+    },
   }
 }
 </script>

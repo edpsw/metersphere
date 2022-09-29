@@ -6,13 +6,13 @@
       <el-row>
         <el-col :span="11">
           <el-form-item :label="$t('commons.name')" prop="name">
-            <el-input v-model="form.name"></el-input>
+            <el-input v-model="form.name"  class="form-input"></el-input>
           </el-form-item>
         </el-col>
-        <el-col :span="11" :offset="2">
+        <el-col :span="11" >
           <el-form-item :label="$t('group.type')" prop="type">
-            <el-select v-model="form.type" :placeholder="$t('group.select_type')" style="width: 100%"
-                       @change="changeGroup" disabled>
+            <el-select v-model="form.type" :placeholder="$t('group.select_type')" class="form-input"
+                        disabled>
               <el-option :label="$t('group.system')" value="SYSTEM"></el-option>
               <el-option :label="$t('group.workspace')" value="WORKSPACE"></el-option>
               <el-option :label="$t('group.project')" value="PROJECT"></el-option>
@@ -21,18 +21,10 @@
         </el-col>
       </el-row>
       <el-form-item :label="$t('group.description')" prop="description">
-        <el-input type="textarea" v-model="form.description"></el-input>
+        <el-input type="textarea" v-model="form.description" style="width: 83%"></el-input>
       </el-form-item>
-      <el-form-item :label="$t('group.global_group')">
-        <el-switch v-model="form.global" :disabled="dialogType === 'edit' || form.type === 'SYSTEM'"
-                   @change="change(form.global)"></el-switch>
-      </el-form-item>
-
-      <el-form-item :label="$t('project.owning_workspace')" v-if="show" prop="scopeId">
-        <el-select v-model="form.scopeId" :placeholder="$t('project.please_choose_workspace')" style="width: 100%;" disabled
-                   clearable>
-          <el-option v-for="item in workspaces" :key="item.id" :label="item.name" :value="item.id"/>
-        </el-select>
+      <el-form-item :label="form.scopeId === 'global' ? $t('group.global_group') : $t('group.ws_share')">
+        <el-switch v-model="isShare" :disabled="dialogType === 'edit'" @change="change"/>
       </el-form-item>
     </el-form>
 
@@ -45,7 +37,7 @@
 
 <script>
 import {GROUP_SYSTEM} from "@/common/js/constants";
-import {getCurrentUserId, getCurrentWorkspaceId} from "@/common/js/utils";
+import {getCurrentProjectID, getCurrentWorkspaceId} from "@/common/js/utils";
 
 export default {
   name: "EditUserGroup",
@@ -75,7 +67,7 @@ export default {
       show: true,
       workspaces: [],
       title: this.$t('group.create'),
-      flag: false
+      isShare: false
     }
   },
   props: {
@@ -97,14 +89,13 @@ export default {
         this.edit();
       }
 
-      if (this.dialogType === 'copy') {
-        return;
-      }
-
     },
     create() {
       this.$refs['form'].validate(valid => {
         if (valid) {
+          if (!this.form.scopeId) {
+            this.form.scopeId = getCurrentProjectID();
+          }
           this.$post("/user/group/add", this.form, () => {
             this.$success(this.$t('commons.save_success'));
             this.$emit("refresh")
@@ -134,38 +125,16 @@ export default {
       this.show = true;
       this.dialogVisible = true;
       this.dialogType = type;
-      this.form = Object.assign({type: 'PROJECT' ,global: false , scopeId: getCurrentWorkspaceId()}, row);
-      if (type !== 'create') {
-        if (this.form.type === GROUP_SYSTEM) {
-          this.form.global = true;
-          this.show = false;
-        } else {
-          this.form.global = true;
-          this.show = !this.form.global;
-        }
+      if (row) {
+        this.isShare = row.scopeId === getCurrentWorkspaceId();
       }
-      this.getWorkspace();
+      this.form = Object.assign({type: 'PROJECT' ,global: false , scopeId: ''}, row);
     },
     cancel() {
       this.dialogVisible = false;
     },
-    change(global) {
-      this.$get("/user/group/list/ws/" + getCurrentWorkspaceId() + "/" + getCurrentUserId(), res => {
-        let data = res.data;
-        if (data) {
-          data.forEach(row => {
-            if (row.id === 'ws_admin') {
-              this.flag = true;
-            }
-          })
-        }
-        if (this.flag === true) {
-          this.show = this.isSystem ? false : !global;
-        } else {
-          this.form.global = false;
-          this.$warning(this.$t('group.group_global_warning'))
-        }
-      })
+    change(share) {
+      this.form.scopeId = share ? getCurrentWorkspaceId() : getCurrentProjectID();
     },
     changeGroup(val) {
       if (val === GROUP_SYSTEM) {
@@ -176,18 +145,13 @@ export default {
         this.isSystem = false;
       }
     },
-    getWorkspace() {
-      this.$get("/user/group/ws/" + getCurrentUserId(), res => {
-        let data = res.data;
-        if (data) {
-          this.workspaces = data;
-        }
-      })
-    }
+
   }
 }
 </script>
 
 <style scoped>
-
+.form-input{
+  width: 80%;
+}
 </style>

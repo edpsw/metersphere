@@ -3,10 +3,12 @@ package io.metersphere.performance.controller;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import io.metersphere.base.domain.FileMetadata;
+import io.metersphere.base.domain.FileMetadataWithBLOBs;
 import io.metersphere.base.domain.LoadTest;
 import io.metersphere.base.domain.Schedule;
 import io.metersphere.commons.constants.NoticeConstants;
 import io.metersphere.commons.constants.OperLogConstants;
+import io.metersphere.commons.constants.OperLogModule;
 import io.metersphere.commons.constants.PermissionConstants;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
@@ -19,12 +21,14 @@ import io.metersphere.dto.DashboardTestDTO;
 import io.metersphere.dto.LoadTestDTO;
 import io.metersphere.dto.ScheduleDao;
 import io.metersphere.log.annotation.MsAuditLog;
+import io.metersphere.metadata.service.FileMetadataService;
 import io.metersphere.notice.annotation.SendNotice;
+import io.metersphere.performance.dto.LoadModuleDTO;
+import io.metersphere.performance.dto.LoadTestBatchRequest;
 import io.metersphere.performance.dto.LoadTestExportJmx;
 import io.metersphere.performance.request.*;
 import io.metersphere.performance.service.PerformanceTestService;
 import io.metersphere.service.CheckPermissionService;
-import io.metersphere.service.FileService;
 import io.metersphere.track.request.testplan.FileOperationRequest;
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 import org.springframework.http.HttpHeaders;
@@ -43,7 +47,7 @@ public class PerformanceTestController {
     @Resource
     private PerformanceTestService performanceTestService;
     @Resource
-    private FileService fileService;
+    private FileMetadataService fileMetadataService;
     @Resource
     private CheckPermissionService checkPermissionService;
 
@@ -67,6 +71,11 @@ public class PerformanceTestController {
         return performanceTestService.getLoadTestByProjectId(projectId);
     }
 
+    @PostMapping("/list/batch")
+    @RequiresPermissions("PROJECT_PERFORMANCE_TEST:READ")
+    public List<LoadTestDTO> listBatch(@RequestBody LoadTestBatchRequest request) {
+        return performanceTestService.listBatch(request);
+    }
 
     @GetMapping("/state/get/{testId}")
     @RequiresPermissions("PROJECT_PERFORMANCE_TEST:READ")
@@ -76,11 +85,11 @@ public class PerformanceTestController {
     }
 
     @PostMapping(value = "/save", consumes = {"multipart/form-data"})
-    @MsAuditLog(module = "performance_test", type = OperLogConstants.CREATE, title = "#request.name", content = "#msClass.getLogDetails(#request.id)", msClass = PerformanceTestService.class)
+    @MsAuditLog(module = OperLogModule.PERFORMANCE_TEST, type = OperLogConstants.CREATE, title = "#request.name", content = "#msClass.getLogDetails(#request.id)", msClass = PerformanceTestService.class)
     @RequiresPermissions(PermissionConstants.PROJECT_PERFORMANCE_TEST_READ_CREATE)
     @CacheNode // 把监控节点缓存起来
     @SendNotice(taskType = NoticeConstants.TaskType.PERFORMANCE_TEST_TASK, event = NoticeConstants.Event.CREATE,
-            mailTemplate = "performance/TestCreate", subject = "性能测试通知")
+            subject = "性能测试通知")
     public LoadTest save(
             @RequestPart("request") SaveTestPlanRequest request,
             @RequestPart(value = "file", required = false) List<MultipartFile> files
@@ -97,10 +106,10 @@ public class PerformanceTestController {
     }
 
     @PostMapping(value = "/edit", consumes = {"multipart/form-data"})
-    @MsAuditLog(module = "performance_test", type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#request.id)", title = "#request.name", content = "#msClass.getLogDetails(#request.id)", msClass = PerformanceTestService.class)
+    @MsAuditLog(module = OperLogModule.PERFORMANCE_TEST, type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#request.id)", title = "#request.name", content = "#msClass.getLogDetails(#request.id)", msClass = PerformanceTestService.class)
     @RequiresPermissions(PermissionConstants.PROJECT_PERFORMANCE_TEST_READ_EDIT)
     @CacheNode // 把监控节点缓存起来
-    @SendNotice(taskType = NoticeConstants.TaskType.PERFORMANCE_TEST_TASK, event = NoticeConstants.Event.UPDATE, mailTemplate = "performance/TestUpdate", subject = "性能测试通知")
+    @SendNotice(taskType = NoticeConstants.TaskType.PERFORMANCE_TEST_TASK, event = NoticeConstants.Event.UPDATE, subject = "性能测试通知")
     public LoadTest edit(
             @RequestPart("request") EditTestPlanRequest request,
             @RequestPart(value = "file", required = false) List<MultipartFile> files
@@ -154,18 +163,25 @@ public class PerformanceTestController {
     }
 
     @PostMapping("/delete")
-    @MsAuditLog(module = "performance_test", type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#request.id)", msClass = PerformanceTestService.class)
+    @MsAuditLog(module = OperLogModule.PERFORMANCE_TEST, type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#request.id)", msClass = PerformanceTestService.class)
     @RequiresPermissions(PermissionConstants.PROJECT_PERFORMANCE_TEST_READ_DELETE)
     @CacheNode // 把监控节点缓存起来
     @SendNotice(taskType = NoticeConstants.TaskType.PERFORMANCE_TEST_TASK, event = NoticeConstants.Event.DELETE,
-            target = "#targetClass.get(#request.id)", targetClass = PerformanceTestService.class, mailTemplate = "performance/TestDelete", subject = "性能测试通知")
+            target = "#targetClass.get(#request.id)", targetClass = PerformanceTestService.class, subject = "性能测试通知")
     public void delete(@RequestBody DeleteTestPlanRequest request) {
         checkPermissionService.checkPerformanceTestOwner(request.getId());
         performanceTestService.delete(request);
     }
 
+    @PostMapping("/delete/batch")
+    @CacheNode
+    @MsAuditLog(module = OperLogModule.PERFORMANCE_TEST, type = OperLogConstants.DELETE, beforeEvent = "#msClass.deleteBatchLog(#request)", msClass = PerformanceTestService.class)
+    public void deleteBatch(@RequestBody DeletePerformanceRequest request) {
+        performanceTestService.deleteBatch(request);
+    }
+
     @PostMapping("/run")
-    @MsAuditLog(module = "performance_test", type = OperLogConstants.EXECUTE, content = "#msClass.getLogDetails(#request.id)", msClass = PerformanceTestService.class)
+    @MsAuditLog(module = OperLogModule.PERFORMANCE_TEST, type = OperLogConstants.EXECUTE, content = "#msClass.getLogDetails(#request.id)", msClass = PerformanceTestService.class)
     @RequiresPermissions(PermissionConstants.PROJECT_PERFORMANCE_TEST_READ_RUN)
     public String run(@RequestBody RunTestPlanRequest request) {
         return performanceTestService.run(request);
@@ -184,20 +200,20 @@ public class PerformanceTestController {
 
     @GetMapping("/file/getMetadataById/{metadataId}")
     public FileMetadata getMetadataById(@PathVariable String metadataId) {
-        return fileService.getFileMetadataById(metadataId);
+        return fileMetadataService.getFileMetadataById(metadataId);
     }
 
     @PostMapping("/file/{projectId}/getMetadataByName")
-    public List<FileMetadata> getProjectMetadataByName(@PathVariable String projectId, @RequestBody QueryProjectFileRequest request) {
-        return fileService.getProjectFiles(projectId, request);
+    public List<FileMetadataWithBLOBs> getProjectMetadataByName(@PathVariable String projectId, @RequestBody QueryProjectFileRequest request) {
+        return fileMetadataService.getProjectFiles(projectId, request);
     }
 
     @PostMapping("/file/download")
     public ResponseEntity<byte[]> downloadJmx(@RequestBody FileOperationRequest fileOperationRequest) {
-        byte[] bytes = fileService.loadFileAsBytes(fileOperationRequest.getId());
+        byte[] bytes = fileMetadataService.loadFileAsBytes(fileOperationRequest.getId());
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/octet-stream"))
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileOperationRequest.getName() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileOperationRequest.getId() + ".jmx" + "\"")
                 .body(bytes);
     }
 
@@ -207,7 +223,7 @@ public class PerformanceTestController {
     }
 
     @PostMapping(value = "/copy")
-    @MsAuditLog(module = "performance_test", type = OperLogConstants.COPY, content = "#msClass.getLogDetails(#request.id)", msClass = PerformanceTestService.class)
+    @MsAuditLog(module = OperLogModule.PERFORMANCE_TEST, type = OperLogConstants.COPY, content = "#msClass.getLogDetails(#request.id)", msClass = PerformanceTestService.class)
     @RequiresPermissions(PermissionConstants.PROJECT_PERFORMANCE_TEST_READ_COPY)
     @CacheNode // 把监控节点缓存起来
     public void copy(@RequestBody SaveTestPlanRequest request) {
@@ -246,5 +262,30 @@ public class PerformanceTestController {
     @GetMapping("test/follow/{testId}")
     public List<String> getFollows(@PathVariable String testId) {
         return performanceTestService.getFollows(testId);
+    }
+
+    @PostMapping("test/update/follows/{testId}")
+    public void saveFollows(@PathVariable String testId, @RequestBody List<String> follows) {
+        performanceTestService.saveFollows(testId, follows);
+    }
+
+    @GetMapping("module/list/plan/{planId}")
+    public List<LoadModuleDTO> getNodeByPlanId(@PathVariable String planId) {
+        return performanceTestService.getNodeByPlanId(planId);
+    }
+
+    @GetMapping("versions/{loadTestId}")
+    public List<LoadTestDTO> getLoadTestVersions(@PathVariable String loadTestId) {
+        return performanceTestService.getLoadTestVersions(loadTestId);
+    }
+
+    @GetMapping("get/{version}/{refId}")
+    public LoadTestDTO getLoadTestByVersion(@PathVariable String version, @PathVariable String refId) {
+        return performanceTestService.getLoadTestByVersion(version, refId);
+    }
+
+    @GetMapping("delete/{version}/{refId}")
+    public void deleteLoadTestByVersion(@PathVariable String version, @PathVariable String refId) {
+        performanceTestService.deleteLoadTestByVersion(version, refId);
     }
 }

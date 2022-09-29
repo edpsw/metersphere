@@ -21,14 +21,42 @@
                            :defaultKey="formData.moduleId"
                            @getValue="setModule"
                            :obj="moduleObj" clearable checkStrictly ref="selectTree"/>
-              <!--              <ms-select-tree :disabled="readOnly" :data="treeNodes" :defaultKey="form.module" :obj="moduleObj"-->
-              <!--                              @getValue="setModule" clearable checkStrictly size="small"/>-->
+
             </el-form-item>
             <el-form-item :label-width="labelWith" :label="$t('commons.import_mode')" prop="modeId">
               <el-select size="small" v-model="formData.modeId" clearable>
                 <el-option v-for="item in modeOptions" :key="item.id" :label="item.name" :value="item.id"/>
               </el-select>
+              <el-checkbox size="mini" v-if="formData.modeId === 'fullCoverage'" v-model="formData.coverModule"
+                           style="padding-left: 10px">
+                {{ this.$t('commons.cover_api') }}
+              </el-checkbox>
             </el-form-item>
+          </el-col>
+
+          <el-col :span="12" style="margin-left: 50px">
+            <el-switch v-model="authEnable" :active-text="$t('api_test.api_import.add_request_params')"></el-switch>
+          </el-col>
+
+          <el-col :span="19" v-show="authEnable" style="margin-top: 10px; margin-left: 50px" class="request-tabs">
+            <!-- 请求头 -->
+            <div>
+              <span>{{ $t('api_test.request.headers') }}{{ $t('api_test.api_import.optional') }}：</span>
+            </div>
+            <ms-api-key-value :label="$t('api_test.definition.request.auth_config')"
+                              :show-desc="true" :isShowEnable="isShowEnable" :suggestions="headerSuggestions"
+                              :items="headers"/>
+            <!--query 参数-->
+            <div style="margin-top: 10px">
+              <span>{{ $t('api_test.definition.request.query_param') }}{{ $t('api_test.api_import.optional') }}：</span>
+            </div>
+            <ms-api-variable :with-mor-setting="true" :is-read-only="isReadOnly" :isShowEnable="isShowEnable"
+                             :parameters="queryArguments"/>
+            <!--认证配置-->
+            <div style="margin-top: 10px">
+              <span>{{ $t('api_test.definition.request.auth_config') }}{{ $t('api_test.api_import.optional') }}：</span>
+            </div>
+            <ms-api-auth-config :is-read-only="isReadOnly" :request="authConfig" :encryptShow="false"/>
           </el-col>
         </el-row>
 
@@ -82,7 +110,7 @@
       width="60%"
     >
       <swagger-task-notification :api-test-id="formData.id" :scheduleReceiverOptions="scheduleReceiverOptions"
-                                 ref="schedule-task-notification">
+                                 ref="scheduleTaskNotification">
 
       </swagger-task-notification>
     </el-dialog>
@@ -100,11 +128,25 @@ import {cronValidate} from "@/common/js/cron";
 import {getCurrentProjectID, getCurrentUser, getCurrentWorkspaceId} from "@/common/js/utils";
 import SelectTree from "@/business/components/common/select-tree/SelectTree";
 import SwaggerTaskNotification from "@/business/components/api/definition/components/import/SwaggerTaskNotification";
+import MsApiKeyValue from "../ApiKeyValue";
+import MsApiVariable from "../ApiVariable";
+import MsApiAuthConfig from "../auth/ApiAuthConfig";
+import {REQUEST_HEADERS} from "@/common/js/constants";
+import {KeyValue} from "../../model/ApiTestModel";
+import {TYPE_TO_C} from "@/business/components/api/automation/scenario/Setting";
 
 export default {
   name: "ApiSchedule",
   components: {
-    SwaggerTaskNotification, SelectTree, MsFormDivider, SwaggerTaskList, CrontabResult, Crontab
+    SwaggerTaskNotification,
+    SelectTree,
+    MsFormDivider,
+    SwaggerTaskList,
+    CrontabResult,
+    Crontab,
+    MsApiKeyValue,
+    MsApiVariable,
+    MsApiAuthConfig
   },
   props: {
     customValidate: {
@@ -118,7 +160,7 @@ export default {
       default: false
     },
     moduleOptions: Array,
-    param: Object,
+    param: Object
   },
 
   watch: {
@@ -135,6 +177,8 @@ export default {
         callback(new Error(this.$t('schedule.cron_expression_format_error')));
       } else if (!customValidate.pass) {
         callback(new Error(customValidate.info));
+      } else if (!this.intervalValidate()) {
+        callback(new Error(this.$t('schedule.cron_expression_interval_error')));
       } else {
         callback();
       }
@@ -161,9 +205,10 @@ export default {
       },
       formData: {
         swaggerUrl: '',
-        modeId: this.$t('commons.not_cover'),
+        modeId: 'incrementalMerge',
         moduleId: '',
-        rule: ''
+        rule: '',
+        coverModule: false
       },
       modeOptions: [
         {
@@ -180,6 +225,14 @@ export default {
         id: 'id',
         label: 'name',
       },
+      isShowEnable: true,
+      authEnable: false,
+      headerSuggestions: REQUEST_HEADERS,
+      headers: [],
+      queryArguments: [],
+      authConfig: {
+        hashTree: []
+      }
     };
   },
 
@@ -188,6 +241,11 @@ export default {
       if (this.formData.id !== null && this.formData.id !== undefined) {
         this.dialogVisible = true;
         this.initUserList();
+        this.$nextTick(() => {
+          if (this.$refs.scheduleTaskNotification) {
+            this.$refs.scheduleTaskNotification.initForm();
+          }
+        })
       } else {
         this.$warning("请先选择您要添加通知的定时任务");
       }
@@ -195,7 +253,7 @@ export default {
     },
 
     initUserList() {
-      this.result = this.$get('user/ws/member/list/' + getCurrentWorkspaceId(), response => {
+      this.result = this.$get('/user/project/member/list', response => {
         this.scheduleReceiverOptions = response.data;
       });
     },
@@ -209,6 +267,7 @@ export default {
       if (!this.formData.rule) {
         this.$refs.crontabResult.resultList = [];
       }
+      this.clearAuthInfo();
       this.$nextTick(() => {
         this.$refs.selectTree.init();
       });
@@ -241,6 +300,20 @@ export default {
       this.formData.projectId = getCurrentProjectID();
       this.formData.workspaceId = getCurrentWorkspaceId();
       this.formData.value = this.formData.rule;
+      if (this.authEnable) {
+        // 设置请求头或 query 参数
+        this.formData.headers = this.headers;
+        this.formData.arguments = this.queryArguments;
+        // 设置 BaseAuth 参数
+        if (this.authConfig.authManager != undefined) {
+          this.authConfig.authManager.clazzName = TYPE_TO_C.get("AuthManager");
+          this.formData.authManager = this.authConfig.authManager;
+        }
+      } else {
+        this.formData.headers = undefined;
+        this.formData.arguments = undefined;
+        this.formData.authManager = undefined;
+      }
       let url = '';
       if (this.formData.id) {
         url = '/api/definition/schedule/update';
@@ -248,13 +321,26 @@ export default {
         this.formData.enable = true;
         url = '/api/definition/schedule/create';
       }
+      if (!this.formData.moduleId) {
+        if (this.$refs.selectTree.returnDataKeys.length > 0) {
+          this.formData.moduleId = this.$refs.selectTree.returnDataKeys
+        }
+      }
       this.$post(url, this.formData, () => {
         this.$success(this.$t('commons.save_success'));
         this.$refs.taskList.search();
         this.clear();
       });
     },
-
+    searchTaskList() {
+      this.$refs.taskList.search();
+    },
+    intervalValidate() {
+      if (this.getIntervalTime() < 1 * 60 * 1000) {
+        return false;
+      }
+      return true;
+    },
     intervalShortValidate() {
       if (this.getIntervalTime() < 3 * 60 * 1000) {
         this.$info(this.$t('schedule.cron_expression_interval_short_error'));
@@ -275,12 +361,33 @@ export default {
       this.formData.modulePath = data.path;
     },
     handleRowClick(row) {
+      // 如果认证信息不为空，进行转化
+      if (row.config != null || row.config != undefined) {
+        this.authEnable = true;
+        let config = JSON.parse(row.config);
+        this.headers = config.headers;
+        this.queryArguments = config.arguments;
+        if (config.authManager != null || config.authManager != undefined) {
+          this.authConfig = config;
+        } else {
+          this.authConfig = {hashTree: [], authManager: {}};
+        }
+      } else {
+        this.clearAuthInfo();
+      }
       Object.assign(this.formData, row);
       this.$nextTick(() => {
         this.$refs.selectTree.init();
       });
+    },
+    clearAuthInfo() {
+      this.headers = [];
+      this.queryArguments = [];
+      this.headers.push(new KeyValue({enable: true}));
+      this.queryArguments.push(new KeyValue({enable: true}));
+      this.authConfig = {hashTree: [], authManager: {}};
+      this.authEnable = false;
     }
-
   },
   computed: {
     isTesterPermission() {

@@ -1,9 +1,10 @@
 <template>
   <ms-container>
     <ms-main-container>
+
       <el-card class="table-card">
         <template v-slot:header>
-          <ms-table-header :create-permission="['PROJECT_TRACK_ISSUE:READ+CREATE']" :condition.sync="page.condition" @search="getIssues" @create="handleCreate"
+          <ms-table-header :create-permission="['PROJECT_TRACK_ISSUE:READ+CREATE']" :condition.sync="page.condition" @search="search" @create="handleCreate"
                            :create-tip="$t('test_track.issue.create_issue')"
                            :tip="$t('commons.search_by_name_or_id')">
             <template v-slot:button>
@@ -26,21 +27,15 @@
           :show-select-all="false"
           :screen-height="screenHeight"
           :remember-order="true"
-          @handlePageChange="getIssues"
           :fields.sync="fields"
           :field-key="tableHeaderKey"
-          @refresh="getIssues"
           :custom-fields="issueTemplate.customFields"
+          @filter="search"
+          @order="getIssues"
+          @handlePageChange="getIssues"
           ref="table"
         >
     <span v-for="(item) in fields" :key="item.key">
-<!--          <ms-table-column
-           :label="$t('test_track.issue.id')"
-           prop="id"
-           :field="item"
-           :fields-width="fieldsWidth"
-           v-if="false">
-          </ms-table-column>-->
         <ms-table-column width="1">
         </ms-table-column>
           <ms-table-column
@@ -78,7 +73,9 @@
                   :label="$t('test_track.issue.platform_status') "
                   prop="platformStatus">
             <template v-slot="scope">
-              {{ scope.row.platformStatus ? scope.row.platformStatus : '--'}}
+              <span v-if="scope.row.platform ==='Zentao'">{{ scope.row.platformStatus ? issueStatusMap[scope.row.platformStatus] : '--'}}</span>
+              <span v-else-if="scope.row.platform ==='Tapd'">{{ scope.row.platformStatus ? tapdIssueStatusMap[scope.row.platformStatus] : '--'}}</span>
+              <span v-else>{{ scope.row.platformStatus ? scope.row.platformStatus : '--'}}</span>
             </template>
           </ms-table-column>
 
@@ -133,13 +130,27 @@
          </ms-table-column>
 
           <ms-table-column v-for="field in issueTemplate.customFields" :key="field.id"
+                           :filters="field.name === '状态'? i18nCustomStatus(getCustomFieldFilter(field)) : getCustomFieldFilter(field)"
+                           sortable="custom"
                            :field="item"
                            :fields-width="fieldsWidth"
+                           min-width="120"
                            :label="field.system ? $t(systemNameMap[field.name]) :field.name"
+                           :column-key="generateColumnKey(field)"
                            :prop="field.name">
               <template v-slot="scope">
                 <span v-if="field.name === '状态'">
-                  {{getCustomFieldValue(scope.row, field) ? getCustomFieldValue(scope.row, field) : issueStatusMap[scope.row.status]}}
+                  {{getCustomFieldValue(scope.row, field, issueStatusMap[scope.row.status])}}
+                </span>
+                <span v-else-if="field.type === 'richText'">
+                   <el-popover
+                     placement="right"
+                     width="500"
+                     trigger="hover"
+                     popper-class="issues-popover">
+                     <ms-mark-down-text prop="value" :data="{value: getCustomFieldValue(scope.row, field)}" :disabled="true"/>
+                    <el-button slot="reference" type="text">{{ $t('test_track.issue.preview') }}</el-button>
+                  </el-popover>
                 </span>
                 <span v-else>
                   {{getCustomFieldValue(scope.row, field)}}
@@ -154,7 +165,6 @@
                              :total="page.total"/>
 
         <issue-edit @refresh="getIssues" ref="issueEdit"/>
-
       </el-card>
     </ms-main-container>
   </ms-container>
@@ -169,26 +179,34 @@ import MsTablePagination from "@/business/components/common/pagination/TablePagi
 import {
   ISSUE_PLATFORM_OPTION,
   ISSUE_STATUS_MAP,
-  SYSTEM_FIELD_NAME_MAP
+  SYSTEM_FIELD_NAME_MAP,
+  TAPD_ISSUE_STATUS_MAP
 } from "@/common/js/table-constants";
 import MsTableHeader from "@/business/components/common/components/MsTableHeader";
 import IssueDescriptionTableItem from "@/business/components/track/issue/IssueDescriptionTableItem";
 import IssueEdit from "@/business/components/track/issue/IssueEdit";
-import {getIssues, syncIssues} from "@/network/Issue";
+import {checkSyncIssues, getIssuePartTemplateWithProject, getIssues, syncIssues} from "@/network/Issue";
 import {
   getCustomFieldValue,
   getCustomTableWidth,
-  getPageInfo, getTableHeaderWithCustomFields,saveLastTableSortField,getLastTableSortField
+  getPageInfo, getTableHeaderWithCustomFields, getLastTableSortField, getCustomFieldFilter
 } from "@/common/js/tableUtils";
 import MsContainer from "@/business/components/common/components/MsContainer";
 import MsMainContainer from "@/business/components/common/components/MsMainContainer";
-import {getCurrentProjectID} from "@/common/js/utils";
-import {getIssueTemplate} from "@/network/custom-field-template";
+import {getCurrentProjectID, getCurrentWorkspaceId} from "@/common/js/utils";
 import {getProjectMember} from "@/network/user";
+import {LOCAL} from "@/common/js/constants";
+import {TEST_TRACK_ISSUE_LIST} from "@/business/components/common/components/search/search-components";
+import {
+  generateColumnKey,
+  getAdvSearchCustomField
+} from "@/business/components/common/components/search/custom-component";
+import MsMarkDownText from "@/business/components/track/case/components/MsMarkDownText";
 
 export default {
   name: "IssueList",
   components: {
+    MsMarkDownText,
     MsMainContainer,
     MsContainer,
     IssueEdit,
@@ -198,11 +216,14 @@ export default {
   },
   data() {
     return {
-      page: getPageInfo(),
+      page: getPageInfo({
+        components: TEST_TRACK_ISSUE_LIST,
+        custom: false,
+      }),
       fields: [],
       tableHeaderKey:"ISSUE_LIST",
       fieldsWidth: getCustomTableWidth('ISSUE_LIST'),
-      screenHeight: 'calc(100vh - 200px)',
+      screenHeight: 'calc(100vh - 160px)',
       operators: [
         {
           tip: this.$t('commons.edit'), icon: "el-icon-edit",
@@ -220,8 +241,9 @@ export default {
       ],
       issueTemplate: {},
       members: [],
+      userFilter: [],
       isThirdPart: false,
-      creatorFilters: []
+      creatorFilters: [],
     };
   },
   watch: {
@@ -230,31 +252,22 @@ export default {
     },
   },
   activated() {
-    // 解决错位问题
-    window.addEventListener('resize', this.tableDoLayout);
-    getProjectMember((data) => {
-      this.members = data;
-    });
-    getIssueTemplate()
-      .then((template) => {
-        this.issueTemplate = template;
-        if (this.issueTemplate.platform === 'metersphere') {
-          this.isThirdPart = false;
-        } else {
-          this.isThirdPart = true;
-        }
-        this.fields = getTableHeaderWithCustomFields('ISSUE_LIST', this.issueTemplate.customFields);
-        if (!this.isThirdPart) {
-          for (let i = 0; i < this.fields.length; i++) {
-            if (this.fields[i].id === 'platformStatus') {
-              this.fields.splice(i, 1);
-              break;
-            }
-          }
-        }
-        this.$refs.table.reloadTable();
+    this.page.result.loading = true;
+    this.$nextTick(() => {
+      // 解决错位问题
+      window.addEventListener('resize', this.tableDoLayout);
+      getProjectMember((data) => {
+        this.members = data;
+        this.userFilter = data.map(u => {
+          return {text: u.name, value: u.id};
+        });
+        getIssuePartTemplateWithProject((template) => {
+          this.initFields(template);
+          this.page.result.loading = false;
+        });
       });
-    this.getIssues();
+      this.getIssues();
+    });
   },
   computed: {
     platformFilters() {
@@ -263,69 +276,133 @@ export default {
     issueStatusMap() {
       return ISSUE_STATUS_MAP;
     },
+    tapdIssueStatusMap() {
+      return TAPD_ISSUE_STATUS_MAP;
+    },
     systemNameMap() {
       return SYSTEM_FIELD_NAME_MAP;
     },
     projectId() {
       return getCurrentProjectID();
     },
-
-
+    workspaceId(){
+      return getCurrentWorkspaceId();
+    }
   },
   created() {
     this.getMaintainerOptions();
   },
   methods: {
+    generateColumnKey,
     tableDoLayout() {
-      this.$refs.table.doLayout();
+      if (this.$refs.table) this.$refs.table.doLayout();
     },
-    getCustomFieldValue(row, field) {
-      return getCustomFieldValue(row, field, this.members);
+    getCustomFieldValue(row, field, defaultVal) {
+      let value = getCustomFieldValue(row, field, this.members);
+      return value ? value : defaultVal;
+    },
+    getCustomFieldFilter(field) {
+      return getCustomFieldFilter(field, this.userFilter);
+    },
+    i18nCustomStatus(options) {
+      let i18ns = [];
+      if (options) {
+        options.forEach(option => {
+          option.text = this.$t(option.text);
+          i18ns.push(option);
+        });
+      }
+      return i18ns;
+    },
+    initFields(template) {
+      this.issueTemplate = template;
+      if (this.issueTemplate.platform === LOCAL) {
+        this.isThirdPart = false;
+      } else {
+        this.isThirdPart = true;
+      }
+      this.fields = getTableHeaderWithCustomFields('ISSUE_LIST', this.issueTemplate.customFields, this.members);
+      if (!this.isThirdPart) {
+        for (let i = 0; i < this.fields.length; i++) {
+          if (this.fields[i].id === 'platformStatus') {
+            this.fields.splice(i, 1);
+            break;
+          }
+        }
+        // 如果不是三方平台则移除备选字段中的平台状态
+        let removeField = {id: 'platformStatus', name: 'platformStatus', remove: true};
+        this.issueTemplate.customFields.push(removeField);
+      }
+      // 过滤自定义字段
+      this.page.condition.components = this.page.condition.components.filter(item => item.custom !== true);
+      let comp = getAdvSearchCustomField(this.page.condition, this.issueTemplate.customFields);
+      this.page.condition.components.push(...comp);
+      if (this.$refs.table) this.$refs.table.reloadTable();
+    },
+    search() {
+      // 添加搜索条件时，当前页设置成第一页
+      this.page.currentPage = 1;
+      this.getIssues();
     },
     getIssues() {
       this.page.condition.projectId = this.projectId;
+      this.page.condition.workspaceId= this.workspaceId;
       this.page.condition.orders = getLastTableSortField(this.tableHeaderKey);
       this.page.result = getIssues(this.page);
     },
     getMaintainerOptions() {
-      this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()}, response => {
+      this.$get('/user/project/member/list', response => {
         this.creatorFilters = response.data.map(u => {
           return {text: u.name, value: u.id};
         });
       });
-
     },
     handleEdit(data) {
-      this.$refs.issueEdit.open(data);
+      this.$refs.issueEdit.open(data, 'edit');
     },
     handleCreate() {
-      this.$refs.issueEdit.open();
+      this.$refs.issueEdit.open(null, 'add');
     },
     handleCopy(data) {
       let copyData = {};
-      Object.assign(copyData, data);
+      Object.assign(copyData, data)
+      copyData.copyIssueId = copyData.id
       copyData.id = null;
       copyData.name = data.name + '_copy';
-      this.$refs.issueEdit.open(copyData);
+      this.$refs.issueEdit.open(copyData, 'copy');
     },
     handleDelete(data) {
+      this.$alert(this.$t('test_track.issue.delete_tip') + ' ' + data.title + " ？", '', {
+        confirmButtonText: this.$t('commons.confirm'),
+        callback: (action) => {
+          if (action === 'confirm') {
+            this._handleDelete(data);
+          }
+        }
+      });
+    },
+    _handleDelete(data) {
       this.page.result = this.$get('issues/delete/' + data.id, () => {
         this.$success(this.$t('commons.delete_success'));
         this.getIssues();
       });
     },
     btnDisable(row) {
-      if (this.issueTemplate.platform == "metersphere" && row.platform == 'Local') {
-        return false;
-      }
       if (this.issueTemplate.platform !== row.platform) {
         return true;
       }
       return false;
     },
     syncIssues() {
-      this.page.result = syncIssues(() => {
-        this.getIssues();
+      this.page.result.loading = true;
+      syncIssues((data) => {
+        if (data === false) {
+          checkSyncIssues(this.page.result);
+        } else {
+          this.$success(this.$t('test_track.issue.sync_complete'));
+          this.page.result.loading = false;
+          this.getIssues();
+        }
       });
     }
   }

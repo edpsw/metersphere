@@ -3,7 +3,6 @@
   <test-case-relevance-base
     @setProject="setProject"
     @save="saveCaseRelevance"
-    width="60%"
     ref="baseRelevance">
 
     <template v-slot:aside>
@@ -13,6 +12,7 @@
         @protocolChange="handleProtocolChange"
         @refreshTable="refresh"
         @setModuleOptions="setModuleOptions"
+        :show-case-num="false"
         :is-read-only="true"
         ref="nodeTree"/>
     </template>
@@ -21,6 +21,9 @@
       :current-protocol="currentProtocol"
       :select-node-ids="selectNodeIds"
       :project-id="projectId"
+      :not-in-ids="notInIds"
+      :versionEnable="versionEnable"
+      @selectCountChange="setSelectCounts"
       ref="apiCaseList"/>
 
   </test-case-relevance-base>
@@ -52,13 +55,23 @@ export default {
   props: {
     caseId: {
       type: String
+    },
+    versionEnable: {
+      type: Boolean,
+      default: false
+    },
+    notInIds: {
+      type: Array,
+      default: null
     }
   },
   methods: {
     open() {
       this.init();
       this.$refs.baseRelevance.open();
-      this.$refs.apiCaseList.clear();
+      if (this.$refs.apiCaseList) {
+        this.$refs.apiCaseList.clear();
+      }
     },
     init() {
       if (this.$refs.apiCaseList) {
@@ -92,6 +105,9 @@ export default {
         this.$refs.baseRelevance.close();
       });
     },
+    setSelectCounts(data) {
+      this.$refs.baseRelevance.selectCounts = data;
+    }
   }
 }
 </script>

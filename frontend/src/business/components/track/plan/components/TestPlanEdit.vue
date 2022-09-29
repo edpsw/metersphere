@@ -2,8 +2,10 @@
 
   <div>
 
-    <el-dialog :close-on-click-modal="false"
+    <el-dialog v-loading="result.loading"
+               :close-on-click-modal="false"
                :destroy-on-close="true"
+               append-to-body
                :title="operationType === 'edit' ? $t('test_track.plan.edit_plan') : $t('test_track.plan.create_plan')"
                :visible.sync="dialogFormVisible"
                @close="close"
@@ -17,7 +19,8 @@
               :label="$t('test_track.plan.plan_name')"
               :label-width="formLabelWidth"
               prop="name">
-              <el-input v-model="form.name" :placeholder="$t('test_track.plan.input_plan_name')" :size="itemSize"></el-input>
+              <el-input v-model="form.name" :placeholder="$t('test_track.plan.input_plan_name')"
+                        :size="itemSize" maxlength="128" show-word-limit/>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -46,9 +49,7 @@
           <el-col :span="12">
             <el-form-item :label="$t('test_track.plan.plan_stage')" :label-width="formLabelWidth" prop="stage">
               <el-select v-model="form.stage" clearable :placeholder="$t('test_track.plan.input_plan_stage')" style="width: 100%;" :size="itemSize">
-                <el-option :label="$t('test_track.plan.smoke_test')" value="smoke"></el-option>
-                <el-option :label="$t('test_track.plan.system_test')" value="system"></el-option>
-                <el-option :label="$t('test_track.plan.regression_test')" value="regression"></el-option>
+                <el-option v-for="item in stageOption" :key="item.value" :label="$t(item.text)" :value="item.value"/>
               </el-select>
             </el-form-item>
           </el-col>
@@ -62,6 +63,7 @@
               :label-width="formLabelWidth"
               prop="plannedStartTime">
               <el-date-picker :placeholder="$t('test_track.plan.planned_start_time')" v-model="form.plannedStartTime"
+                              :size="itemSize"
                               type="datetime" value-format="timestamp" style="width: 100%;"></el-date-picker>
             </el-form-item>
           </el-col>
@@ -72,6 +74,7 @@
               :label-width="formLabelWidth"
               prop="plannedEndTime">
               <el-date-picker :placeholder="$t('test_track.plan.planned_end_time')" v-model="form.plannedEndTime"
+                              :size="itemSize"
                               type="datetime" value-format="timestamp" style="width: 100%;"></el-date-picker>
             </el-form-item>
           </el-col>
@@ -81,38 +84,20 @@
         <el-row type="flex" :gutter="20">
           <el-col :span="12">
             <el-form-item
-              :label="$t('自动更新状态')"
-              :label-width="formLabelWidth"
+              :label="$t('test_track.plan_view.automatically_update_status')"
+              label-width="140px"
               prop="automaticStatusUpdate">
               <el-switch v-model="form.automaticStatusUpdate"/>
-              <ms-instructions-icon :content="'当功能用例关联的接口或性能用例在测试计划执行后，自动更新功能用例的状态'"/>
+              <ms-instructions-icon :content="$t('test_track.plan_view.automatically_update_status_tip')"/>
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item
-              :label="$t('允许关联重复用例')"
+              :label="$t('test_track.plan_view.allow_associated_repetitive_cases')"
               label-width="140px"
               prop="automaticStatusUpdate">
               <el-switch v-model="form.repeatCase"/>
-              <ms-instructions-icon :content="'是否允许同一个测试计划中多次关联相同用例'"/>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row type="flex" justify="left" :gutter="20">
-          <el-col :span="12">
-            <el-form-item :label="$t('test_track.plan.follow_people')" :label-width="formLabelWidth"
-                          prop="follows">
-              <el-select v-model="form.follows"
-                         clearable
-                         :placeholder="$t('test_track.plan.follow_people')" filterable multiple size="small">
-                <el-option
-                  v-for="(item) in principalOptions"
-                  :key="item.id"
-                  :label="item.name + '(' + item.id + ')'"
-                  :value="item.id">
-                </el-option>
-              </el-select>
+              <ms-instructions-icon :content="$t('test_track.plan_view.allow_associated_repetitive_cases_tip')"/>
             </el-form-item>
           </el-col>
         </el-row>
@@ -143,15 +128,18 @@
 
         <div class="dialog-footer">
           <el-button
+            v-prevent-re-click
             @click="dialogFormVisible = false">
             {{ $t('test_track.cancel') }}
           </el-button>
           <el-button
             type="primary"
+            v-prevent-re-click
             @click="savePlan">
             {{ $t('test_track.confirm') }}
           </el-button>
-          <el-button type="primary" @click="testPlanInfo">
+          <el-button type="primary" v-prevent-re-click
+                     @click="testPlanInfo">
             {{ $t('test_track.planning_execution') }}
           </el-button>
         </div>
@@ -169,6 +157,7 @@ import TestPlanStatusButton from "../common/TestPlanStatusButton";
 import {getCurrentProjectID, getCurrentWorkspaceId, listenGoBack, removeGoBackListener} from "@/common/js/utils";
 import MsInputTag from "@/business/components/api/automation/scenario/MsInputTag";
 import MsInstructionsIcon from "@/business/components/common/components/MsInstructionsIcon";
+import {getPlanStageOption} from "@/network/test-plan";
 
 export default {
   name: "TestPlanEdit",
@@ -177,7 +166,8 @@ export default {
     return {
       isStepTableAlive: true,
       dialogFormVisible: false,
-      itemSize: "medium",
+      itemSize: "small",
+      result: {},
       form: {
         name: '',
         projectIds: [],
@@ -193,7 +183,7 @@ export default {
       rules: {
         name: [
           {required: true, message: this.$t('test_track.plan.input_plan_name'), trigger: 'blur'},
-          {max: 30, message: this.$t('test_track.length_less_than') + '30', trigger: 'blur'}
+          {max: 128, message: this.$t('test_track.length_less_than') + '128', trigger: 'blur'}
         ],
         principals: [{required: true, message: this.$t('test_track.plan.input_plan_principal'), trigger: 'change'}],
         stage: [{required: true, message: this.$t('test_track.plan.input_plan_stage'), trigger: 'change'}],
@@ -202,11 +192,15 @@ export default {
       formLabelWidth: "100px",
       operationType: '',
       principalOptions: [],
+      stageOption: []
     };
   },
   created() {
     //设置“测试阶段”和“负责人”的默认值
     this.form.stage = 'smoke';
+    getPlanStageOption((data) => {
+      this.stageOption = data;
+    });
   },
   methods: {
     reload() {
@@ -227,8 +221,22 @@ export default {
         this.form.tags = [];
       }
       listenGoBack(this.close);
+      this.setEmptyStage();
       this.dialogFormVisible = true;
       this.reload();
+    },
+    setEmptyStage() {
+      // 如果测试阶段选项中没有当前值，则置空
+      let hasOptions = false;
+      this.stageOption.forEach(item => {
+        if (item.value === this.form.stage) {
+          hasOptions = true;
+          return;
+        }
+      });
+      if (!hasOptions) {
+        this.form.stage = '';
+      }
     },
     testPlanInfo() {
       this.$refs['planFrom'].validate((valid) => {
@@ -245,8 +253,10 @@ export default {
             this.form.tags = JSON.stringify(this.form.tags);
           }
           param.tags = this.form.tags;
-          this.$post('/test/plan/' + this.operationType, param, response => {
-            this.$success(this.$t('commons.save_success'));
+          this.result = this.$post('/test/plan/' + this.operationType, param, response => {
+            if (this.operationType === 'add') {
+              this.$success(this.$t('commons.save_success'));
+            }
             this.dialogFormVisible = false;
             this.$router.push('/track/plan/view/' + response.data.id);
           });
@@ -292,7 +302,7 @@ export default {
       return true;
     },
     setPrincipalOptions() {
-      this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()},response => {
+      this.$get('/user/project/member/list', response => {
         this.principalOptions = response.data;
       });
     },

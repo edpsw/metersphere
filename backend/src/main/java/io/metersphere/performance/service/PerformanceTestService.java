@@ -5,7 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
 import io.metersphere.api.dto.JmxInfoDTO;
 import io.metersphere.api.dto.automation.ApiScenarioBatchRequest;
-import io.metersphere.api.dto.automation.ApiScenrioExportJmx;
+import io.metersphere.api.dto.automation.ApiScenarioExportJmxDTO;
 import io.metersphere.api.service.ApiAutomationService;
 import io.metersphere.api.service.ApiTestCaseService;
 import io.metersphere.base.domain.*;
@@ -13,6 +13,7 @@ import io.metersphere.base.mapper.*;
 import io.metersphere.base.mapper.ext.ExtLoadTestMapper;
 import io.metersphere.base.mapper.ext.ExtLoadTestReportDetailMapper;
 import io.metersphere.base.mapper.ext.ExtLoadTestReportMapper;
+import io.metersphere.base.mapper.ext.ExtProjectVersionMapper;
 import io.metersphere.commons.constants.*;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.*;
@@ -31,32 +32,40 @@ import io.metersphere.log.utils.ReflexObjectUtil;
 import io.metersphere.log.vo.DetailColumn;
 import io.metersphere.log.vo.OperatingLogDetails;
 import io.metersphere.log.vo.performance.PerformanceReference;
+import io.metersphere.metadata.service.FileMetadataService;
 import io.metersphere.performance.base.GranularityData;
+import io.metersphere.performance.base.VumProcessedStatus;
+import io.metersphere.performance.dto.LoadModuleDTO;
+import io.metersphere.performance.dto.LoadTestBatchRequest;
 import io.metersphere.performance.dto.LoadTestExportJmx;
 import io.metersphere.performance.engine.Engine;
 import io.metersphere.performance.engine.EngineFactory;
 import io.metersphere.performance.request.*;
 import io.metersphere.service.ApiPerformanceService;
-import io.metersphere.service.FileService;
 import io.metersphere.service.QuotaService;
 import io.metersphere.service.ScheduleService;
+import io.metersphere.track.request.testplan.LoadCaseRequest;
 import io.metersphere.track.service.TestCaseService;
 import io.metersphere.track.service.TestPlanLoadCaseService;
+import io.metersphere.track.service.TestPlanProjectService;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections4.ListUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
-import org.aspectj.util.FileUtil;
+import org.mybatis.spring.SqlSessionUtils;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.CollectionUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.annotation.Resource;
 import java.io.File;
-import java.io.IOException;
+import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -78,7 +87,7 @@ public class PerformanceTestService {
     @Resource
     private LoadTestFileMapper loadTestFileMapper;
     @Resource
-    private FileService fileService;
+    private FileMetadataService fileMetadataService;
     @Resource
     private LoadTestReportMapper loadTestReportMapper;
     @Resource
@@ -112,6 +121,16 @@ public class PerformanceTestService {
     private TestPlanLoadCaseService testPlanLoadCaseService;
     @Resource
     private TestPlanLoadCaseMapper testPlanLoadCaseMapper;
+    @Resource
+    private TestPlanProjectService testPlanProjectService;
+    @Resource
+    private ProjectMapper projectMapper;
+    @Resource
+    private ExtProjectVersionMapper extProjectVersionMapper;
+    @Resource
+    private RedissonClient redissonClient;
+    @Resource
+    private LoadTestReportFileMapper loadTestReportFileMapper;
 
     public List<LoadTestDTO> list(QueryTestPlanRequest request) {
         request.setOrders(ServiceUtils.getDefaultSortOrder(request.getOrders()));
@@ -119,35 +138,43 @@ public class PerformanceTestService {
     }
 
     public void delete(DeleteTestPlanRequest request) {
-        String testId = request.getId();
 
-        if (!request.isForceDelete()) {
-            testCaseService.checkIsRelateTest(testId);
-        }
-        // 删除时保存jmx内容
-        List<FileMetadata> fileMetadataList = getFileMetadataByTestId(testId);
-        List<FileMetadata> jmxFiles = fileMetadataList.stream().filter(f -> StringUtils.equalsIgnoreCase(f.getType(), FileType.JMX.name())).collect(Collectors.toList());
-        byte[] bytes = EngineFactory.mergeJmx(jmxFiles);
-        LoadTestReportExample loadTestReportExample = new LoadTestReportExample();
-        loadTestReportExample.createCriteria().andTestIdEqualTo(testId);
-        List<LoadTestReport> loadTestReports = loadTestReportMapper.selectByExample(loadTestReportExample);
-        loadTestReports.forEach(loadTestReport -> {
-            LoadTestReportWithBLOBs record = new LoadTestReportWithBLOBs();
-            record.setId(loadTestReport.getId());
-            record.setJmxContent(new String(bytes, StandardCharsets.UTF_8));
-            extLoadTestReportMapper.updateJmxContentIfAbsent(record);
+        LoadTestWithBLOBs loadTest = loadTestMapper.selectByPrimaryKey(request.getId());
+        LoadTestExample example = new LoadTestExample();
+        example.createCriteria().andRefIdEqualTo(loadTest.getRefId());
+        List<LoadTest> loadTests = loadTestMapper.selectByExample(example);
+
+        loadTests.forEach(test -> {
+            if (!request.isForceDelete()) {
+                testCaseService.checkIsRelateTest(test.getId());
+            }
+            // 删除时保存jmx内容
+            List<FileMetadata> fileMetadataList = getFileMetadataByTestId(test.getId());
+            List<FileMetadata> jmxFiles = fileMetadataList.stream().filter(f -> StringUtils.equalsIgnoreCase(f.getType(), FileType.JMX.name())).collect(Collectors.toList());
+            byte[] bytes = EngineFactory.mergeJmx(jmxFiles);
+            LoadTestReportExample loadTestReportExample = new LoadTestReportExample();
+            loadTestReportExample.createCriteria().andTestIdEqualTo(test.getId());
+            List<LoadTestReport> loadTestReports = loadTestReportMapper.selectByExample(loadTestReportExample);
+            loadTestReports.forEach(loadTestReport -> {
+                LoadTestReportWithBLOBs record = new LoadTestReportWithBLOBs();
+                record.setId(loadTestReport.getId());
+                record.setJmxContent(new String(bytes, StandardCharsets.UTF_8));
+                extLoadTestReportMapper.updateJmxContentIfAbsent(record);
+            });
+            //delete scheduleFunctionalCases
+            scheduleService.deleteByResourceId(test.getId(), ScheduleGroup.PERFORMANCE_TEST.name());
+
+            // delete load_test
+            loadTestMapper.deleteByPrimaryKey(test.getId());
+
+            testPlanLoadCaseService.deleteByTestId(test.getId());
+
+            testCaseService.deleteTestCaseTestByTestId(test.getId());
+
+            detachFileByTestId(test.getId());
+
+            deleteFollows(test.getId());
         });
-        //delete scheduleFunctionalCases
-        scheduleService.deleteByResourceId(testId, ScheduleGroup.PERFORMANCE_TEST.name());
-
-        // delete load_test
-        loadTestMapper.deleteByPrimaryKey(request.getId());
-
-        testPlanLoadCaseService.deleteByTestId(testId);
-
-        detachFileByTestId(request.getId());
-
-        deleteFollows(request.getId());
     }
 
     private void deleteFollows(String testId) {
@@ -164,6 +191,7 @@ public class PerformanceTestService {
 
     public LoadTest save(SaveTestPlanRequest request, List<MultipartFile> files) {
         checkQuota(request, true);
+
         LoadTestWithBLOBs loadTest = saveLoadTest(request);
 
         List<FileMetadata> importFiles = request.getUpdatedFileList();
@@ -189,7 +217,7 @@ public class PerformanceTestService {
     }
 
     private boolean loadTestFileExsits(String testId, String metaFileId) {
-        boolean fileExsits = fileService.isFileExsits(metaFileId);
+        boolean fileExsits = fileMetadataService.isFileExits(metaFileId);
         LoadTestFileExample example = new LoadTestFileExample();
         example.createCriteria().andTestIdEqualTo(testId).andFileIdEqualTo(metaFileId);
         long loadTestFiles = loadTestFileMapper.countByExample(example);
@@ -205,7 +233,7 @@ public class PerformanceTestService {
         if (files != null) {
             for (int i = 0; i < files.size(); i++) {
                 MultipartFile file = files.get(i);
-                FileMetadata fileMetadata = fileService.saveFile(file, loadTest.getProjectId());
+                FileMetadata fileMetadata = fileMetadataService.saveFile(file, loadTest.getProjectId());
                 LoadTestFile loadTestFile = new LoadTestFile();
                 loadTestFile.setTestId(loadTest.getId());
                 loadTestFile.setFileId(fileMetadata.getId());
@@ -218,7 +246,7 @@ public class PerformanceTestService {
     private void importFiles(List<String> importFileIds, String testId, Map<String, Integer> fileSorts) {
         for (int i = 0; i < importFileIds.size(); i++) {
             String fileId = importFileIds.get(i);
-            FileMetadata fileMetadata = fileService.getFileMetadataById(fileId);
+            FileMetadata fileMetadata = fileMetadataService.getFileMetadataById(fileId);
             LoadTestFile loadTestFile = new LoadTestFile();
             loadTestFile.setTestId(testId);
             loadTestFile.setFileId(fileId);
@@ -228,16 +256,19 @@ public class PerformanceTestService {
     }
 
     private void checkExist(TestPlanRequest request) {
+        if (StringUtils.isEmpty(request.getVersionId())) {
+            request.setVersionId(extProjectVersionMapper.getDefaultVersion(request.getProjectId()));
+        }
         if (request.getName() != null) {
             LoadTestExample example = new LoadTestExample();
             LoadTestExample.Criteria criteria = example.createCriteria();
             criteria.andNameEqualTo(request.getName())
-                    .andProjectIdEqualTo(request.getProjectId());
+                    .andProjectIdEqualTo(request.getProjectId()).andVersionIdEqualTo(request.getVersionId());
             if (StringUtils.isNotBlank(request.getId())) {
                 criteria.andIdNotEqualTo(request.getId());
             }
             if (loadTestMapper.selectByExample(example).size() > 0) {
-                MSException.throwException(Translator.get("plan_name_already_exists"));
+                MSException.throwException(Translator.get("api_test_name_already_exists"));
             }
         }
     }
@@ -258,7 +289,13 @@ public class PerformanceTestService {
         loadTest.setAdvancedConfiguration(request.getAdvancedConfiguration());
         loadTest.setStatus(PerformanceTestStatus.Saved.name());
         loadTest.setNum(getNextNum(request.getProjectId()));
+        if (MapUtils.isNotEmpty(request.getProjectEnvMap())) {
+            loadTest.setEnvInfo(JSONObject.toJSONString(request.getProjectEnvMap()));
+        }
         loadTest.setOrder(ServiceUtils.getNextOrder(request.getProjectId(), extLoadTestMapper::getLastOrder));
+        loadTest.setVersionId(request.getVersionId());
+        loadTest.setRefId(request.getId());
+        loadTest.setLatest(true); // 创建新版本的时候一定是最新的
         List<ApiLoadTest> apiList = request.getApiList();
         apiPerformanceService.add(apiList, loadTest.getId());
         loadTestMapper.insert(loadTest);
@@ -267,7 +304,6 @@ public class PerformanceTestService {
     }
 
     public LoadTest edit(EditTestPlanRequest request, List<MultipartFile> files) {
-        checkQuota(request, false);
         checkExist(request);
         String testId = request.getId();
         LoadTestWithBLOBs loadTest = loadTestMapper.selectByPrimaryKey(testId);
@@ -296,10 +332,19 @@ public class PerformanceTestService {
 
         // 导入项目里其他的文件
         List<String> addFileIds = ListUtils.subtract(updatedFileIds, originFileIds);
-        this.importFiles(addFileIds, testId, request.getFileSorts());
-
+        this.importFiles(addFileIds, loadTest.getId(), request.getFileSorts());
         // 处理新上传的文件
         this.saveUploadFiles(files, loadTest, request.getFileSorts());
+        // 保持文件顺序
+        updatedFiles.forEach(f -> {
+            LoadTestFile record = new LoadTestFile();
+            record.setSort(request.getFileSorts().get(f.getName()));
+            LoadTestFileExample loadTestFileExample = new LoadTestFileExample();
+            loadTestFileExample.createCriteria()
+                    .andFileIdEqualTo(f.getId())
+                    .andTestIdEqualTo(testId);
+            loadTestFileMapper.updateByExampleSelective(record, loadTestFileExample);
+        });
 
         loadTest.setName(request.getName());
         loadTest.setProjectId(request.getProjectId());
@@ -308,13 +353,37 @@ public class PerformanceTestService {
         loadTest.setAdvancedConfiguration(request.getAdvancedConfiguration());
         loadTest.setTestResourcePoolId(request.getTestResourcePoolId());
         loadTest.setStatus(PerformanceTestStatus.Saved.name());
-        saveFollows(loadTest.getId(), request.getFollows());
-        loadTestMapper.updateByPrimaryKeySelective(loadTest);
-
+        // 更新数据
+        LoadTestExample example = new LoadTestExample();
+        example.createCriteria().andIdEqualTo(loadTest.getId()).andVersionIdEqualTo(request.getVersionId());
+        if (loadTestMapper.updateByExampleSelective(loadTest, example) == 0) {
+            // 插入新版本的数据
+            LoadTestWithBLOBs oldLoadTest = loadTestMapper.selectByPrimaryKey(loadTest.getId());
+            loadTest.setId(UUID.randomUUID().toString());
+            loadTest.setNum(oldLoadTest.getNum());
+            loadTest.setVersionId(request.getVersionId());
+            loadTest.setCreateTime(System.currentTimeMillis());
+            loadTest.setUpdateTime(System.currentTimeMillis());
+            loadTest.setCreateUser(SessionUtils.getUserId());
+            loadTest.setOrder(oldLoadTest.getOrder());
+            loadTest.setRefId(oldLoadTest.getRefId());
+            //插入文件
+            copyLoadTestFiles(testId, loadTest.getId());
+            loadTestMapper.insertSelective(loadTest);
+        }
+        checkAndSetLatestVersion(loadTest.getRefId());
         return loadTest;
     }
 
-    private void saveFollows(String testId, List<String> follows) {
+    /**
+     * 检查设置最新版本
+     */
+    private void checkAndSetLatestVersion(String refId) {
+        extLoadTestMapper.clearLatestVersion(refId);
+        extLoadTestMapper.addLatestVersion(refId);
+    }
+
+    public void saveFollows(String testId, List<String> follows) {
         LoadTestFollowExample example = new LoadTestFollowExample();
         example.createCriteria().andTestIdEqualTo(testId);
         loadTestFollowMapper.deleteByExample(example);
@@ -378,12 +447,14 @@ public class PerformanceTestService {
 
 
         LoadTestReportWithBLOBs testReport = new LoadTestReportWithBLOBs();
-        testReport.setId(UUID.randomUUID().toString());
+        testReport.setId(StringUtils.isNotEmpty(request.getReportId()) ? request.getReportId() : UUID.randomUUID().toString());
         testReport.setCreateTime(System.currentTimeMillis());
         testReport.setUpdateTime(System.currentTimeMillis());
         testReport.setTestId(loadTest.getId());
         testReport.setName(loadTest.getName());
         testReport.setTriggerMode(request.getTriggerMode());
+        testReport.setVersionId(loadTest.getVersionId());
+        testReport.setRelevanceTestPlanReportId(request.getTestPlanReportId());
         if (SessionUtils.getUser() == null) {
             testReport.setUserId(loadTest.getUserId());
         } else {
@@ -398,23 +469,28 @@ public class PerformanceTestService {
             // 保存测试里的配置
             testReport.setTestResourcePoolId(loadTest.getTestResourcePoolId());
             testReport.setLoadConfiguration(loadTest.getLoadConfiguration());
-
+            // 启动插入 report
+            testReport.setAdvancedConfiguration(loadTest.getAdvancedConfiguration());
             String testPlanLoadId = request.getTestPlanLoadId();
             if (StringUtils.isNotBlank(testPlanLoadId)) {
                 // 设置本次报告中的压力配置信息
-                TestPlanLoadCase testPlanLoadCase = testPlanLoadCaseMapper.selectByPrimaryKey(testPlanLoadId);
+                TestPlanLoadCaseWithBLOBs testPlanLoadCase = testPlanLoadCaseMapper.selectByPrimaryKey(testPlanLoadId);
                 if (testPlanLoadCase != null && StringUtils.isNotBlank(testPlanLoadCase.getLoadConfiguration())) {
                     testReport.setLoadConfiguration(testPlanLoadCase.getLoadConfiguration());
+                }
+                if (testPlanLoadCase != null && StringUtils.isNotBlank(testPlanLoadCase.getAdvancedConfiguration())) {
+                    testReport.setAdvancedConfiguration(testPlanLoadCase.getAdvancedConfiguration());
                 }
                 if (testPlanLoadCase != null && StringUtils.isNotBlank(testPlanLoadCase.getTestResourcePoolId())) {
                     testReport.setTestResourcePoolId(testPlanLoadCase.getTestResourcePoolId());
                 }
             }
-            // 启动插入 report
-            testReport.setAdvancedConfiguration(loadTest.getAdvancedConfiguration());
+
+
             testReport.setStatus(PerformanceTestStatus.Starting.name());
             testReport.setProjectId(loadTest.getProjectId());
             testReport.setTestName(loadTest.getName());
+            testReport.setEnvInfo(loadTest.getEnvInfo());
             loadTestReportMapper.insertSelective(testReport);
 
             // engine
@@ -440,8 +516,17 @@ public class PerformanceTestService {
             reportResult.setReportKey(ReportKeys.ResultStatus.name());
             reportResult.setReportValue("Ready"); // 初始化一个 result_status, 这个值用在data-streaming中
             loadTestReportResultMapper.insertSelective(reportResult);
-            // 启动测试
-            engine.start();
+            // 保存标记
+            LoadTestReportResult rr = new LoadTestReportResult();
+            rr.setId(UUID.randomUUID().toString());
+            rr.setReportId(testReport.getId());
+            rr.setReportKey(ReportKeys.VumProcessedStatus.name());
+            rr.setReportValue(VumProcessedStatus.NOT_PROCESSED); // 避免测试运行出错时，对报告重复处理vum_used值
+            loadTestReportResultMapper.insertSelective(rr);
+            // 保存执行当时的file
+            saveLoadTestReportFiles(testReport);
+            // 检查配额
+            this.checkLoadQuota(testReport, engine);
             return testReport.getId();
         } catch (MSException e) {
             // 启动失败之后清理任务
@@ -454,6 +539,48 @@ public class PerformanceTestService {
             loadTestMapper.updateByPrimaryKeySelective(updateTest);
             loadTestReportMapper.deleteByPrimaryKey(testReport.getId());
             throw e;
+        }
+    }
+
+    private void saveLoadTestReportFiles(LoadTestReport report) {
+        LoadTestFileExample example = new LoadTestFileExample();
+        example.createCriteria().andTestIdEqualTo(report.getTestId());
+        List<LoadTestFile> files = loadTestFileMapper.selectByExample(example);
+        files.forEach(f -> {
+            LoadTestReportFile record = new LoadTestReportFile();
+            record.setFileId(f.getFileId());
+            record.setSort(f.getSort());
+            record.setReportId(report.getId());
+            loadTestReportFileMapper.insert(record);
+        });
+    }
+
+    private void checkLoadQuota(LoadTestReportWithBLOBs testReport, Engine engine) {
+        RunTestPlanRequest checkRequest = new RunTestPlanRequest();
+        QuotaService quotaService = CommonBeanFactory.getBean(QuotaService.class);
+        checkRequest.setLoadConfiguration(testReport.getLoadConfiguration());
+        checkRequest.setProjectId(testReport.getProjectId());
+        if (quotaService != null) {
+            quotaService.checkLoadTestQuota(checkRequest, false);
+            String projectId = testReport.getProjectId();
+            Project project = projectMapper.selectByPrimaryKey(projectId);
+            if (project == null || StringUtils.isBlank(project.getWorkspaceId())) {
+                MSException.throwException("project is null or workspace_id of project is null. project id: " + projectId);
+            }
+            RLock lock = redissonClient.getLock(project.getWorkspaceId());
+            try {
+                lock.lock();
+                BigDecimal toUsed = quotaService.checkVumUsed(checkRequest, projectId);
+                engine.start();
+                if (toUsed.compareTo(BigDecimal.ZERO) != 0) {
+                    quotaService.updateVumUsed(projectId, toUsed);
+                }
+            } finally {
+                lock.unlock();
+            }
+        } else {
+            engine.start();
+            LogUtil.error("check load test quota fail, quotaService is null.");
         }
     }
 
@@ -497,8 +624,8 @@ public class PerformanceTestService {
         List<LoadTestExportJmx> results = new ArrayList<>();
         for (FileMetadata metadata : fileMetadataList) {
             if (FileType.JMX.name().equals(metadata.getType())) {
-                FileContent fileContent = fileService.getFileContent(metadata.getId());
-                results.add(new LoadTestExportJmx(metadata.getName(), new String(fileContent.getFile(), StandardCharsets.UTF_8)));
+                byte[] content = fileMetadataService.loadFileAsBytes(metadata.getId());
+                results.add(new LoadTestExportJmx(metadata.getName(), new String(content, StandardCharsets.UTF_8)));
             }
         }
         return results;
@@ -527,26 +654,32 @@ public class PerformanceTestService {
         if (StringUtils.length(copyName) > 30) {
             MSException.throwException(Translator.get("load_test_name_length"));
         }
-
         copy.setId(UUID.randomUUID().toString());
         copy.setName(copyName);
         copy.setCreateTime(System.currentTimeMillis());
         copy.setUpdateTime(System.currentTimeMillis());
         copy.setStatus(APITestStatus.Saved.name());
         copy.setUserId(Objects.requireNonNull(SessionUtils.getUser()).getId());
+        copy.setCreateUser(Objects.requireNonNull(SessionUtils.getUser()).getId());
         copy.setNum(getNextNum(copy.getProjectId()));
+        copy.setRefId(copy.getId());
+        copy.setLatest(true);
         loadTestMapper.insert(copy);
         // copy test file
+        copyLoadTestFiles(request.getId(), copy.getId());
+        request.setId(copy.getId());
+    }
+
+    private void copyLoadTestFiles(String oldLoadTestId, String newLoadTestId) {
         LoadTestFileExample loadTestFileExample = new LoadTestFileExample();
-        loadTestFileExample.createCriteria().andTestIdEqualTo(request.getId());
+        loadTestFileExample.createCriteria().andTestIdEqualTo(oldLoadTestId);
         List<LoadTestFile> loadTestFiles = loadTestFileMapper.selectByExample(loadTestFileExample);
         if (!CollectionUtils.isEmpty(loadTestFiles)) {
             loadTestFiles.forEach(loadTestFile -> {
-                loadTestFile.setTestId(copy.getId());
+                loadTestFile.setTestId(newLoadTestId);
                 loadTestFileMapper.insert(loadTestFile);
             });
         }
-        request.setId(copy.getId());
     }
 
     public void updateSchedule(Schedule request) {
@@ -575,7 +708,7 @@ public class PerformanceTestService {
         if (forceStop) {
             performanceReportService.deleteReport(reportId);
         } else {
-            stopEngine(reportId);
+            stopEngineHandleVum(reportId);
             // 停止测试之后设置报告的状态
             performanceReportService.updateStatus(reportId, PerformanceTestStatus.Completed.name());
         }
@@ -595,6 +728,15 @@ public class PerformanceTestService {
             MSException.throwException(String.format("Stop report fail. create engine fail，report ID：%s", reportId));
         }
         performanceReportService.stopEngine(loadTest, engine);
+    }
+
+    private void stopEngineHandleVum(String reportId) {
+        LoadTestReportWithBLOBs loadTestReport = loadTestReportMapper.selectByPrimaryKey(reportId);
+        final Engine engine = EngineFactory.createEngine(loadTestReport);
+        if (engine == null) {
+            MSException.throwException(String.format("Stop report fail. create engine fail，report ID：%s", reportId));
+        }
+        performanceReportService.stopEngineHandleVum(loadTestReport, engine);
     }
 
     public List<ScheduleDao> listSchedule(QueryScheduleRequest request) {
@@ -624,14 +766,16 @@ public class PerformanceTestService {
         }
     }
 
-    public List<LoadTest> getLoadTestListByIds(List<String> ids) {
+    public List<LoadTestDTO> getLoadTestListByIds(List<String> ids) {
         if (CollectionUtils.isEmpty(ids)) {
             return new ArrayList<>();
         }
-        LoadTestExample loadTestExample = new LoadTestExample();
-        loadTestExample.createCriteria().andIdIn(ids);
-        List<LoadTest> loadTests = loadTestMapper.selectByExample(loadTestExample);
-        return Optional.ofNullable(loadTests).orElse(new ArrayList<>());
+        QueryTestPlanRequest request = new QueryTestPlanRequest();
+        Map filters = new HashMap();
+        filters.put("id", ids);
+        request.setFilters(filters);
+        List<LoadTestDTO> loadTestDTOS = extLoadTestMapper.list(request);
+        return loadTestDTOS;
     }
 
     private int getNextNum(String projectId) {
@@ -668,24 +812,16 @@ public class PerformanceTestService {
         }
         List<LoadTestExportJmx> results = new ArrayList<>();
         fileIds.forEach(id -> {
-            FileMetadata fileMetadata = fileService.getFileMetadataById(id);
-            FileContent fileContent = fileService.getFileContent(id);
-            results.add(new LoadTestExportJmx(fileMetadata.getName(), new String(fileContent.getFile(), StandardCharsets.UTF_8)));
+            FileMetadata fileMetadata = fileMetadataService.getFileMetadataById(id);
+            byte[] content = fileMetadataService.loadFileAsBytes(id);
+            results.add(new LoadTestExportJmx(fileMetadata.getName(), new String(content, StandardCharsets.UTF_8)));
         });
 
         return results;
     }
 
     public List<FileMetadata> getFileMetadataByTestId(String testId) {
-        LoadTestFileExample loadTestFileExample = new LoadTestFileExample();
-        loadTestFileExample.createCriteria().andTestIdEqualTo(testId);
-        loadTestFileExample.setOrderByClause("sort asc");
-        List<LoadTestFile> loadTestFiles = loadTestFileMapper.selectByExample(loadTestFileExample);
-
-        List<String> fileIds = loadTestFiles.stream().map(LoadTestFile::getFileId).collect(Collectors.toList());
-        FileMetadataExample example = new FileMetadataExample();
-        example.createCriteria().andIdIn(fileIds);
-        return fileService.getFileMetadataByIds(fileIds);
+        return extLoadTestMapper.getFileMetadataByIds(testId);
     }
 
     public Long getReportCountByTestId(String testId) {
@@ -704,6 +840,21 @@ public class PerformanceTestService {
             loadTest.setLoadConfiguration(loadConfiguration);
             List<DetailColumn> columns = ReflexObjectUtil.getColumns(loadTest, PerformanceReference.performanceColumns);
             OperatingLogDetails details = new OperatingLogDetails(JSON.toJSONString(loadTest.getId()), loadTest.getProjectId(), loadTest.getName(), loadTest.getCreateUser(), columns);
+            return JSON.toJSONString(details);
+        }
+        return null;
+    }
+
+    public String deleteBatchLog(DeletePerformanceRequest request) {
+        ServiceUtils.getSelectAllIds(request, request.getCondition(),
+                (query) -> getLoadTestIds(request.getProjectId()));
+        List<String> loadTestIds = request.getIds();
+        LoadTestExample example = new LoadTestExample();
+        example.createCriteria().andIdIn(loadTestIds);
+        List<LoadTest> tests = loadTestMapper.selectByExample(example);
+        if (org.apache.commons.collections.CollectionUtils.isNotEmpty(tests)) {
+            List<String> names = tests.stream().map(LoadTest::getName).collect(Collectors.toList());
+            OperatingLogDetails details = new OperatingLogDetails(JSON.toJSONString(loadTestIds), tests.get(0).getProjectId(), String.join(",", names), tests.get(0).getCreateUser(), new LinkedList<>());
             return JSON.toJSONString(details);
         }
         return null;
@@ -736,7 +887,7 @@ public class PerformanceTestService {
         if (!CollectionUtils.isEmpty(scenarioIds)) {
             ApiScenarioBatchRequest scenarioRequest = new ApiScenarioBatchRequest();
             scenarioRequest.setIds(scenarioIds);
-            List<ApiScenrioExportJmx> apiScenrioExportJmxes = apiAutomationService.exportJmx(scenarioRequest);
+            List<ApiScenarioExportJmxDTO> apiScenrioExportJmxes = apiAutomationService.exportJmx(scenarioRequest).getScenarioJmxList();
 
             deleteLoadTestFiles(loadTest.getId());
 
@@ -770,7 +921,7 @@ public class PerformanceTestService {
     private void saveJmxFile(String jmx, String name, String projectId, String loadTestId) {
         byte[] jmxBytes = jmx.getBytes(StandardCharsets.UTF_8);
         String jmxName = name + "_" + System.currentTimeMillis() + ".jmx";
-        FileMetadata fileMetadata = fileService.saveFile(jmxBytes, jmxName, (long) jmxBytes.length);
+        FileMetadata fileMetadata = fileMetadataService.saveFile(jmxBytes, jmxName, (long) jmxBytes.length);
         fileMetadata.setProjectId(projectId);
         saveLoadTestFile(fileMetadata, loadTestId, 0);
     }
@@ -799,16 +950,16 @@ public class PerformanceTestService {
         example.createCriteria()
                 .andTestIdEqualTo(testId);
         loadTestFileMapper.deleteByExample(example);
-        fileService.deleteFileByIds(originFileIds);
+        fileMetadataService.deleteBatch(originFileIds);
     }
 
     private void saveUploadFile(File file, String loadTestId, int sort) {
         if (file != null) {
             FileMetadata fileMetadata = null;
             try {
-                fileMetadata = fileService.saveFile(file, FileUtil.readAsByteArray(file));
-            } catch (IOException e) {
-                e.printStackTrace();
+                fileMetadata = fileMetadataService.saveFile(file);
+            } catch (Exception e) {
+                LogUtil.error(e);
             }
             saveLoadTestFile(fileMetadata, loadTestId, sort);
         }
@@ -842,6 +993,10 @@ public class PerformanceTestService {
             scenarioLoadTest.setId(UUID.randomUUID().toString());
             mapper.insert(scenarioLoadTest);
         });
+        sqlSession.flushStatements();
+        if (sqlSession != null && sqlSessionFactory != null) {
+            SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+        }
     }
 
     public Integer getGranularity(String reportId) {
@@ -885,7 +1040,9 @@ public class PerformanceTestService {
     public List<LoadTest> getLoadCaseByIds(List<String> ids) {
         if (org.apache.commons.collections.CollectionUtils.isNotEmpty(ids)) {
             LoadTestExample example = new LoadTestExample();
-            example.createCriteria().andIdIn(ids);
+            example.createCriteria()
+                    .andIdIn(ids)
+                    .andStatusNotEqualTo(CommonConstants.TrashStatus);
             return loadTestMapper.selectByExample(example);
         }
         return new ArrayList<>();
@@ -926,5 +1083,98 @@ public class PerformanceTestService {
         example.createCriteria().andTestIdEqualTo(testId);
         List<LoadTestFollow> follows = loadTestFollowMapper.selectByExample(example);
         return follows.stream().map(LoadTestFollow::getFollowId).distinct().collect(Collectors.toList());
+    }
+
+    public List<LoadModuleDTO> getNodeByPlanId(String planId) {
+        List<LoadModuleDTO> list = new ArrayList<>();
+        List<String> projectIds = testPlanProjectService.getProjectIdsByPlanId(planId);
+        projectIds.forEach(id -> {
+            Project project = projectMapper.selectByPrimaryKey(id);
+            String name = project.getName();
+            LoadModuleDTO loadModuleDTO = new LoadModuleDTO();
+            loadModuleDTO.setId(id);
+            loadModuleDTO.setName(name);
+            loadModuleDTO.setLabel(name);
+            LoadCaseRequest request = new LoadCaseRequest();
+            request.setProjectId(id);
+            request.setTestPlanId(planId);
+            List<String> ids = testPlanLoadCaseService.selectTestPlanLoadCaseIds(request);
+            if (!CollectionUtils.isEmpty(ids)) {
+                list.add(loadModuleDTO);
+            }
+        });
+        return list;
+    }
+
+    public List<LoadTestDTO> getLoadTestVersions(String loadTestId) {
+        LoadTestWithBLOBs loadTestWithBLOBs = loadTestMapper.selectByPrimaryKey(loadTestId);
+        if (loadTestWithBLOBs == null) {
+            return new ArrayList<>();
+        }
+        QueryTestPlanRequest request = new QueryTestPlanRequest();
+        request.setRefId(loadTestWithBLOBs.getRefId());
+        return this.list(request);
+    }
+
+    public LoadTestDTO getLoadTestByVersion(String versionId, String refId) {
+        QueryTestPlanRequest request = new QueryTestPlanRequest();
+        request.setRefId(refId);
+        request.setVersionId(versionId);
+        List<LoadTestDTO> list = this.list(request);
+        if (CollectionUtils.isEmpty(list)) {
+            return null;
+        }
+        return list.get(0);
+    }
+
+    public void deleteLoadTestByVersion(String version, String refId) {
+        LoadTestExample loadTestExample = new LoadTestExample();
+        loadTestExample.createCriteria().andRefIdEqualTo(refId).andVersionIdEqualTo(version);
+        List<LoadTest> loadTests = loadTestMapper.selectByExample(loadTestExample);
+        if (CollectionUtils.isEmpty(loadTests)) {
+            return;
+        }
+        loadTestMapper.deleteByExample(loadTestExample);
+        checkAndSetLatestVersion(refId);
+    }
+
+    public void deleteBatch(DeletePerformanceRequest request) {
+        ServiceUtils.getSelectAllIds(request, request.getCondition(),
+                (query) -> getLoadTestIds(request.getProjectId()));
+        List<String> loadTestIds = request.getIds();
+        loadTestIds.forEach(id -> {
+            DeleteTestPlanRequest rq = new DeleteTestPlanRequest();
+            rq.setForceDelete(true);
+            rq.setId(id);
+            this.delete(rq);
+        });
+    }
+
+    private List<String> getLoadTestIds(String projectId) {
+        List<LoadTest> loadTests = this.getLoadTestByProjectId(projectId);
+        return loadTests.stream().map(LoadTest::getId).collect(Collectors.toList());
+    }
+
+
+    public List<LoadTestDTO> listBatch(LoadTestBatchRequest request) {
+        ServiceUtils.getSelectAllIds(request, request.getCondition(),
+                (query) -> extLoadTestMapper.selectIds(query));
+        if (org.apache.commons.collections.CollectionUtils.isEmpty(request.getIds())) {
+            return new ArrayList<>();
+        }
+
+        QueryTestPlanRequest request2 = new QueryTestPlanRequest();
+        Map<String, List<String>> param = new HashMap<>();
+        param.put("id", request.getIds());
+        request2.setFilters(param);
+        return this.list(request2);
+    }
+
+    public void deleteByRelevanceTestPlanReportIds(List<String> testPlanReportIdList) {
+        if (CollectionUtils.isNotEmpty(testPlanReportIdList)) {
+            LoadTestReportExample loadTestReportExample = new LoadTestReportExample();
+            loadTestReportExample.createCriteria().andRelevanceTestPlanReportIdIn(testPlanReportIdList);
+            loadTestReportMapper.deleteByExample(loadTestReportExample);
+        }
     }
 }

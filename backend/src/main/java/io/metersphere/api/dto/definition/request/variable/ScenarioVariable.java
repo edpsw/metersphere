@@ -13,7 +13,7 @@ public class ScenarioVariable {
     /**
      * CONSTANT LIST CSV COUNTER RANDOM
      */
-    private String type;
+    private String type = VariableTypeConstants.CONSTANT.name();
     private String id;
     private String name;
 
@@ -41,6 +41,8 @@ public class ScenarioVariable {
     private String minNumber;
     private String maxNumber;
 
+    private boolean enable = true;
+
     public ScenarioVariable() {
 
     }
@@ -53,7 +55,7 @@ public class ScenarioVariable {
     }
 
     public boolean isConstantValid() {
-        if ((StringUtils.isEmpty(this.type) || StringUtils.equals(this.type, VariableTypeConstants.CONSTANT.name())) && StringUtils.isNotEmpty(name) && StringUtils.isNotEmpty(value)) {
+        if (StringUtils.isEmpty(this.type) || (StringUtils.equals("text", this.type) && StringUtils.isNotEmpty(name)) || (StringUtils.equals(this.type, VariableTypeConstants.CONSTANT.name()) && StringUtils.isNotEmpty(name))) {
             return true;
         }
         return false;

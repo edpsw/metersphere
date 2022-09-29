@@ -3,27 +3,49 @@ import {success} from "@/common/js/message";
 import i18n from "@/i18n/i18n";
 import {basePost} from "@/network/base-network";
 import {baseGet} from "./base-network";
+import {getCurrentProjectID, getCurrentWorkspaceId} from "@/common/js/utils";
+
+export const minderPageInfoMap = new Map();
+
+function getMinderPageInfo(request) {
+  if (!minderPageInfoMap.get(request.nodeId)) {
+    minderPageInfoMap.set(request.nodeId, {
+      pageNum: 1,
+      pageSize: 100
+    });
+  }
+  return minderPageInfoMap.get(request.nodeId);
+}
 
 export function getTestCasesForMinder(request, callback) {
-  return post('/test/case/list/minder', request, (response) => {
+  let minderPageInfo = getMinderPageInfo(request);
+  let url = '/test/case/list/minder/' + minderPageInfo.pageNum + '/' + minderPageInfo.pageSize;
+  return post(url, request, (response) => {
     if (callback) {
-      callback(response.data);
+      minderPageInfo.total = response.data.itemCount;
+      callback(response.data.listObject);
     }
   });
 }
 
 export function getPlanCasesForMinder(request, callback) {
-  return post('/test/plan/case/list/minder', request, (response) => {
+  let minderPageInfo = getMinderPageInfo(request);
+  let url = '/test/plan/case/list/minder/' + minderPageInfo.pageNum + '/' + minderPageInfo.pageSize;
+  return post(url, request, (response) => {
     if (callback) {
-      callback(response.data);
+      minderPageInfo.total = response.data.itemCount;
+      callback(response.data.listObject);
     }
   });
 }
 
 export function getReviewCasesForMinder(request, callback) {
-  return post('/test/review/case/list/minder', request, (response) => {
+  let minderPageInfo = getMinderPageInfo(request);
+  let url = '/test/review/case/list/minder/' + minderPageInfo.pageNum + '/' + minderPageInfo.pageSize;
+  return post(url, request, (response) => {
     if (callback) {
-      callback(response.data);
+      minderPageInfo.total = response.data.itemCount;
+      callback(response.data.listObject);
     }
   });
 }
@@ -63,8 +85,24 @@ export function editTestReviewTestCaseOrder(request, callback) {
   return basePost('/test/review/case/edit/order', request, callback);
 }
 
-export function getTestCaseNodes(projectId, callback) {
-  return baseGet('/case/node/list/' + projectId, callback);
+export function getTestCaseNodesByCaseFilter(projectId, param, callback) {
+  return basePost('/case/node/list/' + projectId, param, callback);
+}
+
+export function getTestPlanCaseNodesByCaseFilter(planId, param, callback) {
+  return basePost('/case/node/list/plan/' + planId, param, callback);
+}
+
+export function getTestReviewCaseNodesByCaseFilter(reviewId, param, callback) {
+  return basePost('/case/node/list/review/' + reviewId, param, callback);
+}
+
+export function getTestCasePublicNodes(param, callback) {
+  return basePost('/case/node/list/public/' + getCurrentWorkspaceId(), param, callback);
+}
+
+export function getTestCaseTrashNodes(param, callback) {
+  return basePost('/case/node/list/trash/' + getCurrentProjectID(), param, callback);
 }
 
 export function getRelationshipCase(id, relationshipType, callback) {
@@ -73,4 +111,16 @@ export function getRelationshipCase(id, relationshipType, callback) {
 
 export function getRelationshipCountCase(id, callback) {
   return baseGet('/test/case/relationship/case/count/' + id + '/', callback);
+}
+
+export function getTestPlanTestCase(pageNum, pageSize, param, callback) {
+  return basePost('/test/plan/case/list/' + pageNum + '/' + pageSize, param, callback);
+}
+
+export function getTestReviewTestCase(pageNum, pageSize, param, callback) {
+  return basePost('/test/review/case/list/' + pageNum + '/' + pageSize, param, callback);
+}
+
+export function getMinderTreeExtraNodeCount(param, callback) {
+  return basePost('/case/node/minder/extraNode/count', param, callback);
 }

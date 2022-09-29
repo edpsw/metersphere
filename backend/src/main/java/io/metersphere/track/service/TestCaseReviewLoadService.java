@@ -6,6 +6,7 @@ import io.metersphere.base.mapper.ext.ExtTestCaseReviewLoadMapper;
 import io.metersphere.base.mapper.ext.ExtTestPlanLoadCaseMapper;
 import io.metersphere.commons.constants.TestPlanStatus;
 import io.metersphere.controller.request.OrderRequest;
+import io.metersphere.dto.LoadTestDTO;
 import io.metersphere.dto.TestReviewLoadCaseDTO;
 import io.metersphere.performance.request.RunTestPlanRequest;
 import io.metersphere.performance.service.PerformanceTestService;
@@ -16,6 +17,7 @@ import io.metersphere.track.request.testreview.TestReviewRequest;
 import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
+import org.mybatis.spring.SqlSessionUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -45,7 +47,7 @@ public class TestCaseReviewLoadService {
     @Resource
     private LoadTestMapper loadTestMapper;
 
-    public List<LoadTest> relevanceList(TestReviewRequest request) {
+    public List<LoadTestDTO> relevanceList(TestReviewRequest request) {
         List<String> ids = extTestCaseReviewLoadMapper.selectIdsNotInPlan(request.getProjectId(), request.getTestCaseReviewId());
         if (CollectionUtils.isEmpty(ids)) {
             return new ArrayList<>();
@@ -88,6 +90,9 @@ public class TestCaseReviewLoadService {
             testCaseReviewMapper.updateByPrimaryKey(testCaseReview);
         }
         sqlSession.flushStatements();
+        if (sqlSession != null && sqlSessionFactory != null) {
+            SqlSessionUtils.closeSqlSession(sqlSession, sqlSessionFactory);
+        }
     }
 
     public void delete(String id) {
@@ -104,7 +109,7 @@ public class TestCaseReviewLoadService {
         testCaseReviewLoadMapper.updateByPrimaryKeySelective(testCaseReviewLoad);
         return reportId;
     }
-//???
+
     public Boolean isExistReport(LoadCaseReportRequest request) {
         String reportId = request.getReportId();
         String testPlanLoadCaseId = request.getTestPlanLoadCaseId();

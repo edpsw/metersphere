@@ -1,12 +1,12 @@
 <template>
   <el-dialog
     :title="$t('commons.about_us')"
-    :visible.sync="dialogVisible" class="about-us">
+    :visible.sync="dialogVisible" class="about-us" append-to-body>
 
     <el-row>
       <el-col>
         <el-link :underline="false" :href="websiteUrl" target="_blank">
-          <img class="logo" src="../../../../assets/favicon-彩色.png"/>
+          <img class="logo" src="../../../../assets/favicon-colorful.png"/>
         </el-link>
         <el-link class="url" :href="websiteUrl" target="_blank">
           <span>{{websiteUrl}}</span>
@@ -29,7 +29,7 @@
 
     <el-row>
       <el-col class="version">
-        <span>版本:</span> &nbsp;
+        <span>{{ $t('commons.version') }}:</span> &nbsp;
         <span>{{version}}</span>
       </el-col>
     </el-row>

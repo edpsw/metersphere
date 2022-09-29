@@ -23,11 +23,19 @@
                          @command="handleCommand" size="small" v-if="testCase===undefined && !scenario">
               {{ $t('commons.test') }}
               <el-dropdown-menu slot="dropdown">
-                <el-dropdown-item command="save_as">{{ $t('api_test.definition.request.save_as_case') }}</el-dropdown-item>
+                <el-dropdown-item command="save_as">{{
+                    $t('api_test.definition.request.save_as_case')
+                  }}
+                </el-dropdown-item>
               </el-dropdown-menu>
             </el-dropdown>
             <el-button v-if="scenario" size="small" type="primary" @click="handleCommand">
               {{ $t('commons.test') }}
+            </el-button>
+            <el-button size="small" type="primary" @click.stop @click="generate"
+                       style="margin-left: 10px"
+                       v-if="hasPermission('PROJECT_API_DEFINITION:READ+CREATE_API') && hasLicense()">
+              {{ $t('commons.generate_test_data') }}
             </el-button>
           </div>
 
@@ -36,21 +44,22 @@
       <div v-loading="loading">
         <p class="tip">{{ $t('api_test.definition.request.req_param') }} </p>
         <!-- HTTP 请求参数 -->
-        <ms-api-request-form :isShowEnable="true" :definition-test="true"  :headers="request.headers" :request="request" :response="responseData"/>
+        <ms-api-request-form :isShowEnable="true" :definition-test="true" :headers="request.headers" :request="request"
+                             :response="responseData" ref="apiRequestForm"/>
 
         <!-- HTTP 请求返回数据 -->
         <p class="tip">{{ $t('api_test.definition.request.res_param') }} </p>
         <ms-request-result-tail v-if="!loading" :response="responseData" ref="debugResult"/>
-
-        <ms-jmx-step :request="request" :response="responseData"/>
-
         <!-- 执行组件 -->
-        <ms-run :debug="true" :reportId="reportId" :isStop="isStop" :run-data="runData" @runRefresh="runRefresh" ref="runTest"/>
+        <ms-run :debug="true" :reportId="reportId" :isStop="isStop" :run-data="runData" @runRefresh="runRefresh"
+                ref="runTest"/>
       </div>
     </el-card>
 
     <div v-if="scenario">
-      <el-button style="float: right;margin: 20px" type="primary" @click="handleCommand('save_as_api')"> {{ $t('commons.save') }}</el-button>
+      <el-button style="float: right;margin: 20px" type="primary" @click="handleCommand('save_as_api')">
+        {{ $t('commons.save') }}
+      </el-button>
     </div>
     <!-- 加载用例 -->
     <ms-api-case-list :currentApi="debugForm" @refreshModule="refreshModule" :loaded="false" ref="caseList"/>
@@ -61,16 +70,16 @@
 import MsApiRequestForm from "../request/http/ApiHttpRequestForm";
 import MsResponseResult from "../response/ResponseResult";
 import MsRequestMetric from "../response/RequestMetric";
-import {getCurrentUser, getUUID} from "@/common/js/utils";
+import {getCurrentUser, getUUID, hasLicense, hasPermission} from "@/common/js/utils";
 import MsResponseText from "../response/ResponseText";
 import MsRun from "../Run";
 import {createComponent} from "../jmeter/components";
 import {REQ_METHOD} from "../../model/JsonData";
 import MsRequestResultTail from "../response/RequestResultTail";
-import MsJmxStep from "../step/JmxStep";
 import {KeyValue} from "../../model/ApiTestModel";
 import MsApiCaseList from "../case/ApiCaseList";
 import {TYPE_TO_C} from "@/business/components/api/automation/scenario/Setting";
+import {mergeRequestDocumentData} from "@/business/components/api/definition/api-definition";
 
 export default {
   name: "ApiConfig",
@@ -81,7 +90,6 @@ export default {
     MsRequestMetric,
     MsResponseText,
     MsRun,
-    MsJmxStep,
     MsApiCaseList
   },
   props: {
@@ -152,7 +160,12 @@ export default {
     },
   },
   methods: {
+    hasPermission, hasLicense,
+    generate() {
+      this.$refs.apiRequestForm.generate();
+    },
     handleCommand(e) {
+      mergeRequestDocumentData(this.request);
       if (e === "save_as") {
         this.saveAs();
       } else if (e === 'save_as_api') {
@@ -194,7 +207,9 @@ export default {
       this.responseData = data;
       this.loading = false;
       this.isStop = false;
-      this.$refs.debugResult.reload();
+      if (this.$refs.debugResult) {
+        this.$refs.debugResult.reload();
+      }
     },
     saveAsApi() {
       this.$refs['debugForm'].validate((valid) => {
@@ -266,11 +281,21 @@ export default {
     getURL(urlStr) {
       try {
         let url = new URL(urlStr);
-        url.searchParams.forEach((value, key) => {
-          if (key && value) {
-            this.request.arguments.splice(0, 0, new KeyValue({name: key, required: false, value: value}));
-          }
-        });
+        if (url.search && url.search.length > 1) {
+          let params = url.search.substr(1).split("&");
+          params.forEach(param => {
+            if (param) {
+              let keyValues = param.split("=");
+              if (keyValues) {
+                this.request.arguments.splice(0, 0, new KeyValue({
+                  name: keyValues[0],
+                  required: false,
+                  value: keyValues[1]
+                }));
+              }
+            }
+          });
+        }
         return url;
       } catch (e) {
         return urlStr;

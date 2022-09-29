@@ -9,7 +9,7 @@
     </template>
     <template v-slot:button>
       <ms-table-button v-permission="['PROJECT_TRACK_PLAN:READ+RELEVANCE_OR_CANCEL']" icon="el-icon-connection"
-                       :content="$t('test_track.plan_view.relevance_test_case')"
+                       :content="$t('test_track.plan_view.relevance_test_case')" :disabled="planStatus==='Archived'"
                        @click="$emit('relevanceCase')"/>
     </template>
 
@@ -20,11 +20,10 @@
 import MsTableHeader from "../../../../../common/components/MsTableHeader";
 import MsTableButton from "../../../../../common/components/MsTableButton";
 import MsEnvironmentSelect from "../../../../../api/definition/components/case/MsEnvironmentSelect";
-
 export default {
   name: "TestPlanCaseListHeader",
   components: {MsEnvironmentSelect, MsTableButton, MsTableHeader},
-  props: ['condition', 'projectId', 'isReadOnly', 'planId'],
+  props: ['condition', 'projectId', 'isReadOnly', 'planId', 'planStatus'],
   methods: {
     setEnvironment(data) {
       if (this.planId) {
@@ -35,6 +34,9 @@ export default {
           this.$emit('setEnvironment', data);
         });
       }
+    },
+    changeVersion(currentVersion) {
+      this.$emit('changeVersion', currentVersion);
     }
   }
 };
@@ -46,4 +48,7 @@ export default {
   margin-right: 10px;
 }
 
+.version-select {
+  padding-left: 10px;
+}
 </style>

@@ -1,10 +1,15 @@
 <template>
+
   <el-dialog :title="$t('load_test.scenario_list')"
              :close-on-click-modal="false"
              :destroy-on-close="true"
              width="60%" :visible.sync="loadApiAutomationVisible"
              :modal="true">
-
+    <ms-search
+      :base-search-tip="$t('commons.search_by_id_name_tag')"
+      :condition.sync="condition"
+      @search="search">
+    </ms-search>
     <el-table v-loading="projectLoadingResult.loading" class="basic-config"
               :data="apiScenarios"
               @select-all="handleSelectAll"
@@ -48,10 +53,12 @@ import MsTablePagination from "@/business/components/common/pagination/TablePagi
 import {getCurrentProjectID} from "@/common/js/utils";
 import MsTag from "@/business/components/common/components/MsTag";
 import {findThreadGroup} from "@/business/components/performance/test/model/ThreadGroup";
+import MsTableSearchBar from "@/business/components/common/components/MsTableSearchBar";
+import MsSearch from "@/business/components/common/components/search/MsSearch";
 
 export default {
   name: "ExistScenarios",
-  components: {MsTag, MsTablePagination, MsDialogFooter},
+  components: {MsTag, MsTablePagination, MsDialogFooter, MsTableSearchBar, MsSearch},
   props: {
     fileList: Array,
     tableData: Array,
@@ -67,6 +74,11 @@ export default {
       total: 0,
       apiScenarios: [],
       selectIds: new Set,
+      environment: {},
+      condition: {
+        projectId: getCurrentProjectID(),
+        filters: {status: ["Prepare", "Underway", "Completed"]}
+      },
     };
   },
   methods: {
@@ -99,11 +111,7 @@ export default {
       }
     },
     getProjectScenarios() {
-      let condition = {
-        projectId: getCurrentProjectID(),
-        filters: {status: ["Prepare", "Underway", "Completed"]}
-      };
-      this.projectLoadingResult = this.$post('/api/automation/list/' + this.currentPage + "/" + this.pageSize, condition, res => {
+      this.projectLoadingResult = this.$post('/api/automation/list/' + this.currentPage + "/" + this.pageSize, this.condition, res => {
         let data = res.data;
         this.total = data.itemCount;
         this.apiScenarios = data.listObject;
@@ -131,7 +139,8 @@ export default {
         ids: [...this.selectIds],
       };
       this.projectLoadingResult = this.$post('api/automation/export/jmx', condition, response => {
-        let data = response.data;
+        let returnData = response.data;
+        let data = returnData.scenarioJmxList;
         data.forEach(d => {
           let jmxName = d.name + "_" + new Date().getTime() + ".jmx";
           let threadGroups = findThreadGroup(d.jmx, jmxName);
@@ -149,6 +158,10 @@ export default {
           });
           // csv 处理
           d.fileMetadataList?.forEach(f => {
+            // 去掉重复的文件
+            if (this.fileList.filter(item => item.name === f.name).length > 0) {
+              return;
+            }
             this.fileList.push(f);
             this.tableData.push({
               name: f.name,
@@ -158,12 +171,14 @@ export default {
             });
           });
         });
-
         this.$emit('fileChange', this.scenarios);
         this.$success(this.$t('test_track.case.import.success'));
         this.loadApiAutomationVisible = false;
+        this.selectIds.clear();
       });
-      this.selectIds.clear();
+    },
+    search() {
+      this.getProjectScenarios();
     },
   }
 };

@@ -9,20 +9,10 @@
         <el-input v-model="form.name" autocomplete="off"/>
       </el-form-item>
       <el-form-item :label="$t('commons.email')" prop="email">
-        <el-input v-model="form.email" autocomplete="off" :disabled="!isLocalUser"/>
+        <el-input v-model="form.email" autocomplete="off" type="text" maxlength="60" show-word-limit/>
       </el-form-item>
       <el-form-item :label="$t('commons.phone')" prop="phone">
         <el-input v-model="form.phone" autocomplete="off"/>
-      </el-form-item>
-      <el-form-item label="所属工作空间" v-if="workspaceList.length>0">
-        <span v-for="(item,index) in workspaceList" :key = item.id >
-          <span>{{item.name}}</span><span v-if="index<workspaceList.length-1"> | </span>
-        </span>
-      </el-form-item>
-      <el-form-item label="所属工作项目" v-if ="projectList.length>0">
-        <span v-for="(item,index) in projectList" :key = item.id >
-          <span>{{item.name}}</span><span v-if="index<projectList.length-1"> | </span>
-        </span>
       </el-form-item>
       <el-form-item>
         <el-button @click="cancel">{{$t('commons.cancel')}}</el-button>
@@ -39,17 +29,14 @@ import {
   fullScreenLoading, getCurrentProjectID,
   getCurrentUser,
   getCurrentWorkspaceId,
-  listenGoBack,
   removeGoBackListener, saveLocalStorage, stopFullScreenLoading
 } from "@/common/js/utils";
 import MsTableOperatorButton from "../../common/components/MsTableOperatorButton";
 import {EMAIL_REGEX, PHONE_REGEX} from "@/common/js/regex";
 import JiraUserInfo from "@/business/components/settings/personal/JiraUserInfo";
 import TapdUserInfo from "@/business/components/settings/personal/TapdUserInfo";
-import {getIntegrationService} from "@/network/organization";
 import ZentaoUserInfo from "@/business/components/settings/personal/ZentaoUserInfo";
 import AzureDevopsUserInfo from "@/business/components/settings/personal/AzureDevopsUserInfo";
-import {logout} from "@/network/user";
 
 export default {
   name: "MsPersonFromSetting",
@@ -58,12 +45,16 @@ export default {
     'reload',
     'reloadTopMenus'
   ],
+  props:{
+    form:{
+      type:Object
+    }
+  },
   data() {
     return {
       result: {},
       isLocalUser: false,
       updatePath: '/user/update/current',
-      form: {platformInfo: {}},
       ruleForm: {},
       rule: {
         name: [
@@ -93,20 +84,14 @@ export default {
           }
         ],
       },
-      workspaceList:[],
-      projectList:[]
     };
-  },
-
-  created() {
-    this.initTableData();
   },
   methods: {
     currentUser: () => {
       return getCurrentUser();
     },
     cancel() {
-
+      this.$emit("cancel");
     },
     updateUser(updateUserForm) {
       this.$refs[updateUserForm].validate(valid => {
@@ -118,30 +103,11 @@ export default {
           this.result = this.$post(this.updatePath, param, response => {
             this.$success(this.$t('commons.modify_success'));
             localStorage.setItem(TokenKey, JSON.stringify(response.data));
-            this.initTableData();
             this.reload();
           });
         } else {
           return false;
         }
-      });
-    },
-    initTableData() {
-      this.result = this.$get("/user/info/" + encodeURIComponent(this.currentUser().id), response => {
-        let data = response.data;
-        this.isLocalUser = response.data.source === 'LOCAL';
-        let dataList = [];
-        dataList[0] = data;
-        this.form = data;
-        this.$emit('getPlatformInfo', data);
-        this.getWsAndPj();
-      });
-    },
-    getWsAndPj(){
-      this.$get("/user/get/ws_pj/" + encodeURIComponent(this.currentUser().id), response => {
-        let data = response.data;
-        this.workspaceList = data.workspace;
-        this.projectList = data.project
       });
     },
     handleClose() {

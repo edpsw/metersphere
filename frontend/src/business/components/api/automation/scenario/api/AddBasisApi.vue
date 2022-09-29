@@ -78,7 +78,7 @@
     },
     data() {
       let validateURL = (rule, value, callback) => {
-        if (!this.httpForm.path.startsWith("/") || this.httpForm.path.match(/\s/) != null) {
+        if (!this.httpForm.path.startsWith("/")) {
           callback(this.$t('api_test.definition.request.path_valid_info'));
         }
         callback();
@@ -112,10 +112,6 @@
       saveApi() {
         this.$refs['httpForm'].validate((valid) => {
           if (valid) {
-            if (this.httpForm.path && this.httpForm.path.match(/\s/) != null) {
-              this.$error(this.$t("api_test.definition.request.path_valid_info"));
-              return false;
-            }
             this.save(this.httpForm);
           } else {
             return false;
@@ -133,6 +129,7 @@
         let obj = {apiDefinitionId: api.id, name: api.name, priority: 'P0', active: true, uuid: getUUID(), request: api.request};
         obj.projectId = getCurrentProjectID();
         obj.id = obj.uuid;
+        obj.versionId = api.versionId;
         let url = "/api/testcase/create";
         let bodyFiles = this.getBodyUploadFiles(obj);
         this.$fileUpload(url, null, bodyFiles, obj, (response) => {
@@ -149,6 +146,17 @@
         data.id = data.request.id;
         if (!data.method) {
           data.method = data.protocol;
+        }
+        data.request.path = this.httpForm.path;
+        if (data.request.hashTree && data.request.hashTree.length > 0) {
+          let arrays = ["Extract", "JSR223PreProcessor", "JDBCPreProcessor", "ConstantTimer", "JSR223PostProcessor", "JDBCPostProcessor", "Assertions"];
+          let hashTree = [];
+          data.request.hashTree.forEach(item => {
+            if (arrays.indexOf(item.type) !== -1) {
+              hashTree.push(item);
+            }
+          })
+          data.request.hashTree = hashTree;
         }
       },
       getBodyUploadFiles(data) {
@@ -239,7 +247,7 @@
         this.httpForm.request = createComponent("DubboSampler");
       },
       getMaintainerOptions() {
-        this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()},response => {
+        this.$get('/user/project/member/list', response => {
           this.maintainerOptions = response.data;
         });
       },
@@ -274,7 +282,17 @@
             data.protocol = "DUBBO";
           }
           data.id = getUUID();
-          this.httpForm = {id: data.id, name: data.name, protocol: data.protocol, path: data.path, method: api.method, userId: getCurrentUser().id, request: data, moduleId: "default-module"};
+          data.path = this.httpForm.path;
+          this.httpForm = {
+            id: data.id,
+            name: data.name,
+            protocol: data.protocol,
+            path: data.path ? data.path : data.url,
+            method: api.method,
+            userId: getCurrentUser().id,
+            request: data,
+            moduleId: "default-module"
+          };
           this.getMaintainerOptions();
           this.list(data);
           this.httpVisible = true;

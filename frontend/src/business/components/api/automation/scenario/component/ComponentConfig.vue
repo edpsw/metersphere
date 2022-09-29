@@ -1,11 +1,44 @@
 <template>
   <div class="request-form">
-    <keep-alive>
-      <component v-bind:is="component" :isMax="isMax" :show-btn="showBtn" :expandedNode="expandedNode"
-                 :scenario="scenario" :controller="scenario" :timer="scenario" :assertions="scenario" :extract="scenario" :jsr223-processor="scenario" :request="scenario" :currentScenario="currentScenario" :currentEnvironmentId="currentEnvironmentId" :node="node"
-                 :draggable="draggable" :title="title" :color="titleColor" :background-color="backgroundColor" @suggestClick="suggestClick(node)" :response="response"
-                 @remove="remove" @runScenario="runScenario" @stopScenario="stopScenario" @copyRow="copyRow" @refReload="refReload" @openScenario="openScenario" :project-list="projectList" :env-map="envMap" :message="message"/>
-    </keep-alive>
+    <component
+      v-bind:is="component"
+      :isMax="isMax"
+      :show-btn="showBtn"
+      :show-version="showVersion"
+      :scenario="scenario"
+      :controller="scenario"
+      :timer="scenario"
+      :assertions="scenario"
+      :extract="scenario"
+      :command="scenario"
+      :jsr223-processor="scenario"
+      :request="scenario"
+      :currentScenario="currentScenario"
+      :node="node"
+      :draggable="draggable"
+      :title="title"
+      :color="titleColor"
+      :response="response"
+      :environment-type="environmentType"
+      :environment-group-id="envGroupId"
+      :background-color="backgroundColor"
+      :project-list="projectList"
+      :env-map="envMap"
+      :message="message"
+      :api-id="apiId"
+      :scenario-definition="scenarioDefinition"
+      :if-from-variable-advance="ifFromVariableAdvance"
+      @suggestClick="suggestClick(node)"
+      @remove="remove"
+      @runScenario="runScenario"
+      @stopScenario="stopScenario"
+      @copyRow="copyRow"
+      @refReload="refReload"
+      @openScenario="openScenario"
+      @setDomain="setDomain"
+      @savePreParams="savePreParams"
+      @editScenarioAdvance="editScenarioAdvance"
+    />
   </div>
 </template>
 
@@ -18,6 +51,9 @@ import MsLoopController from "./LoopController";
 import MsApiScenarioComponent from "./ApiScenarioComponent";
 import JmeterElementComponent from "./JmeterElementComponent";
 import PluginComponent from "./PluginComponent";
+const requireComponent = require.context('@/business/components/xpack/', true, /\.vue$/);
+const MsUiCommand = requireComponent.keys().length > 0 ? requireComponent("./ui/automation/scenario/component/MsUiCommandComponent.vue") : {};
+const MsUiScenarioComponent = requireComponent.keys().length > 0 ? requireComponent("./ui/automation/scenario/component/MsUiScenarioComponent.vue") : {};
 
 export default {
   name: "ComponentConfig",
@@ -31,14 +67,18 @@ export default {
     JmeterElementComponent,
     MsConstantTimer: () => import("./ConstantTimer"),
     MsJsr233Processor: () => import("./Jsr233Processor"),
-    MsApiAssertions: () => import("../../../definition/components/assertion/ApiAssertions"),
+    MsScenarioAssertions: () => import("../../../definition/components/assertion/ScenarioAssertions"),
     MsApiExtract: () => import("../../../definition/components/extract/ApiExtract"),
     MsJdbcProcessor: () => import("@/business/components/api/automation/scenario/component/JDBCProcessor"),
+    // MsUiCommand: () => import("@/business/components/xpack/ui/automation/scenario/component/MsUiCommandComponent")
+    'MsUiCommand': MsUiCommand.default,
+    'MsUiScenarioComponent': MsUiScenarioComponent.default,
   },
   props: {
     type: String,
     message: String,
     scenario: {},
+    command: {},
     draggable: {
       type: Boolean,
       default: true,
@@ -51,19 +91,30 @@ export default {
       type: Boolean,
       default: true,
     },
+    showVersion: {
+      type: Boolean,
+      default: true,
+    },
     currentScenario: {},
-    expandedNode: Array,
-    currentEnvironmentId: String,
     response: {},
     node: {},
     projectList: Array,
-    envMap: Map
+    envMap: Map,
+    environmentType: String,
+    envGroupId: String,
+    scenarioDefinition: Array,
+    // 是否来自于接口自动化的参数设置
+    ifFromVariableAdvance: {
+      type: Boolean,
+      default: false,
+    },
   },
   data() {
     return {
       title: "",
       titleColor: "",
       backgroundColor: "",
+      apiId: "",
     }
   },
   computed: {
@@ -95,7 +146,7 @@ export default {
           name = this.getComponent(ELEMENT_TYPE.JDBCPreProcessor);
           break;
         case ELEMENT_TYPE.Assertions:
-          name = "MsApiAssertions";
+          name = this.getComponent(ELEMENT_TYPE.Assertions);
           break;
         case ELEMENT_TYPE.Extract:
           name = "MsApiExtract";
@@ -126,6 +177,9 @@ export default {
         case "TCPSampler":
           name = "MsApiComponent";
           break;
+        case "MsUiCommand":
+          name = "MsUiCommand";
+          break;
         default:
           name = this.getComponent(ELEMENT_TYPE.Plugin);
           break;
@@ -145,7 +199,8 @@ export default {
         this.titleColor = "#783887";
         this.backgroundColor = "#F2ECF3";
         return "MsJsr233Processor";
-      }if (type === ELEMENT_TYPE.JDBCPreProcessor) {
+      }
+      if (type === ELEMENT_TYPE.JDBCPreProcessor) {
         this.title = this.$t('api_test.definition.request.pre_sql');
         this.titleColor = "#FE6F71";
         this.backgroundColor = "#F2ECF3";
@@ -155,13 +210,19 @@ export default {
         this.titleColor = "#1483F6";
         this.backgroundColor = "#F2ECF3";
         return "MsJdbcProcessor";
-      }
-      else if (type === ELEMENT_TYPE.Plugin) {
+      } else if (type === ELEMENT_TYPE.Plugin) {
         this.titleColor = "#1483F6";
         this.backgroundColor = "#F2ECF3";
         return "PluginComponent";
-      }
-      else {
+      } else if (type === ELEMENT_TYPE.Assertions) {
+        if (this.node && this.node.parent && this.node.parent.data && this.node.parent.data.referenced === "REF") {
+          this.apiId = this.node.parent.data.id;
+          this.scenario.document.nodeType = "scenario";
+        } else {
+          this.apiId = "none";
+        }
+        return "MsScenarioAssertions";
+      } else {
         this.title = this.$t('api_test.automation.customize_script');
         this.titleColor = "#7B4D12";
         this.backgroundColor = "#F1EEE9";
@@ -170,7 +231,6 @@ export default {
     },
     remove(row, node) {
       this.$emit('remove', row, node);
-
     },
     copyRow(row, node) {
       this.$emit('copyRow', row, node);
@@ -188,9 +248,18 @@ export default {
     runScenario(scenario) {
       this.$emit('runScenario', scenario);
     },
-    stopScenario(){
+    stopScenario() {
       this.$emit('stopScenario');
-    }
+    },
+    setDomain() {
+      this.$emit("setDomain");
+    },
+    savePreParams(data) {
+      this.$emit("savePreParams", data);
+    },
+    editScenarioAdvance(data) {
+      this.$emit('editScenarioAdvance', data);
+    },
   }
 }
 </script>

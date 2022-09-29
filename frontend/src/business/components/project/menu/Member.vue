@@ -37,7 +37,7 @@
         </el-card>
 
 
-        <el-dialog :close-on-click-modal="false" :title="$t('member.modify')" :visible.sync="updateVisible" width="30%"
+        <el-dialog :close-on-click-modal="false" :title="$t('member.modify')" :visible.sync="updateVisible" width="40%"
                    :destroy-on-close="true"
                    @close="handleClose" v-loading="dialogResult.loading">
           <el-form :model="form" label-position="right" label-width="100px" size="small" ref="updateUserForm">
@@ -85,14 +85,13 @@
 import MsRolesTag from "@/business/components/common/components/MsRolesTag";
 import MsTableOperator from "@/business/components/common/components/MsTableOperator";
 import MsTablePagination from "@/business/components/common/pagination/TablePagination";
-import MsCreateBox from "@/business/components/settings/CreateBox";
 import MsTableHeader from "@/business/components/common/components/MsTableHeader";
 import MsDialogFooter from "@/business/components/common/components/MsDialogFooter";
 import MsTableHeaderSelectPopover from "@/business/components/common/components/table/MsTableHeaderSelectPopover";
 import ShowMoreBtn from "@/business/components/track/case/components/ShowMoreBtn";
 import EditMember from "@/business/components/project/menu/EditMember";
 import {GROUP_PROJECT} from "@/common/js/constants";
-import {getCurrentProjectID, getCurrentWorkspaceId} from "@/common/js/utils";
+import {getCurrentProjectID, getCurrentUserId, getCurrentWorkspaceId, operationConfirm} from "@/common/js/utils";
 import MsContainer from "@/business/components/common/components/MsContainer";
 import MsMainContainer from "@/business/components/common/components/MsMainContainer";
 
@@ -105,7 +104,6 @@ export default {
     MsRolesTag,
     MsTableOperator,
     MsTablePagination,
-    MsCreateBox,
     MsTableHeader,
     MsDialogFooter,
     MsTableHeaderSelectPopover,
@@ -117,7 +115,7 @@ export default {
       result: {},
       dialogResult: {},
       tableData: [],
-      screenHeight: 'calc(100vh - 195px)',
+      screenHeight: 'calc(100vh - 155px)',
       currentPage: 1,
       pageSize: 10,
       total: 0,
@@ -166,17 +164,15 @@ export default {
       this.$set(this.form, 'groupIds', groupIds);
     },
     del(row) {
-      this.$confirm(this.$t('member.remove_member'), '', {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
+      operationConfirm(this.$t('member.remove_member'), () => {
+        if (row.id === getCurrentUserId()) {
+          this.$warning(this.$t('group.unable_to_remove_current_member'));
+          return;
+        }
         this.result = this.$get('/user/project/member/delete/' + this.projectId + '/' + encodeURIComponent(row.id), () => {
           this.$success(this.$t('commons.remove_success'));
           this.initTableData();
         });
-      }).catch(() => {
-        this.$info(this.$t('commons.remove_cancel'));
       });
     },
     handleClose() {
@@ -215,6 +211,9 @@ export default {
 }
 
 .select-width {
-  width: 100%;
+  width: 80%;
+}
+.el-input{
+  width: 80%;
 }
 </style>

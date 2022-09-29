@@ -2,8 +2,10 @@ package io.metersphere.excel.domain;
 
 import com.alibaba.excel.annotation.ExcelIgnore;
 import io.metersphere.dto.CustomFieldDao;
+import io.metersphere.excel.constants.TestCaseImportFiled;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.*;
@@ -46,33 +48,51 @@ public class TestCaseExcelData {
     @ExcelIgnore
     private String priority;
     @ExcelIgnore
-    Map<String,String> customDatas = new LinkedHashMap<>();
+    Map<String, Object> customData = new LinkedHashMap<>();
+    @ExcelIgnore
+    Set<String> textFieldSet = new HashSet<>(2);
 
-    public Set<String> getExcludeColumnFiledNames(boolean needNum){
-        Set<String> excludeColumnFiledNames = new HashSet<>();
-        if(!needNum){
-            excludeColumnFiledNames.add("customNum");
-        }
-        excludeColumnFiledNames.add("id");
-        excludeColumnFiledNames.add("num");
-        return excludeColumnFiledNames;
-    }
+    @ExcelIgnore
+    List<String> mergeStepDesc;
+    @ExcelIgnore
+    List<String> mergeStepResult;
+    @ExcelIgnore
+    Map<String, String> otherFields;
 
-    public String parseStatus(String parseStatus){
-        String caseStatusValue = "";
-        if(StringUtils.equalsAnyIgnoreCase(parseStatus,"Underway","进行中","進行中")){
-            caseStatusValue = "Underway";
-        }else if(StringUtils.equalsAnyIgnoreCase(parseStatus,"Prepare","未开始","未開始")){
-            caseStatusValue = "Prepare";
-        }else if(StringUtils.equalsAnyIgnoreCase(parseStatus,"Completed","已完成","已完成")){
-            caseStatusValue = "Completed";
-        }else if(StringUtils.equalsAnyIgnoreCase(parseStatus,"Trash")){
-            caseStatusValue = "Trash";
-        }
-        return caseStatusValue;
-    }
-
-    public List<List<String>> getHead(boolean needNum, List<CustomFieldDao> customFields){
+    public List<List<String>> getHead(boolean needNum, List<CustomFieldDao> customFields) {
         return new ArrayList<>();
+    }
+
+    public List<List<String>> getHead(boolean needNum, List<CustomFieldDao> customFields, Locale lang) {
+        List<List<String>> heads = new ArrayList<>();
+        TestCaseImportFiled[] fields = TestCaseImportFiled.values();
+        for (TestCaseImportFiled field : fields) {
+            heads.add(Arrays.asList(field.getFiledLangMap().get(lang)));
+        }
+
+        Iterator<List<String>> iterator = heads.iterator();
+
+        while (iterator.hasNext()) {
+            List<String> head = iterator.next();
+            if (StringUtils.equals(head.get(0), TestCaseImportFiled.ID.getFiledLangMap().get(lang)) && !needNum) {
+                iterator.remove();
+                break;
+            }
+        }
+
+        if (CollectionUtils.isNotEmpty(customFields)) {
+            for (CustomFieldDao dto : customFields) {
+                if (StringUtils.equalsAny(dto.getName(),
+                        TestCaseImportFiled.PRIORITY.getFiledLangMap().get(Locale.SIMPLIFIED_CHINESE),
+                        TestCaseImportFiled.STATUS.getFiledLangMap().get(Locale.SIMPLIFIED_CHINESE),
+                        TestCaseImportFiled.MAINTAINER.getFiledLangMap().get(Locale.SIMPLIFIED_CHINESE))) {
+                    continue;
+                }
+                heads.add(new ArrayList<>() {{
+                    add(dto.getName());
+                }});
+            }
+        }
+        return heads;
     }
 }

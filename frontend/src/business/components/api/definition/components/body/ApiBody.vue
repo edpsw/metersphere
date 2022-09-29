@@ -25,7 +25,7 @@
         {{ $t('api_test.definition.request.body_binary') }}
       </el-radio>
     </el-radio-group>
-    <div style="min-width: 1200px;" v-if="body.type == 'Form Data' || body.type == 'WWW_FORM'">
+    <div v-if="body.type == 'Form Data' || body.type == 'WWW_FORM'">
       <el-row v-if="body.type == 'Form Data' || body.type == 'WWW_FORM'">
         <el-link class="ms-el-link" @click="batchAdd"> {{ $t("commons.batch_add") }}</el-link>
       </el-row>
@@ -33,7 +33,11 @@
         :with-mor-setting="true"
         :is-read-only="isReadOnly"
         :parameters="body.kvs"
+        :urlEncode="body.type == 'WWW_FORM'"
         :isShowEnable="isShowEnable"
+        :scenario-definition="scenarioDefinition"
+        :id="id"
+        @editScenarioAdvance="editScenarioAdvance"
         type="body"/>
     </div>
     <div v-if="body.type == 'JSON'">
@@ -43,6 +47,8 @@
       <ms-json-code-edit
         v-if="body.format==='JSON-SCHEMA'"
         :body="body"
+        :scenario-definition="scenarioDefinition"
+        @editScenarioAdvance="editScenarioAdvance"
         ref="jsonCodeEdit"/>
       <ms-code-edit
         v-else-if="codeEditActive"
@@ -107,7 +113,20 @@ export default {
     BatchAddParameter
   },
   props: {
-    body: {},
+    body: {
+      type: Object,
+      default() {
+        return {
+          json: true,
+          kV: false,
+          kvs: [],
+          oldKV: false,
+          type: "JSON",
+          valid: false,
+          xml: false
+        }
+      }
+    },
     headers: Array,
     isReadOnly: {
       type: Boolean,
@@ -116,7 +135,9 @@ export default {
     isShowEnable: {
       type: Boolean,
       default: true
-    }
+    },
+    scenarioDefinition: Array,
+    id: String,
   },
   data() {
     return {
@@ -125,23 +146,13 @@ export default {
       jsonSchema: "JSON",
       codeEditActive: true,
       hasOwnProperty: Object.prototype.hasOwnProperty,
-      propIsEnumerable: Object.prototype.propertyIsEnumerable
+      propIsEnumerable: Object.prototype.propertyIsEnumerable,
     };
   },
 
   watch: {
-    'body.raw'() {
-      if (this.body.format !== 'JSON-SCHEMA' && this.body.raw) {
-        try {
-          const MsConvert = new Convert();
-          let data = MsConvert.format(JSON.parse(this.body.raw));
-          if (this.body.jsonSchema) {
-            this.body.jsonSchema = this.deepAssign(this.body.jsonSchema, data);
-          }
-        } catch (ex) {
-          this.body.jsonSchema = "";
-        }
-      }
+    'body.typeChange'() {
+      this.reloadCodeEdit();
     },
   },
   methods: {
@@ -169,7 +180,6 @@ export default {
         to[key] = this.assign(Object(to[key]), from[key]);
       }
     },
-
     assign(to, from) {
       if (to === from) {
         return to;
@@ -180,17 +190,20 @@ export default {
           this.assignKey(to, from, key);
         }
       }
-
+      // 清除多出部分属性
+      for (let key in to) {
+        if (!this.hasOwnProperty.call(from, key) && key !== 'description') {
+          this.$delete(to, key)
+        }
+      }
       if (Object.getOwnPropertySymbols) {
         let symbols = Object.getOwnPropertySymbols(from);
-
         for (let i = 0; i < symbols.length; i++) {
           if (this.propIsEnumerable.call(from, symbols[i])) {
             this.assignKey(to, from, symbols[i]);
           }
         }
       }
-
       return to;
     },
 
@@ -211,8 +224,13 @@ export default {
       const MsConvert = new Convert();
 
       if (this.body.format === 'JSON-SCHEMA') {
-        if (this.body.raw && !this.body.jsonSchema) {
-          this.body.jsonSchema = MsConvert.format(JSON.parse(this.body.raw));
+        if (this.body.raw) {
+          if (!this.body.jsonSchema) {
+            this.body.jsonSchema = MsConvert.format(JSON.parse(this.body.raw));
+          } else {
+            let data = MsConvert.format(JSON.parse(this.body.raw));
+            this.body.jsonSchema = this.deepAssign(this.body.jsonSchema, data);
+          }
         }
       } else {
         if (this.body.jsonSchema) {
@@ -246,11 +264,16 @@ export default {
     setContentType(value) {
       let isType = false;
       this.headers.forEach(item => {
-        if (item.name === "Content-Type") {
+        if (item.name === "Content-Type" || item.name == "contentType") {
           item.value = value;
           isType = true;
         }
       })
+      if (this.body && this.body.kvs && value === "application/x-www-form-urlencoded") {
+        this.body.kvs.forEach(item => {
+          item.urlEncode = true;
+        });
+      }
       if (!isType) {
         this.headers.unshift(new KeyValue({name: "Content-Type", value: value}));
         this.$emit('headersChange');
@@ -279,7 +302,7 @@ export default {
           }
         }
         if (isAdd) {
-          this.body.kvs.unshift(obj);
+          this.body.kvs.splice(this.body.kvs.indexOf(kv => !kv.name), 0, obj);
         }
       }
     },
@@ -288,27 +311,32 @@ export default {
         let params = data.split("\n");
         let keyValues = [];
         params.forEach(item => {
-          let line = [];
-          line[0] = item.substring(0,item.indexOf(":"));
-          line[1] = item.substring(item.indexOf(":")+1,item.length);
-          let required = false;
-          keyValues.unshift(new KeyValue({
-            name: line[0],
-            required: required,
-            value: line[1],
-            description: line[2],
-            type: "text",
-            valid: false,
-            file: false,
-            encode: true,
-            enable: true,
-            contentType: "text/plain"
-          }));
+          if (item) {
+            let line = [];
+            line[0] = item.substring(0, item.indexOf(":"));
+            line[1] = item.substring(item.indexOf(":") + 1, item.length);
+            let required = false;
+            keyValues.push(new KeyValue({
+              name: line[0],
+              required: required,
+              value: line[1],
+              description: line[2],
+              type: "text",
+              valid: false,
+              file: false,
+              encode: true,
+              enable: true,
+              contentType: "text/plain"
+            }));
+          }
         })
         keyValues.forEach(item => {
           this.format(this.body.kvs, item);
         })
       }
+    },
+    editScenarioAdvance(data) {
+      this.$emit('editScenarioAdvance', data);
     },
   },
   created() {

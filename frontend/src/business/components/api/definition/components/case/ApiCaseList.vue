@@ -1,24 +1,26 @@
 <template>
   <div v-if="visible">
-    <ms-drawer :size="60" @close="apiCaseClose" direction="bottom">
+    <ms-drawer :size="60" @close="apiCaseClose" direction="bottom" ref="testCaseDrawer">
       <template v-slot:header>
         <api-case-header
           :api="api"
           @setEnvironment="setEnvironment"
           @addCase="addCase"
+          @saveCase="saveCase"
           :condition="condition"
           :priorities="priorities"
           :project-id="projectId"
           :useEnvironment="environment"
           :is-case-edit="isCaseEdit"
-          ref="header"/>
+          :button-text="saveButtonText"
+          ref="header" v-if="refreshHeader"/>
       </template>
 
       <el-container v-if="!result.loading">
         <el-main>
-          <div v-for="(item,index) in apiCaseList" :key="item.id ? item.id : item.uuid">
+          <div v-for="item in apiCaseList" :key="item.id ? item.id : item.uuid">
             <api-case-item
-              :loading="singleLoading && singleRunId === item.id || batchLoadingIds.indexOf(item.id) > -1"
+              :loading="singleLoading && singleRunId ===item.id || batchLoadingIds.indexOf(item.id) > -1"
               @refresh="refresh"
               @singleRun="singleRun"
               @stop="stop"
@@ -28,21 +30,27 @@
               @showHistory="showHistory"
               @reLoadCase="reLoadCase"
               :environment="environment"
+              @setSelectedCaseId="setSelectedCaseId"
               :is-case-edit="isCaseEdit"
               :api="api"
               :currentApi="currentApi"
               :loaded="loaded"
-              :runResult="runResult"
               :maintainerOptions="maintainerOptions"
-              :api-case="item" :index="index" ref="apiCaseItem"/>
+              :api-case="item" ref="apiCaseItem"/>
           </div>
         </el-main>
       </el-container>
     </ms-drawer>
 
     <!-- 执行组件 -->
-    <ms-run :debug="false" :reportId="reportId" :run-data="runData" :env-map="envMap"
-            @runRefresh="runRefresh" @errorRefresh="errorRefresh" ref="runTest"/>
+    <ms-run
+      :debug="false"
+      :reportId="reportId"
+      :run-data="runData"
+      :env-map="envMap"
+      :edit-case-request="true"
+      @runRefresh="runRefresh"
+      @errorRefresh="errorRefresh" ref="runTest"/>
     <ms-task-center ref="taskCenter" :show-menu="false"/>
   </div>
 </template>
@@ -53,6 +61,8 @@ import {getCurrentProjectID, getUUID} from "@/common/js/utils";
 import MsDrawer from "../../../../common/components/MsDrawer";
 import {CASE_ORDER} from "../../model/JsonData";
 import {API_CASE_CONFIGS} from "@/business/components/common/components/search/search-components";
+import {parseEnvironment} from "@/business/components/api/definition/model/EnvironmentModel";
+import {Body} from "@/business/components/api/definition/model/ApiTestModel";
 
 export default {
   name: 'ApiCaseList',
@@ -69,6 +79,7 @@ export default {
       type: Boolean,
       default: false
     },
+    saveButtonText: String,
     refreshSign: String,
     currentApi: {
       type: Object
@@ -83,7 +94,6 @@ export default {
       batchLoadingIds: [],
       singleLoading: false,
       singleRunId: "",
-      runResult: {},
       runData: [],
       reportId: "",
       testCaseId: "",
@@ -94,11 +104,13 @@ export default {
       api: {},
       envMap: new Map,
       maintainerOptions: [],
+      environments: [],
+      refreshHeader: true
     };
   },
   watch: {
     '$store.state.useEnvironment': function () {
-      this.environment = this.$store.state.useEnvironment;
+      this.setEnvironment(this.$store.state.useEnvironment);
     },
     refreshSign() {
       this.api = this.currentApi;
@@ -129,18 +141,30 @@ export default {
   },
   methods: {
     getMaintainerOptions() {
-      this.$post('/user/project/member/tester/list', {projectId: getCurrentProjectID()}, response => {
+      this.$get('/user/project/member/list', response => {
         this.maintainerOptions = response.data;
       });
+    },
+    close() {
+      if (this.$refs.testCaseDrawer) {
+        this.$refs.testCaseDrawer.close();
+      }
     },
     open(api, testCaseId) {
       this.api = api;
       // testCaseId 不为空则为用例编辑页面
       this.testCaseId = testCaseId;
       this.condition = {components: API_CASE_CONFIGS};
-      this.getApiTest(true);
+      this.getApiTest(true, true);
       this.visible = true;
       this.$store.state.currentApiCase = undefined;
+
+      //默认最大化
+      this.$nextTick(() => {
+        if (this.$refs.testCaseDrawer) {
+          this.$refs.testCaseDrawer.setfullScreen();
+        }
+      });
     },
     add(api) {
       this.api = api;
@@ -148,9 +172,13 @@ export default {
       this.condition = {components: API_CASE_CONFIGS};
       this.sysAddition();
       this.visible = true;
+      this.$nextTick(() => {
+        this.$refs.testCaseDrawer.setfullScreen();
+      });
     },
     copy(apiCase) {
       this.api.id = apiCase.apiDefinitionId;
+      this.api.versionId = apiCase.versionId;
       if (apiCase && apiCase.request) {
         if (apiCase.request.type === "HTTPSamplerProxy") {
           this.api.protocol = "HTTP";
@@ -158,6 +186,7 @@ export default {
         }
         this.api.method = apiCase.request.method
         this.api.name = apiCase.request.name;
+        this.api.path = apiCase.request.path;
       }
       if (apiCase.tags) {
         apiCase.tags = JSON.parse(apiCase.tags);
@@ -165,9 +194,18 @@ export default {
       this.condition = {components: API_CASE_CONFIGS};
       this.sysAddition(apiCase);
       this.visible = true;
+
+      //默认最大化
+      this.$nextTick(() => {
+        this.$refs.testCaseDrawer.setfullScreen();
+      });
     },
     runTestCase(api, testCaseId) {
       if (api && testCaseId) {
+        this.refreshHeader = false;
+        this.$nextTick(() => {
+          this.refreshHeader = true;
+        });
         this.api = api;
         this.testCaseId = testCaseId;
         this.condition = {components: API_CASE_CONFIGS};
@@ -177,13 +215,48 @@ export default {
       }
       this.visible = true;
     },
+    setSelectedCaseId(caseId) {
+      this.selectCaseId = caseId;
+    },
+    saveCase(hideAlert) {
+      let index = 0;
+      if (this.selectCaseId && this.selectCaseId !== '') {
+        for (let i = 0; i < this.apiCaseList.length; i++) {
+          if (this.apiCaseList[i].id === this.selectCaseId) {
+            index = i;
+          }
+        }
+      }
+      if (this.apiCaseList && this.apiCaseList.length !== 0) {
+        let item = this.apiCaseList[index];
+        this.$refs.apiCaseItem[index].saveTestCase(item, hideAlert);
+      }
+    },
     saveApiAndCase(api) {
+      if (api && api.url) {
+        api.url = undefined;
+      }
+      if (api && api.request && api.request.url) {
+        api.request.url = undefined;
+      }
       this.visible = true;
       this.api = api;
       this.currentApi = api;
       this.addCase();
+
+      //默认最大化
+      this.$nextTick(() => {
+        this.$refs.testCaseDrawer.setfullScreen();
+      });
     },
     setEnvironment(environment) {
+      if (this.environment !== environment) {
+        if (this.apiCaseList && this.apiCaseList.length > 0) {
+          if (this.apiCaseList[0].request && this.apiCaseList[0].request.hashTree) {
+            this.setOwnEnvironment(this.apiCaseList[0].request.hashTree, environment);
+          }
+        }
+      }
       this.environment = environment;
     },
     sysAddition(apiCase) {
@@ -197,25 +270,140 @@ export default {
       }
     },
     apiCaseClose() {
-      this.apiCaseList = [];
-      this.visible = false;
-      this.$emit('refresh');
+      if (this.apiCaseList && this.apiCaseList.length > 0) {
+        let message = "";
+        if (this.$store.state.apiCaseMap.has(this.apiCaseList[0].id) && this.$store.state.apiCaseMap.get(this.apiCaseList[0].id) > 1) {
+          message += this.apiCaseList[0].name + "，";
+        }
+        if (this.apiCaseList[0].type === 'AddCase') {
+          message += this.apiCaseList[0].name + "，";
+        }
+        if (message !== "") {
+          this.$alert(this.$t('commons.api_case') + " [ " + message.substr(0, message.length - 1) + " ] " + this.$t('commons.confirm_info'), '', {
+            confirmButtonText: this.$t('commons.confirm'),
+            cancelButtonText: this.$t('commons.cancel'),
+            callback: (action) => {
+              if (action === 'confirm') {
+                this.$store.state.apiCaseMap.delete(this.apiCaseList[0].id);
+                this.apiCaseList = [];
+                this.visible = false;
+                if (this.$route.fullPath !== this.$route.path) {
+                  this.$router.replace({path: '/api/definition'});
+                }
+                this.$emit('refresh');
+              }
+            }
+          });
+        } else {
+          this.apiCaseList = [];
+          this.visible = false;
+          if (this.$route.fullPath !== this.$route.path) {
+            this.$router.replace({path: '/api/definition'});
+          }
+          this.$emit('refresh');
+        }
+      } else {
+        this.apiCaseList = [];
+        this.visible = false;
+        if (this.$route.fullPath !== this.$route.path) {
+          this.$router.replace({path: '/api/definition'});
+        }
+        this.$emit('refresh');
+      }
+
     },
     refreshModule() {
       this.$emit('refreshModule');
     },
-    runRefresh() {
+    setNewSource(environment, obj) {
+      if (environment.config && environment.config.databaseConfigs && environment.config.databaseConfigs.length > 0) {
+        let dataSources = environment.config.databaseConfigs.filter(item => item.name === obj.targetDataSourceName);
+        if (dataSources && dataSources.length > 0) {
+          obj.dataSourceId = dataSources[0].id;
+        } else {
+          obj.dataSourceId = environment.config.databaseConfigs[0].id;
+        }
+      }
+    },
+    getEnvironments(obj, env) {
+      if (this.environments.length === 0) {
+        this.$get('/api/environment/list/' + this.projectId, response => {
+          this.environments = response.data;
+          // 获取原数据源名称
+          if (env === obj.originalEnvironmentId && obj.originalDataSourceId) {
+            obj.dataSourceId = obj.originalDataSourceId;
+            obj.environmentId = env;
+            this.getTargetSourceName(this.environments, obj);
+          }
+          if (!obj.targetDataSourceName) {
+            this.getTargetSourceName(this.environments, obj);
+          }
+
+          // 设置新环境
+          obj.environmentId = env;
+          // 设置新数据源
+          let envs = this.environments.filter(tab => tab.id === env);
+          if (envs && envs.length > 0) {
+            this.setNewSource(envs[0], obj);
+          }
+        });
+      } else {
+        // 获取原数据源名称
+        if (env === obj.originalEnvironmentId && obj.originalDataSourceId) {
+          obj.dataSourceId = obj.originalDataSourceId;
+          obj.environmentId = env;
+          this.getTargetSourceName(this.environments, obj);
+        }
+        if (!obj.targetDataSourceName) {
+          this.getTargetSourceName(this.environments, obj);
+        }
+        // 设置新环境
+        obj.environmentId = env;
+        // 设置新数据源
+        let envs = this.environments.filter(tab => tab.id === env);
+        if (envs && envs.length > 0) {
+          this.setNewSource(envs[0], obj);
+        }
+      }
+    },
+    getTargetSourceName(environments, obj) {
+      environments.forEach(environment => {
+        parseEnvironment(environment);
+        // 找到原始环境和数据源名称
+        if (environment.id === obj.environmentId) {
+          if (environment.config && environment.config.databaseConfigs) {
+            environment.config.databaseConfigs.forEach(item => {
+              if (item.id === obj.dataSourceId) {
+                obj.targetDataSourceName = item.name;
+              }
+            });
+          }
+        }
+      });
+    },
+    setOwnEnvironment(scenarioDefinition, env) {
+      for (let i in scenarioDefinition) {
+        let typeArray = ["JDBCPostProcessor", "JDBCSampler", "JDBCPreProcessor"]
+        if (typeArray.indexOf(scenarioDefinition[i].type) !== -1) {
+          this.getEnvironments(scenarioDefinition[i], env);
+        }
+        if (scenarioDefinition[i].hashTree !== undefined && scenarioDefinition[i].hashTree.length > 0) {
+          this.setOwnEnvironment(scenarioDefinition[i].hashTree, env);
+        }
+      }
+    },
+    runRefresh(data) {
       this.batchLoadingIds = [];
       this.singleLoading = false;
       this.singleRunId = "";
-      // 批量更新最后执行环境
-      let obj = {envId: this.environment, show: true};
-      this.batchEdit(obj);
-      this.runResult = {testId: getUUID()};
-      this.$refs.apiCaseItem.runLoading = false;
-      this.$success(this.$t('organization.integration.successful_operation'));
-      this.$store.state.currentApiCase = {refresh: true};
-      this.getTestCase();
+      this.apiCaseList[0].active = true;
+      if (data) {
+        let status = data.status === 'errorReportResult' ? data.status : data.error > 0 ? "error" : "success";
+        this.apiCaseList[0].execResult = status;
+        this.apiCaseList[0].responseData = data;
+        this.$refs.apiCaseItem.runLoading = false;
+        this.$store.state.currentApiCase = {refresh: true, id: data.id, status: status};
+      }
     },
     errorRefresh() {
       this.batchLoadingIds = [];
@@ -235,6 +423,30 @@ export default {
       }
       if (Object.prototype.toString.call(apiCase.request).match(/\[object (\w+)\]/)[1].toLowerCase() !== 'object') {
         apiCase.request = JSON.parse(apiCase.request);
+        if (apiCase.request.protocol === 'HTTP') {
+          if (!apiCase.request.body) {
+            apiCase.request.body = new Body();
+          }
+          if (!apiCase.request.headers) {
+            apiCase.request.headers = [];
+          }
+          if (!apiCase.request.rest) {
+            apiCase.request.rest = [];
+          }
+          if (!apiCase.request.arguments) {
+            apiCase.request.arguments = [
+              {
+                contentType: "text/plain",
+                enable: true,
+                file: false,
+                required: false,
+                type: "text",
+                urlEncode: false,
+                valid: false
+              }
+            ];
+          }
+        }
       }
       if (!apiCase.request.hashTree) {
         apiCase.request.hashTree = [];
@@ -250,14 +462,25 @@ export default {
       if (apiCase && apiCase.request && apiCase.request.useEnvironment) {
         this.environment = apiCase.request.useEnvironment;
       }
+      if (apiCase.request && apiCase.request.hashTree) {
+        apiCase.request.hashTree.forEach(item => {
+          if (item.type === "Assertions" && !item.document) {
+            item.document = {type: "JSON", data: {xmlFollowAPI: false, jsonFollowAPI: false, json: [], xml: []}};
+          }
+        })
+      }
     },
-    getTestCase() {
+    getTestCase(openCase) {
       return new Promise((resolve) => {
-        this.environment = "";
+        let commonUseEnvironment = this.$store.state.useEnvironment;
+        this.environment = commonUseEnvironment ? commonUseEnvironment : "";
         this.result = this.$get("/api/testcase/findById/" + this.testCaseId, response => {
           let apiCase = response.data;
           if (apiCase) {
             this.formatCase(apiCase);
+            if (openCase) {
+              apiCase.active = true;
+            }
             this.apiCaseList = [apiCase];
           }
           resolve();
@@ -270,20 +493,23 @@ export default {
         this.condition.apiDefinitionId = this.api.id;
         this.result = this.$post("/api/testcase/list", this.condition, response => {
           let data = response.data;
-          if (data) {
+          if (data && data.length > 0) {
             data.forEach(apiCase => {
               this.formatCase(apiCase);
             });
             this.apiCaseList = data;
+          } else {
+            this.$warning(this.$t('commons.please_add_api_case'));
+            return;
           }
         });
       }
     },
-    getApiTest(addCase) {
+    getApiTest(addCase, openCase) {
       if (this.loaded) {
         this.getApiLoadCase();
       } else {
-        this.getTestCase().then(() => {
+        this.getTestCase(openCase).then(() => {
           if (addCase && !this.loaded && this.apiCaseList.length === 0) {
             this.addCase();
           }
@@ -305,14 +531,25 @@ export default {
         if (request.backScript) {
           request.hashTree.push(request.backScript);
         }
-        let uuid = getUUID();
-        request.id = uuid;
-        let obj = {apiDefinitionId: this.api.id, name: '', priority: 'P0', active: true, tags: [], uuid: uuid, caseStatus: "Underway"};
+        let newUuid = getUUID();
+        request.id = newUuid;
+        let obj = {
+          apiDefinitionId: this.api.id,
+          name: '',
+          priority: 'P0',
+          active: true,
+          tags: [],
+          uuid: newUuid,
+          caseStatus: "Underway",
+          type: 'AddCase'
+        };
+        request.projectId = getCurrentProjectID();
         obj.request = request;
         this.apiCaseList.unshift(obj);
       }
     },
     copyCase(data) {
+      data.type = 'AddCase';
       this.apiCaseList.unshift(data);
     },
 
@@ -324,7 +561,8 @@ export default {
       this.$emit('showExecResult', row);
     },
     singleRun(row) {
-      if (this.currentApi.protocol !== "SQL" && this.currentApi.protocol !== "DUBBO" && this.currentApi.protocol !== "dubbo://" && !this.environment) {
+      let methods = ["SQL", "DUBBO", "dubbo://", "TCP"];
+      if (row.apiMethod && methods.indexOf(row.apiMethod) === -1 && !this.environment) {
         this.$warning(this.$t('api_test.environment.select_environment'));
         return;
       }
@@ -332,8 +570,14 @@ export default {
       this.singleLoading = true;
       this.singleRunId = row.id;
       row.request.name = row.id;
-      row.request.useEnvironment = this.environment;
+      if (row.apiMethod !== "SQL" && row.apiMethod !== "DUBBO" && row.apiMethod !== "dubbo://") {
+        row.request.useEnvironment = this.environment;
+      } else {
+        row.request.useEnvironment = row.request.environmentId;
+      }
+
       row.request.projectId = this.projectId;
+      row.request.id = row.id;
       this.runData.push(row.request);
       /*触发执行操作*/
       this.reportId = getUUID().substring(0, 8);

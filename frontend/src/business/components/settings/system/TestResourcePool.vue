@@ -87,7 +87,7 @@
             <el-input v-model="form.gcAlgo"
                       placeholder="-XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:G1ReservePercent=20"/>
           </el-form-item>
-          <el-form-item :label="$t('test_resource_pool.type')" prop="type">
+          <el-form-item prop="type" :label="$t('test_resource_pool.type')">
             <el-select v-model="form.type" :placeholder="$t('test_resource_pool.select_pool_type')"
                        @change="changeResourceType(form.type)">
               <el-option key="NODE" value="NODE" label="Node">Node</el-option>
@@ -114,9 +114,35 @@
               </el-row>
               <el-row>
                 <el-col>
-                  <el-form-item label="Namespace"
-                                :rules="requiredRules">
+                  <el-form-item label="Namespace" :rules="requiredRules">
+                    <template v-slot:label>
+                      Namespace
+                      <el-popover
+                        placement="bottom"
+                        width="450"
+                        trigger="hover">
+                        <div>
+                          <strong>{{ $t('test_resource_pool.k8s_sa_tips') }}</strong><br>
+                          <el-link type="primary" @click="downloadYaml(item, 'sa')">sa.yaml</el-link>
+                        </div>
+
+                        <div style="padding-top: 20px">
+                          <strong>{{ $t('test_resource_pool.k8s_deploy_type_tips') }}</strong><br>
+                          <el-link type="primary" @click="downloadYaml(item, 'DaemonSet')">daemonset.yaml</el-link>
+                          &nbsp;
+                          <el-link type="primary" @click="downloadYaml(item, 'Deployment')">deployment.yaml</el-link>
+                        </div>
+                        <i class="el-icon-info" slot="reference"></i>
+                      </el-popover>
+                    </template>
                     <el-input v-model="item.namespace" type="text"/>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <el-row>
+                <el-col>
+                  <el-form-item label="Deploy Name" :rules="requiredRules">
+                    <el-input v-model="item.deployName"/>
                   </el-form-item>
                 </el-col>
               </el-row>
@@ -128,22 +154,35 @@
                 </el-col>
               </el-row>
               <el-row>
-                <el-col :span="12">
+                <el-col :span="8">
                   <el-form-item :label="$t('test_resource_pool.max_threads')"
                                 :rules="requiredRules">
                     <el-input-number v-model="item.maxConcurrency" :min="1" :max="1000000000"/>
                   </el-form-item>
                 </el-col>
-                <el-col :span="12">
+                <el-col :span="8">
                   <el-form-item :label="$t('test_resource_pool.pod_thread_limit')"
                                 :rules="requiredRules">
                     <el-input-number v-model="item.podThreadLimit" :min="1" :max="1000000"/>
                   </el-form-item>
                 </el-col>
+                <el-col :span="8">
+                  <el-form-item :label="$t('test_resource_pool.sync_jar')">
+                    <el-checkbox v-model="item.enable"/>
+                  </el-form-item>
+                </el-col>
               </el-row>
               <el-row>
                 <el-col>
-                  <el-form-item label="nodeSelector">
+                  <el-form-item>
+                    <template v-slot:label>
+                      NodeSelector
+                      <el-tooltip :content="$t('test_resource_pool.node_selector_tip')"
+                                  effect="light"
+                                  trigger="hover">
+                        <i class="el-icon-info"></i>
+                      </el-tooltip>
+                    </template>
                     <el-input v-model="item.nodeSelector" placeholder='{"disktype": "ssd",...}'/>
                   </el-form-item>
                 </el-col>
@@ -201,6 +240,14 @@
                                        :max="1000000000"></el-input-number>
                     </template>
                   </el-table-column>
+                  <el-table-column
+                    align="center"
+                    prop="enable"
+                    :label="$t('test_resource_pool.sync_jar')">
+                    <template v-slot:default="{row}">
+                      <el-checkbox size="small" v-model="row.enable"/>
+                    </template>
+                  </el-table-column>
                   <el-table-column align="center" :label="$t('commons.operating')">
                     <template v-slot:default="{row, $index}">
                       <el-button @click="removeResourceInfo($index)" type="danger" icon="el-icon-delete" size="mini"
@@ -230,17 +277,17 @@
 </template>
 
 <script>
-import MsCreateBox from "../CreateBox";
 import MsTablePagination from "../../common/pagination/TablePagination";
 import MsTableHeader from "../../common/components/MsTableHeader";
 import MsTableOperator from "../../common/components/MsTableOperator";
 import MsDialogFooter from "../../common/components/MsDialogFooter";
-import {listenGoBack, removeGoBackListener} from "@/common/js/utils";
+import {listenGoBack, operationConfirm, removeGoBackListener} from "@/common/js/utils";
 import BatchAddResource from "@/business/components/settings/system/components/BatchAddResource";
+import {getYaml} from "@/business/components/settings/system/test-resource-pool";
 
 export default {
   name: "MsTestResourcePool",
-  components: {BatchAddResource, MsCreateBox, MsTablePagination, MsTableHeader, MsTableOperator, MsDialogFooter},
+  components: {BatchAddResource, MsTablePagination, MsTableHeader, MsTableOperator, MsDialogFooter},
   data() {
     return {
       result: {},
@@ -253,7 +300,7 @@ export default {
       pageSize: 10,
       total: 0,
       form: {performance: true, api: true, backendListener: true},
-      screenHeight: 'calc(100vh - 195px)',
+      screenHeight: 'calc(100vh - 155px)',
       requiredRules: [{required: true, message: this.$t('test_resource_pool.fill_the_data'), trigger: 'blur'}],
       rule: {
         name: [
@@ -276,11 +323,14 @@ export default {
       updatePool: {
         testName: '',
         haveTestUsePool: false
-      }
+      },
+      apiImage: '',
+      apiImageTag: '',
     };
   },
   activated() {
     this.initTableData();
+    this.getApiImageTag();
   },
   methods: {
     initTableData() {
@@ -304,6 +354,8 @@ export default {
         info.token = '';
         info.namespace = '';
         info.podThreadLimit = 5000;
+        info.deployType = 'DaemonSet';
+        info.deployName = 'ms-node-controller';
       }
       info.maxConcurrency = 100;
       this.infoList.push(info);
@@ -371,6 +423,7 @@ export default {
           resultValidate.validate = false;
           return false;
         }
+
         if (resourcePoolType === 'K8S' && info.nodeSelector) {
           let validate = this.isJsonString(info.nodeSelector);
           if (!validate) {
@@ -379,7 +432,6 @@ export default {
           }
         }
       });
-
       return resultValidate;
     },
     buildPagePath(path) {
@@ -405,23 +457,19 @@ export default {
           let configuration = JSON.parse(resource.configuration);
           configuration.id = resource.id;
           configuration.monitorPort = configuration.monitorPort || '9100';
+          configuration.deployType = configuration.deployType || 'DaemonSet';
+          configuration.deployName = configuration.deployName || 'ms-node-controller';
           resources.push(configuration);
         });
       }
       this.infoList = resources;
     },
     del(row) {
-      this.$confirm(this.$t('test_resource_pool.delete_prompt'), this.$t('commons.prompt'), {
-        confirmButtonText: this.$t('commons.confirm'),
-        cancelButtonText: this.$t('commons.cancel'),
-        type: 'warning'
-      }).then(() => {
+      operationConfirm(this.$t('test_resource_pool.delete_prompt'), () => {
         this.result = this.$get(`/testresourcepool/delete/${row.id}`, () => {
           this.initTableData();
           this.$success(this.$t('commons.delete_success'));
         });
-      }).catch(() => {
-        this.$info(this.$t('commons.delete_cancel'));
       });
     },
     createTestResourcePool() {
@@ -501,16 +549,11 @@ export default {
       if (row.status === 'INVALID') {
         this.checkHaveTestUsePool(row).then(() => {
           if (this.updatePool && this.updatePool.haveTestUsePool) {
-            this.$confirm(this.$t('test_resource_pool.update_prompt', [this.updatePool.testName]), this.$t('commons.prompt'), {
-              confirmButtonText: this.$t('commons.confirm'),
-              cancelButtonText: this.$t('commons.cancel'),
-              type: 'warning'
-            }).then(() => {
+            operationConfirm(this.$t('test_resource_pool.update_prompt', [this.updatePool.testName]), () => {
               this.updatePoolStatus(row);
-            }).catch(() => {
+            }, () => {
               row.status = 'VALID';
               this.result.loading = false;
-              this.$info(this.$t('commons.cancel'));
             });
           } else {
             this.updatePoolStatus(row);
@@ -537,13 +580,45 @@ export default {
         this.result.loading = false;
       });
     },
+    downloadYaml(item, deployType) {
+      if (!item.namespace) {
+        this.$error(this.$t('test_resource_pool.fill_the_data'));
+        return;
+      }
+      if (!item.deployName) {
+        this.$error(this.$t('test_resource_pool.fill_the_data'));
+        return;
+      }
+      let apiImage = 'registry.cn-qingdao.aliyuncs.com/metersphere/ms-node-controller:' + this.apiImageTag;
+      if (item.apiImage) {
+        apiImage = item.apiImage;
+      }
+      let yaml = getYaml(deployType, item.deployName, item.namespace, apiImage);
+      let blob = new Blob([yaml], {type: 'application/yaml'});
+      let url = URL.createObjectURL(blob);
+      let downloadAnchorNode = document.createElement('a')
+      downloadAnchorNode.setAttribute("href", url);
+      downloadAnchorNode.setAttribute("download", deployType.toLowerCase() + ".yaml")
+      downloadAnchorNode.click();
+      downloadAnchorNode.remove();
+    },
+    getApiImageTag() {
+      this.$get('/system/version', response => {
+        if (!response.data) {
+          this.apiImageTag = 'dev';
+          return;
+        }
+        let i = response.data.lastIndexOf('-');
+        this.apiImageTag = response.data.substring(0, i);
+      });
+    },
     isJsonString(str) {
       try {
         if (typeof JSON.parse(str) == "object") {
           return true;
         }
       } catch (e) {
-        console.log('json invalid');
+        return false;
       }
       return false;
     }

@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.annotation.JSONField;
 import com.alibaba.fastjson.annotation.JSONType;
+import com.alibaba.fastjson.parser.Feature;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -18,12 +19,11 @@ import io.metersphere.api.service.ApiTestEnvironmentService;
 import io.metersphere.base.domain.ApiDefinitionWithBLOBs;
 import io.metersphere.base.domain.ApiTestCaseWithBLOBs;
 import io.metersphere.base.domain.ApiTestEnvironmentWithBLOBs;
-import io.metersphere.commons.constants.DelimiterConstants;
 import io.metersphere.commons.constants.MsTestElementConstants;
-import io.metersphere.commons.constants.RunModeConstants;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.CommonBeanFactory;
 import io.metersphere.commons.utils.LogUtil;
+import io.metersphere.constants.RunModeConstants;
 import io.metersphere.plugin.core.MsParameter;
 import io.metersphere.plugin.core.MsTestElement;
 import lombok.Data;
@@ -38,7 +38,6 @@ import org.apache.jmeter.testelement.TestElement;
 import org.apache.jorphan.collections.HashTree;
 
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -52,7 +51,7 @@ import java.util.stream.Collectors;
 public class MsJDBCPreProcessor extends MsTestElement {
     // type 必须放最前面，以便能够转换正确的类
     private String type = "JDBCPreProcessor";
-    private String clazzName = "io.metersphere.api.dto.definition.request.processors.pre.MsJDBCPreProcessor";
+    private String clazzName = MsJDBCPreProcessor.class.getCanonicalName();
 
     @JSONField(ordinal = 20)
     private DatabaseConfig dataSource;
@@ -79,6 +78,8 @@ public class MsJDBCPreProcessor extends MsTestElement {
     @Override
     public void toHashTree(HashTree tree, List<MsTestElement> hashTree, MsParameter msParameter) {
         ParameterConfig config = (ParameterConfig) msParameter;
+        // 历史数据清理
+        this.dataSource = null;
         // 非导出操作，且不是启用状态则跳过执行
         if (!config.isOperating() && !this.isEnable()) {
             return;
@@ -89,7 +90,7 @@ public class MsJDBCPreProcessor extends MsTestElement {
         if (config.getConfig() == null) {
             // 单独接口执行
             this.setProjectId(config.getProjectId());
-            config.setConfig(ElementUtil.getEnvironmentConfig(StringUtils.isNotEmpty(useEnvironment) ? useEnvironment : environmentId, this.getProjectId(), isMockEnvironment()));
+            config.setConfig(ElementUtil.getEnvironmentConfig(StringUtils.isNotEmpty(useEnvironment) ? useEnvironment : environmentId, this.getProjectId()));
         }
 
         // 数据兼容处理
@@ -117,11 +118,20 @@ public class MsJDBCPreProcessor extends MsTestElement {
             // 自选了数据源
             if (config.isEffective(this.getProjectId()) && CollectionUtils.isNotEmpty(config.getConfig().get(this.getProjectId()).getDatabaseConfigs())
                     && isDataSource(config.getConfig().get(this.getProjectId()).getDatabaseConfigs())) {
+                EnvironmentConfig environmentConfig = config.getConfig().get(this.getProjectId());
+                if (environmentConfig.getDatabaseConfigs() != null && StringUtils.isNotEmpty(environmentConfig.getApiEnvironmentid())) {
+                    this.environmentId = environmentConfig.getApiEnvironmentid();
+                }
                 this.initDataSource();
             } else {
                 // 取当前环境下默认的一个数据源
                 if (config.isEffective(this.getProjectId()) && CollectionUtils.isNotEmpty(config.getConfig().get(this.getProjectId()).getDatabaseConfigs())) {
-                    this.dataSource = config.getConfig().get(this.getProjectId()).getDatabaseConfigs().get(0);
+                    DatabaseConfig dataSourceOrg = ElementUtil.dataSource(getProjectId(), dataSourceId, config.getConfig().get(this.getProjectId()));
+                    if (dataSourceOrg != null) {
+                        this.dataSource = dataSourceOrg;
+                    } else {
+                        this.dataSource = config.getConfig().get(this.getProjectId()).getDatabaseConfigs().get(0);
+                    }
                 }
             }
         }
@@ -132,7 +142,8 @@ public class MsJDBCPreProcessor extends MsTestElement {
                 this.initDataSource();
             }
             if (this.dataSource == null) {
-                MSException.throwException("数据源为空无法执行");
+                String message = "数据源为空请选择数据源";
+                MSException.throwException(StringUtils.isNotEmpty(this.getName()) ? this.getName() + "：" + message : message);
             }
         }
         final HashTree samplerHashTree = tree.add(jdbcPreProcessor(config));
@@ -179,7 +190,7 @@ public class MsJDBCPreProcessor extends MsTestElement {
                 if (bloBs != null) {
                     this.setName(bloBs.getName());
                     this.setProjectId(bloBs.getProjectId());
-                    JSONObject element = JSON.parseObject(bloBs.getRequest());
+                    JSONObject element = JSON.parseObject(bloBs.getRequest(), Feature.DisableSpecialKeyDetect);
                     ElementUtil.dataFormatting(element);
                     proxy = mapper.readValue(element.toJSONString(), new TypeReference<MsJDBCPreProcessor>() {
                     });
@@ -233,7 +244,7 @@ public class MsJDBCPreProcessor extends MsTestElement {
             arguments.setProperty(TestElement.TEST_CLASS, Arguments.class.getName());
             arguments.setProperty(TestElement.GUI_CLASS, SaveService.aliasToClass("ArgumentsPanel"));
             variables.stream().filter(KeyValue::isValid).filter(KeyValue::isEnable).forEach(keyValue ->
-                    arguments.addArgument(keyValue.getName(), keyValue.getValue(), "=")
+                    arguments.addArgument(keyValue.getName(), ElementUtil.getEvlValue(keyValue.getValue()), "=")
             );
             return arguments;
         }
@@ -243,21 +254,12 @@ public class MsJDBCPreProcessor extends MsTestElement {
     private JDBCPreProcessor jdbcPreProcessor(ParameterConfig config) {
         JDBCPreProcessor jdbcPreProcessor = new JDBCPreProcessor();
         jdbcPreProcessor.setEnabled(this.isEnable());
-        jdbcPreProcessor.setName(this.getName() == null? "JDBCPreProcessor" : this.getName());
-        String name = ElementUtil.getParentName(this.getParent());
-        if (StringUtils.isNotEmpty(name) && !config.isOperating()) {
-            jdbcPreProcessor.setName(this.getName() + DelimiterConstants.SEPARATOR.toString() + name);
-        }
+        jdbcPreProcessor.setName(this.getName() == null ? "JDBCPreProcessor" : this.getName());
         jdbcPreProcessor.setProperty(TestElement.TEST_CLASS, JDBCPreProcessor.class.getName());
         jdbcPreProcessor.setProperty(TestElement.GUI_CLASS, SaveService.aliasToClass("TestBeanGUI"));
-        jdbcPreProcessor.setProperty("MS-ID", this.getId());
-        String indexPath = this.getIndex();
-        jdbcPreProcessor.setProperty("MS-RESOURCE-ID", this.getResourceId() + "_" + ElementUtil.getFullIndexPath(this.getParent(), indexPath));
-        List<String> id_names = new LinkedList<>();
-        ElementUtil.getScenarioSet(this, id_names);
-        jdbcPreProcessor.setProperty("MS-SCENARIO", JSON.toJSONString(id_names));
 
-        // request.getDataSource() 是ID，需要转换为Name
+        ElementUtil.setBaseParams(jdbcPreProcessor, this.getParent(), config, this.getId(), this.getIndex());
+
         jdbcPreProcessor.setProperty("dataSource", this.dataSource.getName());
         jdbcPreProcessor.setProperty("query", this.getQuery());
         jdbcPreProcessor.setProperty("queryTimeout", String.valueOf(this.getQueryTimeout()));

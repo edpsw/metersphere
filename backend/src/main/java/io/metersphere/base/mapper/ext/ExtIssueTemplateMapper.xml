@@ -11,6 +11,16 @@
         <include refid="io.metersphere.base.mapper.ext.ExtBaseMapper.orders"/>
     </select>
 
+    <insert id="batchInsert" parameterType="java.util.List">
+        INSERT INTO
+        issue_template
+        VALUES
+        <foreach collection="issueTemplates" item="issueTemplate" separator="," >
+            ( #{issueTemplate.id}, #{issueTemplate.name}, #{issueTemplate.platform}, #{issueTemplate.description},
+             #{issueTemplate.title}, #{issueTemplate.system}, #{issueTemplate.global}, #{issueTemplate.content},
+            #{issueTemplate.createTime}, #{issueTemplate.updateTime}, #{issueTemplate.createUser}, #{issueTemplate.projectId})
+        </foreach>
+    </insert>
 
     <sql id="queryWhereCondition">
         <where>
@@ -27,6 +37,19 @@
                             select id
                             from issue_template it_child
                             where it_child.name = it.name and it_child.global != 1 and it_child.workspace_id = #{request.workspaceId}
+                        )
+                    )
+                )
+            </if>
+            <if test="request.projectId != null">
+                and (
+                    it.project_id = #{request.projectId}
+                    or (
+                        it.global = 1 and
+                        not exists (
+                            select id
+                            from issue_template it_child
+                            where it_child.name = it.name and it_child.global != 1 and it_child.project_id = #{request.projectId}
                         )
                     )
                 )

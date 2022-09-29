@@ -22,6 +22,49 @@
     </select>
 
     <sql id="combine">
+        <if test='${condition}.name != null and (${name} == null or ${name} == "")'>
+            and test_case_review.name
+            <include refid="io.metersphere.base.mapper.ext.ExtBaseMapper.condition">
+                <property name="object" value="${condition}.name"/>
+            </include>
+        </if>
+        <if test="${condition}.createTime != null">
+            and test_case_review.create_time
+            <include refid="io.metersphere.base.mapper.ext.ExtBaseMapper.condition">
+                <property name="object" value="${condition}.createTime"/>
+            </include>
+        </if>
+        <if test="${condition}.updateTime != null">
+            and test_case_review.update_time
+            <include refid="io.metersphere.base.mapper.ext.ExtBaseMapper.condition">
+                <property name="object" value="${condition}.updateTime"/>
+            </include>
+        </if>
+        <if test="${condition}.endTime != null">
+            and test_case_review.end_time
+            <include refid="io.metersphere.base.mapper.ext.ExtBaseMapper.condition">
+                <property name="object" value="${condition}.endTime"/>
+            </include>
+        </if>
+        <if test="${condition}.status != null">
+            and test_case_review.status
+            <include refid="io.metersphere.base.mapper.ext.ExtBaseMapper.condition">
+                <property name="object" value="${condition}.status"/>
+            </include>
+        </if>
+        <if test='${condition}.tags != null and ${objectKey}.operator == "not like"'>
+            and (test_case_review.tags is null or test_case_review.tags
+            <include refid="io.metersphere.base.mapper.ext.ExtBaseMapper.condition">
+                <property name="object" value="${condition}.tags"/>
+            </include>
+            )
+        </if>
+        <if test='${condition}.tags != null and ${objectKey}.operator == "like"'>
+            and test_case_review.tags
+            <include refid="io.metersphere.base.mapper.ext.ExtBaseMapper.condition">
+                <property name="object" value="${condition}.tags"/>
+            </include>
+        </if>
         <if test="${condition}.followPeople != null">
             and test_case_review.id in (
             select review_id from test_case_review_follow where follow_id
@@ -59,28 +102,30 @@
             <if test="request.projectId != null">
                 and test_case_review.project_id = #{request.projectId}
             </if>
-            <if test="request.filters != null and request.filters.size() > 0">
-                <foreach collection="request.filters.entrySet()" index="key" item="values">
-                    <if test="values != null and values.size() > 0">
-                        <choose>
-
-                            <when test="key=='stage'">
-                                and test_case_review.stage in
-                                <foreach collection="values" item="value" separator="," open="(" close=")">
-                                    #{value}
-                                </foreach>
-                            </when>
-                            <otherwise>
-                                and test_case_review.status in
-                                <foreach collection="values" item="value" separator="," open="(" close=")">
-                                    #{value}
-                                </foreach>
-                            </otherwise>
-                        </choose>
-                    </if>
-                </foreach>
-            </if>
+            <include refid="filter"/>
         </where>
+    </sql>
+    <sql id="filter">
+        <if test="request.filters != null and request.filters.size() > 0">
+            <foreach collection="request.filters.entrySet()" index="key" item="values">
+                <if test="values != null and values.size() > 0">
+                    <choose>
+                        <when test="key=='stage'">
+                            and test_case_review.stage in
+                            <include refid="io.metersphere.base.mapper.ext.ExtBaseMapper.filterInWrapper"/>
+                        </when>
+                        <when test="key=='status'">
+                            and test_case_review.status in
+                            <include refid="io.metersphere.base.mapper.ext.ExtBaseMapper.filterInWrapper"/>
+                        </when>
+                        <when test="key=='creator_name'">
+                            and test_case_review.creator in
+                            <include refid="io.metersphere.base.mapper.ext.ExtBaseMapper.filterInWrapper"/>
+                        </when>
+                    </choose>
+                </if>
+            </foreach>
+        </if>
     </sql>
     <select id="listByWorkspaceId" resultType="io.metersphere.track.dto.TestCaseReviewDTO"
             parameterType="io.metersphere.track.request.testreview.QueryCaseReviewRequest">

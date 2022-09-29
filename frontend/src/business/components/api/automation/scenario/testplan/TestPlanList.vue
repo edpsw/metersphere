@@ -9,8 +9,16 @@
       >
       </ms-table-header>
     </template>
-    <env-popover :env-map="projectEnvMap" :project-ids="projectIds" @setProjectEnvMap="setProjectEnvMap"
-                 :project-list="projectList" ref="envPopover" class="env-popover" style="float: right; margin-top: 4px;"/>
+    <env-popover :env-map="projectEnvMap"
+                 :project-ids="projectIds"
+                 @setProjectEnvMap="setProjectEnvMap"
+                 :environment-type.sync="environmentType"
+                 :group-id="envGroupId"
+                 :project-list="projectList"
+                 :is-scenario="false"
+                 @setEnvGroup="setEnvGroup"
+                 ref="envPopover"
+                 class="env-popover" style="float: right; margin-top: 4px;"/>
     <el-table
       border
       class="adjust-table"
@@ -67,7 +75,7 @@
         :label="$t('test_track.plan.plan_stage')"
         show-overflow-tooltip>
         <template v-slot:default="scope">
-          <plan-stage-table-item :stage="scope.row.stage"/>
+          <plan-stage-table-item :option="stageOption" :stage="scope.row.stage"/>
         </template>
       </el-table-column>
       <el-table-column
@@ -121,7 +129,7 @@
         </template>
       </el-table-column>
     </el-table>
-    <test-plans-edit ref="testPlanEditDialog" @refresh="initTableData"></test-plans-edit>
+    <test-plan-edit ref="testPlanEditDialog" @refresh="initTableData"></test-plan-edit>
     <ms-table-pagination :change="initTableData" :current-page.sync="currentPage" :page-size.sync="pageSize"
                          :total="total"/>
 
@@ -139,7 +147,6 @@
 </template>
 
 <script>
-import MsCreateBox from '../../../../settings/CreateBox';
 import MsTablePagination from '../../../../../components/common/pagination/TablePagination';
 import MsTableHeader from "../../../../common/components/MsTableHeader";
 import MsDialogFooter from "../../../../common/components/MsDialogFooter";
@@ -153,21 +160,21 @@ import MsDeleteConfirm from "../../../../common/components/MsDeleteConfirm";
 import {TEST_PLAN_CONFIGS} from "../../../../common/components/search/search-components";
 import {getCurrentProjectID} from "../../../../../../common/js/utils";
 import {_filter, _sort} from "@/common/js/tableUtils";
-import EnvPopover from "@/business/components/track/common/EnvPopover";
+import EnvPopover from "@/business/components/api/automation/scenario/EnvPopover";
 import TestPlanEdit from "@/business/components/track/plan/components/TestPlanEdit";
-import TestPlansEdit from "@/business/components/api/automation/scenario/testplan/TestPlansEdit";
+import {ENV_TYPE} from "@/common/js/constants";
+import {getPlanStageOption} from "@/network/test-plan";
 
 export default {
   name: "TestPlanList",
   components: {
-    TestPlansEdit,
     TestPlanEdit,
     MsDeleteConfirm,
     TestCaseReportView,
     TestReportTemplateList,
     PlanStageTableItem,
     PlanStatusTableItem,
-    MsTableOperator, MsTableOperatorButton, MsDialogFooter, MsTableHeader, MsCreateBox, MsTablePagination, EnvPopover
+    MsTableOperator, MsTableOperatorButton, MsDialogFooter, MsTableHeader, MsTablePagination, EnvPopover
   },
   props: {
     row: Set,
@@ -203,6 +210,9 @@ export default {
         projectList: [],
         projectIds: new Set(),
         map: new Map(),
+        environmentType: ENV_TYPE.JSON,
+        envGroupId: "",
+        stageOption: []
       }
     },
     watch: {
@@ -215,6 +225,9 @@ export default {
     created() {
       this.projectId = this.$route.params.projectId;
       this.isTestManagerOrTestUser = true;
+      getPlanStageOption((data) => {
+        this.stageOption = data;
+      });
       this.initTableData();
       this.setScenarioSelectRows(this.row);
       this.getWsProjects();
@@ -228,7 +241,14 @@ export default {
           if (!sign) {
             return false;
           }
-          this.$emit('addTestPlan', this.selection, this.projectEnvMap, this.map);
+          if (this.environmentType === ENV_TYPE.JSON && (!this.projectEnvMap || this.projectEnvMap.size < 1)) {
+            this.$warning(this.$t("api_test.environment.select_environment"));
+            return false;
+          } else if (this.environmentType === ENV_TYPE.GROUP && !this.envGroupId) {
+            this.$warning(this.$t("api_test.environment.select_environment"));
+            return false;
+          }
+          this.$emit('addTestPlan', this.selection, this.projectEnvMap, this.map, this.environmentType, this.envGroupId);
         }
       },
       cancel(){
@@ -236,6 +256,9 @@ export default {
       },
       setProjectEnvMap(projectEnvMap) {
         this.projectEnvMap = projectEnvMap;
+      },
+      setEnvGroup(id) {
+        this.envGroupId = id;
       },
       select(selection) {
         this.selection = selection.map(s => s.id);
@@ -251,6 +274,7 @@ export default {
             params.ids.push(row.id);
           });
           params.condition = this.scenarioCondition;
+
           this.$post('/api/automation/getApiScenarioProjectIdByConditions', params, res => {
             let data = res.data;
             data.forEach(scenario => {
@@ -339,7 +363,7 @@ export default {
         return this.$refs.envPopover.checkEnv();
       },
       getWsProjects() {
-        this.$get("/project/listAll", res => {
+        this.$get("/project/getOwnerProjects", res => {
           this.projectList = res.data;
         })
       },

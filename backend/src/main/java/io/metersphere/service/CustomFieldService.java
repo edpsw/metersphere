@@ -5,11 +5,14 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
-import io.metersphere.base.domain.CustomField;
-import io.metersphere.base.domain.CustomFieldExample;
-import io.metersphere.base.domain.CustomFieldTemplate;
+import io.metersphere.base.domain.*;
+import io.metersphere.base.domain.ext.CustomFieldResource;
+import io.metersphere.base.mapper.CustomFieldIssuesMapper;
 import io.metersphere.base.mapper.CustomFieldMapper;
+import io.metersphere.base.mapper.ProjectMapper;
 import io.metersphere.base.mapper.ext.ExtCustomFieldMapper;
+import io.metersphere.base.mapper.ext.ExtCustomFieldTemplateMapper;
+import io.metersphere.commons.constants.CustomFieldType;
 import io.metersphere.commons.constants.TemplateConstants;
 import io.metersphere.commons.exception.MSException;
 import io.metersphere.commons.utils.*;
@@ -51,7 +54,17 @@ public class CustomFieldService {
 
     @Lazy
     @Resource
+    ApiTemplateService apiTemplateService;
+
+    @Lazy
+    @Resource
     CustomFieldTemplateService customFieldTemplateService;
+    @Resource
+    private ProjectMapper projectMapper;
+    @Resource
+    private CustomFieldIssuesMapper customFieldIssuesMapper;
+    @Resource
+    private ExtCustomFieldTemplateMapper extCustomFieldTemplateMapper;
 
     public String add(CustomField customField) {
         checkExist(customField);
@@ -59,6 +72,7 @@ public class CustomFieldService {
         customField.setCreateTime(System.currentTimeMillis());
         customField.setUpdateTime(System.currentTimeMillis());
         customField.setGlobal(false);
+        customField.setThirdPart(false);
         customField.setCreateUser(SessionUtils.getUserId());
         customFieldMapper.insert(customField);
         return customField.getId();
@@ -91,14 +105,23 @@ public class CustomFieldService {
         customFieldTemplateService.deleteByFieldId(id);
     }
 
+    public CustomField get(String id) {
+        return customFieldMapper.selectByPrimaryKey(id);
+    }
+
     public void update(CustomField customField) {
         if (customField.getGlobal() != null && customField.getGlobal()) {
-            // 如果是全局字段，则创建对应工作空间字段
-            add(customField);
+            CustomFieldDao customFieldDao = new CustomFieldDao();
+            BeanUtils.copyBean(customFieldDao, customField);
+            customFieldDao.setOriginGlobalId(customField.getId());
+            // 如果是全局字段，则创建对应项目字段
+            add(customFieldDao);
             if (StringUtils.equals(customField.getScene(), TemplateConstants.FieldTemplateScene.TEST_CASE.name())) {
-                testCaseTemplateService.handleSystemFieldCreate(customField);
+                testCaseTemplateService.handleSystemFieldCreate(customFieldDao);
+            } else if (StringUtils.equals(customField.getScene(), TemplateConstants.FieldTemplateScene.API.name())) {
+                apiTemplateService.handleSystemFieldCreate(customFieldDao);
             } else {
-                issueTemplateService.handleSystemFieldCreate(customField);
+                issueTemplateService.handleSystemFieldCreate(customFieldDao);
             }
         } else {
             checkExist(customField);
@@ -116,7 +139,7 @@ public class CustomFieldService {
     }
 
     public List<CustomFieldDao> getCustomFieldByTemplateId(String templateId) {
-        List<CustomFieldTemplate> customFields = customFieldTemplateService.getCustomFields(templateId);
+        List<CustomFieldTemplate> customFields = extCustomFieldTemplateMapper.getCustomFields(templateId);
         List<String> fieldIds = customFields.stream()
                 .map(CustomFieldTemplate::getFieldId)
                 .collect(Collectors.toList());
@@ -132,10 +155,11 @@ public class CustomFieldService {
                 CustomField customField = fieldMap.get(item.getFieldId());
                 BeanUtils.copyBean(customFieldDao, customField);
                 BeanUtils.copyBean(customFieldDao, item);
+                customFieldDao.setId(item.getFieldId());
                 result.add(customFieldDao);
             });
         }
-        return result;
+        return result.stream().distinct().collect(Collectors.toList());
     }
 
     public List<CustomField> getFieldByIds(List<String> ids) {
@@ -153,7 +177,7 @@ public class CustomFieldService {
         example.createCriteria()
                 .andSystemEqualTo(true)
                 .andSceneEqualTo(request.getScene())
-                .andWorkspaceIdEqualTo(request.getWorkspaceId());
+                .andProjectIdEqualTo(request.getProjectId());
         List<CustomField> workspaceSystemFields = customFieldMapper.selectByExampleWithBLOBs(example);
         Set<String> workspaceSystemFieldNames = workspaceSystemFields.stream()
                 .map(CustomField::getName)
@@ -189,7 +213,7 @@ public class CustomFieldService {
             CustomFieldExample example = new CustomFieldExample();
             CustomFieldExample.Criteria criteria = example.createCriteria();
             criteria.andNameEqualTo(customField.getName());
-            criteria.andWorkspaceIdEqualTo(customField.getWorkspaceId());
+            criteria.andProjectIdEqualTo(customField.getProjectId());
             criteria.andSceneEqualTo(customField.getScene());
             if (StringUtils.isNotBlank(customField.getId())) {
                 criteria.andIdNotEqualTo(customField.getId());
@@ -217,5 +241,98 @@ public class CustomFieldService {
             }
         }
         return new ArrayList<>();
+    }
+
+    public List<CustomField> getWorkspaceIdSystemFields(String workspaceId, String scene) {
+        return extCustomFieldMapper.getWorkspaceIdSystemFields(workspaceId, scene);
+    }
+
+    public List<CustomFieldResource> getCustomFieldResource(String customFieldsStr) {
+        List<CustomFieldResource> list = new ArrayList<>();
+        if (StringUtils.isNotBlank(customFieldsStr)) {
+            if (JSONObject.parse(customFieldsStr) instanceof JSONArray) {
+                List<CustomFieldItemDTO> items = JSONArray.parseArray(customFieldsStr, CustomFieldItemDTO.class);
+                for (CustomFieldItemDTO item : items) {
+                    list.add(constructorCustomFieldResource(item));
+                }
+                return list;
+            }
+        }
+        return new ArrayList<>();
+    }
+
+    private CustomFieldResource constructorCustomFieldResource(CustomFieldItemDTO dto) {
+        CustomFieldResource resource = new CustomFieldResource();
+        resource.setFieldId(dto.getId());
+        if (StringUtils.isNotBlank(dto.getType()) &&
+                StringUtils.equalsAny(dto.getType(), CustomFieldType.RICH_TEXT.getValue(), CustomFieldType.TEXTAREA.getValue())) {
+            resource.setTextValue(dto.getValue() == null ? "" : dto.getValue().toString());
+        } else {
+            resource.setValue(JSONObject.toJSONString(dto.getValue()));
+        }
+        return resource;
+    }
+
+    public List<CustomField> getByProjectId(String projectId) {
+        CustomFieldExample example = new CustomFieldExample();
+        example.createCriteria().andProjectIdEqualTo(projectId);
+        return customFieldMapper.selectByExample(example);
+    }
+
+    public Map<String, CustomField> getNameMapByProjectId(String projectId) {
+        return this.getByProjectId(projectId)
+                .stream()
+                .collect(Collectors.toMap(i -> i.getName() + i.getScene(), i -> i, (val1, val2) -> val1));
+    }
+
+    public Map<String, CustomField> getGlobalNameMapByProjectId() {
+        CustomFieldExample example = new CustomFieldExample();
+        example.createCriteria().andGlobalEqualTo(true);
+        return customFieldMapper.selectByExample(example)
+                .stream()
+                .collect(Collectors.toMap(i -> i.getName() + i.getScene(), i -> i));
+    }
+
+    public CustomField getCustomFieldByName(String projectId, String fieldName) {
+        CustomFieldExample example = new CustomFieldExample();
+        example.createCriteria()
+                .andProjectIdEqualTo(projectId)
+                .andNameEqualTo(fieldName);
+        List<CustomField> customFields = customFieldMapper.selectByExample(example);
+        if (CollectionUtils.isNotEmpty(customFields)) {
+            return customFields.get(0);
+        } else {
+            example.clear();
+            example.createCriteria()
+                    .andGlobalEqualTo(true)
+                    .andNameEqualTo(fieldName);
+            customFields = customFieldMapper.selectByExample(example);
+            return CollectionUtils.isNotEmpty(customFields) ? customFields.get(0) : null;
+        }
+    }
+
+    public Map<String, String> getIssueSystemCustomFieldByName(String fieldName, String projectId, List<String> resourceIds) {
+        if (CollectionUtils.isEmpty(resourceIds)) {
+            return null;
+        }
+        Project project = projectMapper.selectByPrimaryKey(projectId);
+        if (project == null) {
+            return null;
+        }
+        String templateId = project.getIssueTemplateId();
+        if (StringUtils.isBlank(templateId)) {
+            return null;
+        }
+        // 模版对于同一个系统字段应该只关联一次
+        List<String> fieldIds = customFieldTemplateService.getSystemCustomField(templateId, fieldName);
+        if (CollectionUtils.isEmpty(fieldIds)) {
+            return null;
+        }
+        // 该系统字段的自定义ID
+        String customFieldId = fieldIds.get(0);
+        CustomFieldIssuesExample example = new CustomFieldIssuesExample();
+        example.createCriteria().andFieldIdEqualTo(customFieldId).andResourceIdIn(resourceIds);
+        List<CustomFieldIssues> customFieldIssues = customFieldIssuesMapper.selectByExample(example);
+        return customFieldIssues.stream().collect(Collectors.toMap(CustomFieldIssues::getResourceId, CustomFieldIssues::getValue));
     }
 }

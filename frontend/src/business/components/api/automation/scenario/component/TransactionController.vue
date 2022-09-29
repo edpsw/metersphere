@@ -7,9 +7,11 @@
     :draggable="draggable"
     :is-max="isMax"
     :show-btn="showBtn"
-    color="#6D317C"
+    :show-version="showVersion"
+    color="#783887"
     background-color="#FCF6EE"
-    :title="$t('api_test.automation.transcation_controller')">
+    :if-from-variable-advance="ifFromVariableAdvance"
+    :title="$t('api_test.automation.transaction_controller')">
     <template v-slot:debugStepCode>
       <span v-if="node.data.testing" class="ms-test-running">
          <i class="el-icon-loading" style="font-size: 16px"/>
@@ -21,9 +23,15 @@
     </template>
 
     <template v-slot:headerLeft>
-      <el-input draggable size="mini" v-model="controller.name" style="width: 20%" :placeholder="$t('api_test.automation.transcation_controller')"/>
-      <el-checkbox v-model="controller.generateParentSample" style="margin-left: 20px" @change="changeGenerateParantSample">Generate Parent Sample</el-checkbox>
-      <el-checkbox v-model="controller.includeTimers" @change="changeIncludeTimers">Include Timers</el-checkbox>
+      <el-input draggable size="mini" v-model="controller.name" style="width: 20%" :placeholder="$t('api_test.automation.transaction_controller')"/>
+      <el-checkbox v-model="controller.generateParentSample"
+                   @change="changeGenerateParantSample"
+                   :disabled="controller.disabled" class="ms-btn">
+        Generate Parent Sample
+      </el-checkbox>
+      <el-checkbox v-model="controller.includeTimers" @change="changeIncludeTimers" :disabled="controller.disabled">
+        Include Timers
+      </el-checkbox>
     </template>
 
   </api-base-component>
@@ -47,8 +55,16 @@ export default {
       type: Boolean,
       default: true,
     },
+    showVersion: {
+      type: Boolean,
+      default: true,
+    },
     index: Object,
     draggable: {
+      type: Boolean,
+      default: false,
+    },
+    ifFromVariableAdvance: {
       type: Boolean,
       default: false,
     },
@@ -59,12 +75,7 @@ export default {
     },
   },
   created() {
-    if (this.controller.generateParentSample == null) {
-      this.controller.generateParentSample = true;
-    }
-    if (this.controller.includeTimers == null) {
-      this.controller.includeTimers = true;
-    }
+
   },
   data() {
     return {
@@ -152,8 +163,7 @@ export default {
 
 <style scoped>
 .ms-btn {
-  width: 20%;
-  margin-left: 5px;
+  margin-left: 20px;
 }
 
 .ms-select {
@@ -177,9 +187,10 @@ export default {
   text-overflow: ellipsis;
   vertical-align: middle;
   white-space: nowrap;
-  width: 100px;
+  width: 80px;
 }
+
 .ms-test-running {
-  color: #6D317C;
+  color: #783887;
 }
 </style>

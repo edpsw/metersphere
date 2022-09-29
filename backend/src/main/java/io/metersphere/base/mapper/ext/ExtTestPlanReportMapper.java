@@ -1,10 +1,14 @@
 package io.metersphere.base.mapper.ext;
 
+import io.metersphere.api.dto.definition.ParamsDTO;
 import io.metersphere.track.dto.TestPlanReportDTO;
 import io.metersphere.track.request.report.QueryTestPlanReportRequest;
+import org.apache.ibatis.annotations.MapKey;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * @author song.tianyang
@@ -12,5 +16,12 @@ import java.util.List;
  * @Description
  */
 public interface ExtTestPlanReportMapper {
-    List<TestPlanReportDTO> list(@Param("request")QueryTestPlanReportRequest request);
+    List<TestPlanReportDTO> list(@Param("request") QueryTestPlanReportRequest request);
+
+    @MapKey("id")
+    Map<String, ParamsDTO> reportCount(@Param("planIds") Set<String> planIds);
+
+    void setApiBaseCountAndPassRateIsNullById(String id);
+
+    void updateAllStatus();
 }

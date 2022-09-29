@@ -53,5 +53,15 @@ public class ApiDefinition implements Serializable {
 
     private Long order;
 
+    private String refId;
+
+    private String versionId;
+
+    private Boolean latest;
+
+    private Boolean toBeUpdated;
+
+    private Long toBeUpdateTime;
+
     private static final long serialVersionUID = 1L;
 }

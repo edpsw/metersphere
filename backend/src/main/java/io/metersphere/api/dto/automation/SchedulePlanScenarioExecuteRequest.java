@@ -1,5 +1,6 @@
 package io.metersphere.api.dto.automation;
 
+import io.metersphere.dto.RunModeConfigDTO;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -32,9 +33,12 @@ public class SchedulePlanScenarioExecuteRequest {
     private String reportUserID;
 
     //key: test_plan.id, value: test_plan_api_scenario <->scenarioValue
-    private Map<String,Map<String,String>> testPlanScenarioIDMap;
+    private Map<String, Map<String, String>> testPlanScenarioIDMap;
 
     private String testPlanReportId;
 
-    private RunModeConfig config;
+    private RunModeConfigDTO config;
+
+    //场景的类型 api/ui
+    private String type;
 }

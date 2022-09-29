@@ -1,16 +1,15 @@
 package io.metersphere.track.controller;
 
-import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.JSONArray;
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
 import io.metersphere.api.dto.datacount.request.ScheduleInfoRequest;
 import io.metersphere.api.service.ApiAutomationService;
 import io.metersphere.base.domain.*;
-import io.metersphere.commons.constants.NoticeConstants;
-import io.metersphere.commons.constants.OperLogConstants;
-import io.metersphere.commons.constants.PermissionConstants;
+import io.metersphere.commons.constants.*;
 import io.metersphere.commons.utils.PageUtils;
 import io.metersphere.commons.utils.Pager;
+import io.metersphere.controller.request.ScheduleRequest;
 import io.metersphere.log.annotation.MsAuditLog;
 import io.metersphere.notice.annotation.SendNotice;
 import io.metersphere.service.CheckPermissionService;
@@ -19,7 +18,7 @@ import io.metersphere.track.dto.*;
 import io.metersphere.track.request.testcase.PlanCaseRelevanceRequest;
 import io.metersphere.track.request.testcase.QueryTestPlanRequest;
 import io.metersphere.track.request.testplan.AddTestPlanRequest;
-import io.metersphere.track.request.testplan.TestplanRunRequest;
+import io.metersphere.track.request.testplan.TestPlanRunRequest;
 import io.metersphere.track.request.testplancase.TestCaseRelevanceRequest;
 import io.metersphere.track.service.TestPlanProjectService;
 import io.metersphere.track.service.TestPlanService;
@@ -60,6 +59,13 @@ public class TestPlanController {
         return PageUtils.setPageInfo(page, testPlanService.listTestPlan(request));
     }
 
+    @PostMapping("/dashboard/list/{goPage}/{pageSize}")
+    @RequiresPermissions("PROJECT_TRACK_PLAN:READ")
+    public Pager<List<TestPlanDTOWithMetric>> listByWorkspaceId(@PathVariable int goPage, @PathVariable int pageSize, @RequestBody QueryTestPlanRequest request) {
+        Page<Object> page = PageHelper.startPage(goPage, pageSize, true);
+        return PageUtils.setPageInfo(page, testPlanService.listByWorkspaceId(request));
+    }
+
     /*jenkins测试计划*/
     @GetMapping("/list/all/{projectId}/{workspaceId}")
     public List<TestPlanDTOWithMetric> listByProjectId(@PathVariable String projectId, @PathVariable String workspaceId) {
@@ -70,8 +76,14 @@ public class TestPlanController {
     }
 
     @PostMapping("/list/all")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_PLAN_READ)
     public List<TestPlan> listAll(@RequestBody QueryTestPlanRequest request) {
         return testPlanService.listTestAllPlan(request);
+    }
+
+    @GetMapping("/get/stage/option/{projectId}")
+    public JSONArray getStageOption(@PathVariable("projectId") String projectId) {
+        return testPlanService.getStageOption(projectId);
     }
 
     @GetMapping("recent/{count}/{id}")
@@ -81,6 +93,7 @@ public class TestPlanController {
     }
 
     @PostMapping("/get/{testPlanId}")
+    @RequiresPermissions(PermissionConstants.PROJECT_TRACK_PLAN_READ)
     public TestPlan getTestPlan(@PathVariable String testPlanId) {
         checkPermissionService.checkTestPlanOwner(testPlanId);
         return testPlanService.getTestPlan(testPlanId);
@@ -88,8 +101,8 @@ public class TestPlanController {
 
     @PostMapping("/add")
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_PLAN_READ_CREATE)
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.CREATE, title = "#testPlan.name", content = "#msClass.getLogDetails(#testPlan.id)", msClass = TestPlanService.class)
-    @SendNotice(taskType = NoticeConstants.TaskType.TEST_PLAN_TASK, event = NoticeConstants.Event.CREATE, mailTemplate = "track/TestPlanStart", subject = "测试计划通知")
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.CREATE, title = "#testPlan.name", content = "#msClass.getLogDetails(#testPlan.id)", msClass = TestPlanService.class)
+    @SendNotice(taskType = NoticeConstants.TaskType.TEST_PLAN_TASK, event = NoticeConstants.Event.CREATE, subject = "测试计划通知")
     public TestPlan addTestPlan(@RequestBody AddTestPlanRequest testPlan) {
         testPlan.setId(UUID.randomUUID().toString());
         return testPlanService.addTestPlan(testPlan);
@@ -97,15 +110,15 @@ public class TestPlanController {
 
     @PostMapping("/edit")
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_PLAN_READ_EDIT)
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#testPlanDTO.id)", content = "#msClass.getLogDetails(#testPlanDTO.id)", msClass = TestPlanService.class)
-    @SendNotice(taskType = NoticeConstants.TaskType.TEST_PLAN_TASK, event = NoticeConstants.Event.UPDATE, mailTemplate = "track/TestPlanUpdate", subject = "测试计划通知")
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#testPlanDTO.id)", content = "#msClass.getLogDetails(#testPlanDTO.id)", msClass = TestPlanService.class)
+    @SendNotice(taskType = NoticeConstants.TaskType.TEST_PLAN_TASK, event = NoticeConstants.Event.UPDATE, subject = "测试计划通知")
     public TestPlan editTestPlan(@RequestBody AddTestPlanRequest testPlanDTO) {
         return testPlanService.editTestPlanWithRequest(testPlanDTO);
     }
 
     @PostMapping("/edit/status/{planId}")
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_PLAN_READ_EDIT)
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#planId)", content = "#msClass.getLogDetails(#planId)", msClass = TestPlanService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.UPDATE, beforeEvent = "#msClass.getLogDetails(#planId)", content = "#msClass.getLogDetails(#planId)", msClass = TestPlanService.class)
     public void editTestPlanStatus(@PathVariable String planId) {
         checkPermissionService.checkTestPlanOwner(planId);
         testPlanService.editTestPlanStatus(planId);
@@ -120,22 +133,22 @@ public class TestPlanController {
 
     @PostMapping("/edit/follows/{planId}")
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_PLAN_READ_EDIT)
-    public void editTestFollows(@PathVariable String planId,@RequestBody List<String> follows) {
-        testPlanService.editTestFollows(planId,follows);
+    public void editTestFollows(@PathVariable String planId, @RequestBody List<String> follows) {
+        testPlanService.editTestFollows(planId, follows);
     }
 
     @PostMapping("/delete/{testPlanId}")
     @RequiresPermissions(PermissionConstants.PROJECT_TRACK_PLAN_READ_DELETE)
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#testPlanId)", msClass = TestPlanService.class)
-    @SendNotice(taskType = NoticeConstants.TaskType.TEST_PLAN_TASK, target = "#targetClass.getTestPlan(#testPlanId)", targetClass = TestPlanService.class,
-            event = NoticeConstants.Event.DELETE, mailTemplate = "track/TestPlanDelete", subject = "测试计划通知")
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.DELETE, beforeEvent = "#msClass.getLogDetails(#testPlanId)", msClass = TestPlanService.class)
+    @SendNotice(taskType = NoticeConstants.TaskType.TEST_PLAN_TASK, target = "#targetClass.get(#testPlanId)", targetClass = TestPlanService.class,
+            event = NoticeConstants.Event.DELETE, subject = "测试计划通知")
     public int deleteTestPlan(@PathVariable String testPlanId) {
         checkPermissionService.checkTestPlanOwner(testPlanId);
         return testPlanService.deleteTestPlan(testPlanId);
     }
 
     @PostMapping("/relevance")
-    @MsAuditLog(module = "track_test_plan", type = OperLogConstants.ASSOCIATE_CASE, content = "#msClass.getLogDetails(#request)", msClass = TestPlanService.class)
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.ASSOCIATE_CASE, content = "#msClass.getLogDetails(#request)", msClass = TestPlanService.class)
     public void testPlanRelevance(@RequestBody PlanCaseRelevanceRequest request) {
         testPlanService.testPlanRelevance(request);
     }
@@ -170,18 +183,8 @@ public class TestPlanController {
         return PageUtils.setPageInfo(page, testPlanProjectService.getProjectByPlanId(request));
     }
 
-    @PostMapping("/testplan/jenkins")
-    public String runJenkins(@RequestBody TestplanRunRequest testplanRunRequest) {
-        ApiRunConfigDTO api = new ApiRunConfigDTO();
-        api.setMode(testplanRunRequest.getMode());
-        api.setResourcePoolId(testplanRunRequest.getResourcePoolId());
-        api.setOnSampleError(false);
-        api.setReportType("iddReport");
-        String apiRunConfig = JSONObject.toJSONString(api);
-        return testPlanService.run(testplanRunRequest.getTestPlanId(), testplanRunRequest.getProjectId(), testplanRunRequest.getUserId(), testplanRunRequest.getTriggerMode(), apiRunConfig);
-    }
-
     @PostMapping("/copy/{id}")
+    @SendNotice(taskType = NoticeConstants.TaskType.TEST_PLAN_TASK, event = NoticeConstants.Event.CREATE, subject = "测试计划通知")
     public TestPlan copy(@PathVariable String id) {
         return testPlanService.copy(id);
     }
@@ -201,14 +204,33 @@ public class TestPlanController {
         return testPlanService.getPlanCaseEnv(plan.getId());
     }
 
+
+    @PostMapping("/edit/runModeConfig")
+    public void updateRunModeConfig(@RequestBody TestPlanRunRequest testplanRunRequest) {
+        testPlanService.updateRunModeConfig(testplanRunRequest);
+    }
+
     @PostMapping("/run")
-    public String run(@RequestBody TestplanRunRequest testplanRunRequest) {
+    public String run(@RequestBody TestPlanRunRequest testplanRunRequest) {
         return testPlanService.runPlan(testplanRunRequest);
     }
 
-    @GetMapping("/report/export/{planId}")
-    public void exportHtmlReport(@PathVariable String planId, HttpServletResponse response) throws UnsupportedEncodingException {
-        testPlanService.exportPlanReport(planId, response);
+    @PostMapping("/run/save")
+    public String runAndSave(@RequestBody TestPlanRunRequest testplanRunRequest) {
+        testPlanService.updateRunModeConfig(testplanRunRequest);
+        return testPlanService.runPlan(testplanRunRequest);
+    }
+
+    @PostMapping(value = "/run/batch")
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN, type = OperLogConstants.EXECUTE, content = "#msClass.getLogDetails(#request.testPlanIds)", msClass = TestPlanService.class)
+    public void runBatch(@RequestBody TestPlanRunRequest request) {
+        request.setTriggerMode(TriggerMode.BATCH.name());
+        testPlanService.runBatch(request);
+    }
+
+    @GetMapping("/report/export/{planId}/{lang}")
+    public void exportHtmlReport(@PathVariable String planId, @PathVariable(required = false) String lang, HttpServletResponse response) throws UnsupportedEncodingException {
+        testPlanService.exportPlanReport(planId, lang, response);
     }
 
     @GetMapping("/get/report/export/{planId}")
@@ -216,14 +238,14 @@ public class TestPlanController {
         return testPlanService.buildPlanReport(planId, true);
     }
 
-    @GetMapping("/report/db/export/{reportId}")
-    public void exportHtmlDbReport(@PathVariable String reportId, HttpServletResponse response) throws UnsupportedEncodingException {
-        testPlanService.exportPlanDbReport(reportId, response);
+    @GetMapping("/report/db/export/{reportId}/{lang}")
+    public void exportHtmlDbReport(@PathVariable String reportId, @PathVariable(required = false) String lang, HttpServletResponse response) throws UnsupportedEncodingException {
+        testPlanService.exportPlanDbReport(reportId, lang, response);
     }
 
     @GetMapping("/report/{planId}")
     public TestPlanSimpleReportDTO getReport(@PathVariable String planId) {
-        return testPlanService.getReport(planId);
+        return testPlanService.getReport(planId, null);
     }
 
     @GetMapping("/report/functional/result")
@@ -245,7 +267,7 @@ public class TestPlanController {
     }
 
     @PostMapping(value = "/schedule/updateEnableByPrimyKey/disable")
-    @SendNotice(taskType = NoticeConstants.TaskType.TRACK_HOME_TASK, event = NoticeConstants.Event.CLOSE_SCHEDULE, mailTemplate = "track/ScheduleClose", subject = "测试跟踪通知")
+    @SendNotice(taskType = NoticeConstants.TaskType.TRACK_HOME_TASK, event = NoticeConstants.Event.CLOSE_SCHEDULE, subject = "测试跟踪通知")
     public Schedule disableSchedule(@RequestBody ScheduleInfoRequest request) {
         Schedule schedule = scheduleService.getSchedule(request.getTaskID());
         schedule.setEnable(false);
@@ -258,6 +280,17 @@ public class TestPlanController {
         return testPlanService.haveExecCase(id);
     }
 
+    /**
+     * 该测试计划是否包含ui场景
+     *
+     * @param id
+     * @return
+     */
+    @GetMapping("/have/ui/case/{id}")
+    public boolean haveUiCase(@PathVariable String id) {
+        return testPlanService.haveUiCase(id);
+    }
+
     @GetMapping("/principal/{planId}")
     public List<User> getPlanPrincipal(@PathVariable String planId) {
         return testPlanService.getPlanPrincipal(planId);
@@ -267,4 +300,35 @@ public class TestPlanController {
     public List<User> getPlanFollow(@PathVariable String planId) {
         return testPlanService.getPlanFollow(planId);
     }
+
+    @PostMapping(value = "/schedule/Batch/updateEnable")
+    public void updateBatchScheduleEnable(@RequestBody ScheduleInfoRequest request) {
+        testPlanService.batchUpdateScheduleEnable(request);
+    }
+
+    @PostMapping(value = "/schedule/enable/total")
+    public long countByScheduleEnableTotal(@RequestBody QueryTestPlanRequest request) {
+        return testPlanService.countScheduleEnableTotal(request);
+    }
+
+    @PostMapping(value = "/update/scheduleByEnable")
+    public ScheduleDTO updateTestPlanBySchedule(@RequestBody ScheduleInfoRequest request) {
+        Schedule schedule = scheduleService.getSchedule(request.getTaskID());
+        schedule.setEnable(request.isEnable());
+        testPlanService.updateSchedule(schedule);
+        return testPlanService.getNextTriggerSchedule(schedule);
+    }
+
+    @PostMapping(value = "/schedule/update")
+    public void updateSchedule(@RequestBody Schedule request) {
+        testPlanService.updateSchedule(request);
+    }
+
+    @PostMapping(value = "/schedule/create")
+    @MsAuditLog(module = OperLogModule.TRACK_TEST_PLAN_SCHEDULE, type = OperLogConstants.CREATE,
+            title = "#request.name", content = "#msClass.getLogDetails(#request)", msClass = ScheduleService.class)
+    public void createSchedule(@RequestBody ScheduleRequest request) {
+        scheduleService.createSchedule(request);
+    }
+
 }

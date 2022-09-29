@@ -1,30 +1,59 @@
+ properties([ [ $class: 'ThrottleJobProperty',
+                categories: ['metersphere'], 
+                limitOneJobWithMatchingParams: false,
+                maxConcurrentPerNode: 1,
+                maxConcurrentTotal: 1,
+                paramsToUseForLimit: '',
+                throttleEnabled: true,
+                throttleOption: 'category' ] ])
+                
 pipeline {
     agent {
         node {
             label 'metersphere'
         }
     }
-    options { quietPeriod(600) }
+    triggers {
+        pollSCM('0 22 * * *')
+    }
     environment { 
         IMAGE_NAME = 'metersphere'
         IMAGE_PREFIX = 'registry.cn-qingdao.aliyuncs.com/metersphere'
     }
     stages {
+        stage('Preparation') {
+            steps {
+                script {
+                    REVISION = ""
+                    if (env.BRANCH_NAME.startsWith("v") ) {
+                        REVISION = env.BRANCH_NAME.substring(1)
+                    } else {
+                        REVISION = env.BRANCH_NAME
+                    }
+                    env.REVISION = "${REVISION}"
+                    echo "REVISION=${REVISION}"
+                }
+            }
+        }
         stage('Build/Test') {
             steps {
                 configFileProvider([configFile(fileId: 'metersphere-maven', targetLocation: 'settings.xml')]) {
-//                     sh "cd frontend"
-//                     sh "yarn install"
-//                     sh "cd .."
-                    sh "./mvnw clean package --settings ./settings.xml"
+                    sh '''
+                        export JAVA_HOME=/opt/jdk-11
+                        export CLASSPATH=$JAVA_HOME/lib:$CLASSPATH
+                        export PATH=$JAVA_HOME/bin:/opt/mvnd/bin:$PATH
+                        java -version
+                        mvnd clean package -Drevision=${REVISION} -DskipAntRunForJenkins --settings ./settings.xml
+                        mkdir -p backend/target/dependency && (cd backend/target/dependency; jar -xf ../*.jar)
+                    '''
                 }
             }
         }
         stage('Docker build & push') {
             steps {
-                sh "docker build --build-arg MS_VERSION=\${TAG_NAME:-\$BRANCH_NAME}-\${GIT_COMMIT:0:8} -t ${IMAGE_NAME}:\${TAG_NAME:-\$BRANCH_NAME} ."
-                sh "docker tag ${IMAGE_NAME}:\${TAG_NAME:-\$BRANCH_NAME} ${IMAGE_PREFIX}/${IMAGE_NAME}:\${TAG_NAME:-\$BRANCH_NAME}"
-                sh "docker push ${IMAGE_PREFIX}/${IMAGE_NAME}:\${TAG_NAME:-\$BRANCH_NAME}"
+                sh '''
+                 su - metersphere -c "cd ${WORKSPACE} && docker buildx create --use && docker buildx build --build-arg MS_VERSION=\${TAG_NAME:-\$BRANCH_NAME}-\${GIT_COMMIT:0:8} -t ${IMAGE_PREFIX}/${IMAGE_NAME}:\${TAG_NAME:-\$BRANCH_NAME} --platform linux/amd64,linux/arm64 . --push"
+                '''
             }
         }
     }
@@ -32,8 +61,9 @@ pipeline {
         always {
             sh "echo \$WEBHOOK\n"
             withCredentials([string(credentialsId: 'wechat-bot-webhook', variable: 'WEBHOOK')]) {
-                qyWechatNotification failSend: true, mentionedId: '', mentionedMobile: '', webhookUrl: "$WEBHOOK"
+                qyWechatNotification failNotify: true, mentionedId: '', mentionedMobile: '', webhookUrl: "$WEBHOOK"
             }
+            sh "./mvnw clean"
         }
     }
 }
